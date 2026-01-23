@@ -1,0 +1,8 @@
+{
+  "name": "Five-Nursings Oncology Health AI",
+  "description": "A comprehensive chronic disease management platform focusing on oncology rehabilitation through the 'Five-Nursings' framework, AI support, and human coaching.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
