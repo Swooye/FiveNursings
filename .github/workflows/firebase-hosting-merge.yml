@@ -18,8 +18,11 @@ jobs:
       - name: Build project
         run: npm run build
         
-      - name: Deploy to Firebase Hosting
-        # 使用特定的 firebase-tools 命令，而不是可能带 bug 的封装 action
-        run: npx firebase-tools deploy --only hosting,functions --force --project fivenursings-73917017-a0dfd
+      - name: Deploy to Firebase
+        uses: w9jds/firebase-action@master
+        with:
+          args: deploy --only hosting,functions --force
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          # 加上下面这一行，把 GitHub 的 Secret 映射到部署进程中
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
