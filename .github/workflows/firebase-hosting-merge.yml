@@ -1,0 +1,26 @@
+name: Deploy to Firebase Hosting on Merge
+'on':
+  push:
+    branches:
+      - main # 如果你的主分支叫 master，请改为 master
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build project
+        run: npm run build
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: '${{ secrets.GITHUB_TOKEN }}'
+          # 注意：删掉了 firebaseServiceAccount 这一行
+          projectId: fivenursings-73917017-a0dfd # 确保 ID 和你终端显示的一致
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
