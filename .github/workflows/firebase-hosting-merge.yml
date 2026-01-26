@@ -17,6 +17,6 @@ jobs:
         
       - name: Deploy to Firebase Hosting
         # 使用特定的 firebase-tools 命令，而不是可能带 bug 的封装 action
-        run: npx firebase-tools deploy --only hosting --project fivenursings-73917017-a0dfd
+        run: npx firebase-tools deploy --only hosting,functions --project fivenursings-73917017-a0dfd
         env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
