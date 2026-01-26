@@ -2,8 +2,12 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { PatientProfile, TCMAnalysisResult } from "../types";
 
-// Initialize AI directly with process.env.API_KEY as per guidelines
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Initialize AI with the VITE environment variable
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+if (!apiKey) {
+  throw new Error("An API Key must be set when running in a browser. Please create a .env file and add VITE_GEMINI_API_KEY=YOUR_API_KEY");
+}
+const ai = new GoogleGenAI({ apiKey });
 
 const SYSTEM_INSTRUCTION = `你是一位专业的肿瘤康复AI教练。基于“五治五养”体系（饮食养、运动养、睡眠养、心理养、功能养）为患者提供支持。
 核心原则：
@@ -159,7 +163,7 @@ export const generatePersonalizedPlan = async (profile: PatientProfile): Promise
     return JSON.parse(text || "{}");
   } catch (error) {
     console.error("Generate Plan Error:", error);
-    throw error;
+    throw new Error('Failed to generate personalized plan.');
   }
 };
 
@@ -235,7 +239,7 @@ export const analyzeTCMImages = async (tongueBase64?: string, faceBase64?: strin
     return JSON.parse(response.text || "{}");
   } catch (error) {
     console.error("TCM Analysis Error:", error);
-    throw error;
+    throw new Error('Failed to analyze TCM images.');
   }
 };
 
@@ -243,10 +247,8 @@ export const analyzeTCMImages = async (tongueBase64?: string, faceBase64?: strin
  * Edits an image using Gemini 2.5 Flash Image
  */
 export const editWellnessImage = async (base64Image: string, prompt: string): Promise<string | null> => {
-  const genAI = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
   try {
-    const response = await genAI.models.generateContent({
+    const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
         parts: [

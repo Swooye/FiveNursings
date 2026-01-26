@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { PatientProfile, CancerType, TreatmentStage, NursingScores, VoiceLog, CartItem, SKU, ChatSession } from './types';
 import Dashboard from './components/Dashboard';
@@ -359,7 +358,7 @@ const App: React.FC = () => {
             </div>
             
             <div className="pt-8 pb-10 text-center">
-               <p className="text-[9px] font-black text-slate-300 dark:text-slate-700 uppercase tracking-[0.4em]">Nursing Plus Oncology AI</p>
+               <p className="text-[9px] font-black text-slate-300 dark:text-slate-700 uppercase tracking-[0.4em]">NURSING PLUS ONCOLOGY AI</p>
                <p className="text-[8px] text-slate-400 dark:text-slate-800 mt-1">Version 2.4.5</p>
             </div>
           </div>
