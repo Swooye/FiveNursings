@@ -20,5 +20,6 @@ jobs:
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: '${{ secrets.GITHUB_TOKEN }}'
-          firebaseServiceAccount: '${{ secrets.FIREBASE_SERVICE_ACCOUNT_FIVENURSINGS_18560239 }}'
-          projectId: fivenursings-18560239
+          # 注意：删掉 firebaseServiceAccount 行
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }} # 使用你之前在 GitHub 设置的 Token
