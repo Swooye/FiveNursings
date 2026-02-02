@@ -1,6 +1,9 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
+import { onAuthStateChanged, User } from 'firebase/auth';
+import { auth } from './src/firebase';
 import { PatientProfile, CancerType, TreatmentStage, NursingScores, VoiceLog, CartItem, SKU, ChatSession } from './types';
-import Dashboard from './components/Dashboard';
+import Home from './components/Home';
 import Program from './components/Program';
 import AIChat from './components/AIChat';
 import Marketplace from './components/Marketplace';
@@ -25,30 +28,23 @@ import {
   Moon, 
   Sun, 
   ChevronRight, 
-  Edit3, 
-  Watch, 
   LogOut, 
-  AlertTriangle, 
   FileText, 
   ShieldCheck, 
   ClipboardEdit, 
   ShoppingBag, 
-  UserX, 
-  Link2Off,
-  AlertCircle,
-  HelpCircle,
   Settings,
-  Info,
-  UserCheck,
-  PhoneCall,
   Headset,
   Crown,
-  Share2,
-  Gift
+  Gift,
+  Loader2
 } from 'lucide-react';
 
 const App: React.FC = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('isLoggedIn') === 'true');
+  const [user, setUser] = useState<User | null>(null);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [_, setForceUpdate] = useState(0);
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [previousTab, setPreviousTab] = useState('dashboard');
   const [assistantMode, setAssistantMode] = useState<'chat' | 'logging' | null>(null);
@@ -68,29 +64,34 @@ const App: React.FC = () => {
   const [completeProfileMode, setCompleteProfileMode] = useState<'onboarding' | 'edit'>('onboarding');
   const [voiceLogs, setVoiceLogs] = useState<VoiceLog[]>([]);
   const [lastUpdatedCategory, setLastUpdatedCategory] = useState<keyof NursingScores | null>(null);
-  
-  // Settings States
-  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>(() => {
-    return (localStorage.getItem('themeMode') as any) || 'system';
-  });
+  const [reportCache, setReportCache] = useState<{ date: string; profileJSON: string; text: string } | null>(null);
+
+  const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>(() => (localStorage.getItem('themeMode') as any) || 'system');
   const [fontSize, setFontSize] = useState(() => localStorage.getItem('font-size') || 'standard');
   const [language, setLanguage] = useState(() => localStorage.getItem('language') || 'zh');
   const [hapticFeedback, setHapticFeedback] = useState(() => localStorage.getItem('haptics') !== 'false');
   const [unitSystem, setUnitSystem] = useState(() => localStorage.getItem('units') || 'metric');
 
-  // Resolved current theme state (for UI icons)
   const [isDarkEffective, setIsDarkEffective] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoadingAuth(false);
+      if (currentUser) {
+        setActiveTab('dashboard');
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const root = document.documentElement;
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-
     const applyTheme = (isDark: boolean) => {
       setIsDarkEffective(isDark);
-      if (isDark) root.classList.add('dark');
-      else root.classList.remove('dark');
+      if (isDark) root.classList.add('dark'); else root.classList.remove('dark');
     };
-
     if (themeMode === 'system') {
       applyTheme(mediaQuery.matches);
       const handler = (e: MediaQueryListEvent) => applyTheme(e.matches);
@@ -111,7 +112,6 @@ const App: React.FC = () => {
 
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-
   const [cart, setCart] = useState<CartItem[]>([]);
 
   const [profile, setProfile] = useState<PatientProfile>({
@@ -128,19 +128,16 @@ const App: React.FC = () => {
     familyMembers: [],
     isVIP: false,
     coachSessionsRemaining: 1,
-    referralCode: 'REHAB-888'
+    referralCode: 'REHAB-888',
+    voicePreference: 'default'
   });
 
   const handleUpdateProfile = (updates: Partial<PatientProfile>) => {
     const newProfile = { ...profile, ...updates };
     setProfile(newProfile);
-    
-    // Auto-onboarding logic
     if (updates.isProfileComplete && !newProfile.isQuestionnaireComplete && completeProfileMode === 'onboarding') {
       setShowQuestionnaire(true);
     }
-    
-    // NEW: When questionnaire completes, immediately show the health record
     if (updates.isQuestionnaireComplete) {
       setShowQuestionnaire(false);
       setShowHealthRecord(true);
@@ -157,18 +154,11 @@ const App: React.FC = () => {
   };
 
   const handleSubscribe = () => {
-    setProfile(prev => ({ 
-      ...prev, 
-      isVIP: true, 
-      vipExpiry: '2026-05-24',
-      coachSessionsRemaining: 99 
-    }));
+    setProfile(prev => ({ ...prev, isVIP: true, vipExpiry: '2026-05-24', coachSessionsRemaining: 99 }));
     setShowMembership(false);
-    
     if (!profile.isQuestionnaireComplete) {
       setTimeout(() => {
-        const wantsToAssess = confirm("尊享会员开通成功！\n\n为了林主任专家团队能为您定制精准方案，建议立即完成康复评估。现在就开始吗？");
-        if (wantsToAssess) {
+        if (confirm("尊享会员开通成功！\n\n为了林主任专家团队能为您定制精准方案，建议立即完成康复评估。现在就开始吗？")) {
           setShowQuestionnaire(true);
         }
       }, 500);
@@ -177,7 +167,25 @@ const App: React.FC = () => {
     }
   };
 
-  if (!isLoggedIn) { return <LoginView onLogin={() => { setIsLoggedIn(true); localStorage.setItem('isLoggedIn', 'true'); }} />; }
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+    } catch (error) {
+      console.error("Logout Error:", error);
+    }
+  };
+  
+  if (loadingAuth) {
+      return (
+          <div className="min-h-screen max-w-md mx-auto flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+              <Loader2 className="animate-spin text-emerald-500" size={48} />
+          </div>
+      );
+  }
+
+  if (!user) {
+    return <LoginView onLogin={() => setForceUpdate(c => c + 1)} />;
+  }
 
   const renderContent = () => {
     if (showMembership) { return <MembershipCenter profile={profile} onBack={() => setShowMembership(false)} onSubscribe={handleSubscribe} />; }
@@ -190,9 +198,11 @@ const App: React.FC = () => {
       return (
         <SettingsView 
           onBack={() => setShowSettings(false)} 
-          onLogout={() => setIsLoggedIn(false)} 
-          onDeleteAccount={() => setIsLoggedIn(false)} 
+          onLogout={handleLogout} 
+          onDeleteAccount={handleLogout} 
           isDeviceConnected={profile.wearable.isConnected}
+          profile={profile}
+          onUpdateProfile={handleUpdateProfile}
           fontSize={fontSize}
           setFontSize={setFontSize}
           themeMode={themeMode}
@@ -231,7 +241,7 @@ const App: React.FC = () => {
                 <ChevronRight size={16} />
               </button>
             )}
-            <Dashboard 
+            <Home 
               profile={profile} 
               onUpdateProfile={handleUpdateProfile} 
               onSelectNursing={(n) => setSelectedNursing(n)} 
@@ -251,7 +261,7 @@ const App: React.FC = () => {
               <div className="relative z-10 flex items-center space-x-6">
                 <div className="relative">
                   <div className="w-20 h-20 bg-white/10 dark:bg-slate-800 rounded-3xl flex items-center justify-center border border-white/10 dark:border-slate-700 p-1.5 backdrop-blur-md overflow-hidden">
-                    <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.name}`} alt="Avatar" className="w-full h-full rounded-2xl bg-white" />
+                    <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} alt="Avatar" className="w-full h-full rounded-2xl bg-white" />
                   </div>
                   {profile.isVIP && (
                     <div className="absolute -top-2 -right-2 w-7 h-7 bg-amber-500 rounded-full border-2 border-slate-800 flex items-center justify-center shadow-lg">
@@ -260,7 +270,7 @@ const App: React.FC = () => {
                   )}
                 </div>
                 <div className="flex-1 text-left">
-                  <h3 className="text-2xl font-black text-white tracking-tight">{profile.name}</h3>
+                  <h3 className="text-2xl font-black text-white tracking-tight">{profile.name || '新用户'}</h3>
                   <div className="flex items-center space-x-2 mt-1">
                     <span className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em]">{profile.cancerType}</span>
                     <span className="text-[10px] font-bold text-slate-400">· {profile.isVIP ? '尊享会员' : '普通用户'}</span>
@@ -363,14 +373,19 @@ const App: React.FC = () => {
             </div>
           </div>
         );
-      default: return <Dashboard profile={profile} onUpdateProfile={handleUpdateProfile} onSelectNursing={(n) => setSelectedNursing(n)} onStartReport={() => setShowReport(true)} onStartAssessment={() => setShowQuestionnaire(true)} />;
+      default: return <Home profile={profile} onUpdateProfile={handleUpdateProfile} onSelectNursing={(n) => setSelectedNursing(n)} onStartReport={() => setShowReport(true)} onStartAssessment={() => setShowQuestionnaire(true)} />;
     }
   };
 
   return (
     <div className="min-h-screen max-w-md mx-auto relative bg-slate-50 dark:bg-slate-950 flex flex-col shadow-2xl border-x border-slate-200 dark:border-slate-800 transition-colors duration-300 no-scrollbar">
       {assistantMode && <LiveVoiceAssistant mode={assistantMode} onClose={() => setAssistantMode(null)} />}
-      {showReport && <DailyHealthReport profile={profile} onClose={() => setShowReport(false)} />}
+      {showReport && <DailyHealthReport 
+        profile={profile} 
+        onClose={() => setShowReport(false)} 
+        cache={reportCache} 
+        onUpdateCache={setReportCache} 
+      />}
       
       {!selectedNursing && !showJournal && !showOrders && !showCart && !showCompleteProfile && !showQuestionnaire && !showHealthRecord && !showSafetySettings && !protocolType && !showSettings && activeTab !== 'chat' && !showHumanCoach && !showMembership && (
         <header className="px-6 pt-6 pb-4 bg-slate-50/80 dark:bg-slate-950/80 backdrop-blur-md sticky top-0 z-40 border-b border-transparent dark:border-slate-900">

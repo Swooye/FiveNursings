@@ -1,9 +1,16 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { Smartphone, ShieldCheck, X, ChevronDown, AlertCircle } from 'lucide-react';
+import { Smartphone, ShieldCheck, X, ChevronDown, AlertCircle, Loader2 } from 'lucide-react';
+import { RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from 'firebase/auth';
+import { auth } from '../src/firebase';
 
 interface LoginViewProps {
   onLogin: () => void;
+}
+
+declare global {
+  interface Window {
+    confirmationResult?: ConfirmationResult;
+  }
 }
 
 type LoginStep = 'none' | 'phone' | 'code';
@@ -16,10 +23,13 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
   const [countdown, setCountdown] = useState(59);
   const [shakeAgreement, setShakeAgreement] = useState(false);
   const [showTip, setShowTip] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   
+  const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
   const vCodeRefs = useRef<(HTMLInputElement | null)[]>([]);
 
-  // Timer for verification code
+  // Timer for verification code countdown
   useEffect(() => {
     let timer: any;
     if (step === 'code' && countdown > 0) {
@@ -27,16 +37,26 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     }
     return () => clearInterval(timer);
   }, [step, countdown]);
+  
+  // Clear error message when the login step changes
+  useEffect(() => {
+    setError('');
+  }, [step]);
+
+  // **SOLUTION**: Add a cleanup effect that runs only when the component unmounts.
+  useEffect(() => {
+    return () => {
+      if (recaptchaVerifierRef.current) {
+        recaptchaVerifierRef.current.clear();
+      }
+    };
+  }, []); // Empty dependency array ensures this runs only on mount and unmount.
 
   const triggerReminder = () => {
     setShakeAgreement(true);
     setShowTip(true);
-    setTimeout(() => {
-      setShakeAgreement(false);
-    }, 500);
-    setTimeout(() => {
-      setShowTip(false);
-    }, 2500);
+    setTimeout(() => setShakeAgreement(false), 500);
+    setTimeout(() => setShowTip(false), 2500);
   };
 
   const handleOneClickLogin = () => {
@@ -44,6 +64,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
       triggerReminder();
       return;
     }
+    alert("“本机号码一键登录”功能需要原生 App 环境支持，此处将模拟登录成功。");
     onLogin();
   };
 
@@ -55,14 +76,62 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     setStep('phone');
   };
 
-  const handlePhoneSubmit = () => {
+  // **SOLUTION**: Use useRef to create and manage the verifier instance.
+  const handlePhoneSubmit = async () => {
     if (phoneNumber.length < 11) return;
-    setStep('code');
-    setCountdown(59);
+    
+    setLoading(true);
+    setError('');
+    
+    try {
+      let verifier = recaptchaVerifierRef.current;
+      if (!verifier) {
+        verifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+          'size': 'invisible',
+          'callback': () => console.log('reCAPTCHA automatically solved'),
+          'expired-callback': () => {
+            setError("reCAPTCHA 已过期，请重试。");
+          }
+        });
+        recaptchaVerifierRef.current = verifier;
+      }
+
+      const fullPhoneNumber = `+86${phoneNumber}`;
+      const confirmationResult = await signInWithPhoneNumber(auth, fullPhoneNumber, verifier);
+      window.confirmationResult = confirmationResult;
+      setStep('code');
+      setCountdown(59);
+    } catch (err: any) {
+      console.error("SMS send error:", err);
+      if (err.code === 'auth/invalid-phone-number') {
+          setError('手机号码格式不正确，请检查。');
+      } else {
+          setError(`发送失败，请稍后重试。`);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
+  
+  const handleCodeSubmit = async (code: string) => {
+      if (code.length < 6 || !window.confirmationResult) return;
+      setLoading(true);
+      setError('');
+      try {
+          await window.confirmationResult.confirm(code);
+          onLogin(); 
+      } catch (err: any) {
+          console.error("Code verification error:", err);
+          setError(`验证失败: 验证码无效或已过期。`);
+          setVCode(['', '', '', '', '', '']);
+          vCodeRefs.current[0]?.focus();
+      } finally {
+          setLoading(false);
+      }
+  }
 
   const handleCodeChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
+    if (!/^\d*$/.test(value) || loading) return;
     
     const newCode = [...vCode];
     newCode[index] = value.slice(-1);
@@ -71,10 +140,10 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     if (value && index < 5) {
       vCodeRefs.current[index + 1]?.focus();
     }
-
-    // Auto-login when last digit is entered
-    if (index === 5 && value) {
-      setTimeout(onLogin, 500);
+    
+    const fullCode = newCode.join('');
+    if (fullCode.length === 6) {
+      handleCodeSubmit(fullCode);
     }
   };
 
@@ -84,15 +153,20 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     }
   };
 
+  // **SOLUTION**: Clean up the verifier when the modal is explicitly closed.
   const closeModal = () => {
     setStep('none');
-    setPhoneNumber('');
     setVCode(['', '', '', '', '', '']);
+    if (recaptchaVerifierRef.current) {
+      recaptchaVerifierRef.current.clear();
+      recaptchaVerifierRef.current = null;
+    }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center px-10 pt-32 pb-16 animate-in fade-in duration-700 relative overflow-hidden">
-      {/* Brand Header */}
+    <div className="min-h-screen max-w-md mx-auto bg-slate-50 flex flex-col items-center px-10 pt-32 pb-16 animate-in fade-in duration-700 relative shadow-2xl border-x border-slate-200 dark:border-slate-800 no-scrollbar">
+      <div id="recaptcha-container" />
+      
       <div className="flex flex-col items-center space-y-4 mb-32 z-10">
         <h1 className="text-5xl font-black text-emerald-600 tracking-tighter drop-shadow-sm">
           康养家
@@ -102,7 +176,6 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
         </p>
       </div>
 
-      {/* Main Content Area */}
       <div className="w-full flex flex-col items-center space-y-12 z-10">
         <div className="text-center">
           <p className="text-sm font-bold text-slate-400 mb-2">当前手机号</p>
@@ -129,20 +202,16 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
         </div>
       </div>
 
-      {/* Footer / Terms - Optimized alignment and Reminder Tip */}
       <div className="mt-auto relative w-full flex flex-col items-center">
-        {/* Floating Reminder Tip */}
         {showTip && (
           <div className="absolute -top-12 left-1/2 -translate-x-1/2 animate-in fade-in zoom-in slide-in-from-bottom-2 duration-300">
             <div className="bg-slate-800/90 backdrop-blur-md text-white px-4 py-2 rounded-xl text-[11px] font-bold flex items-center space-x-2 shadow-xl whitespace-nowrap">
               <AlertCircle size={14} className="text-emerald-400" />
               <span>请先阅读并勾选同意相关协议</span>
-              {/* Arrow down */}
               <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-800/90 rotate-45"></div>
             </div>
           </div>
         )}
-
         <div className={`flex items-center space-x-2.5 transition-transform ${shakeAgreement ? 'animate-shake' : ''}`}>
           <button 
             onClick={() => {
@@ -162,104 +231,93 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
         </div>
       </div>
 
-      {/* Modal Overlay Background */}
       {step !== 'none' && (
-        <div 
-          className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-40 animate-in fade-in duration-300" 
-          onClick={closeModal}
-        />
-      )}
-
-      {/* SMS Login - Phone Number Modal */}
-      {step === 'phone' && (
-        <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[40px] p-8 pb-12 z-50 animate-in slide-in-from-bottom duration-500 shadow-2xl">
-          <div className="flex justify-between items-center mb-8">
-            <h3 className="text-xl font-black text-slate-800">手机号登录</h3>
-            <button onClick={closeModal} className="p-2 text-slate-300 hover:text-slate-500">
-              <X size={24} />
-            </button>
-          </div>
-
-          <div className="space-y-8">
-            <div className="flex items-center space-x-0 bg-emerald-50/50 border-2 border-emerald-600/30 rounded-3xl overflow-hidden focus-within:border-emerald-600 transition-colors">
-              <button className="flex items-center space-x-1 px-5 py-4 text-slate-700 font-bold border-r border-emerald-600/20">
-                <span>+86</span>
-                <ChevronDown size={14} className="text-slate-400" />
-              </button>
-              <input 
-                autoFocus
-                type="tel" 
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 11))}
-                placeholder="请输入手机号"
-                className="flex-1 bg-transparent px-5 py-4 font-bold text-slate-800 outline-none placeholder:text-slate-300"
-              />
-            </div>
-
-            <button 
-              disabled={phoneNumber.length < 11}
-              onClick={handlePhoneSubmit}
-              className="w-full bg-emerald-700 disabled:opacity-50 text-white py-5 rounded-full font-black text-lg shadow-xl shadow-emerald-500/10 active:scale-95 transition-all"
-            >
-              继续
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* SMS Login - Verification Code Modal */}
-      {step === 'code' && (
-        <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[40px] p-8 pb-12 z-50 animate-in slide-in-from-bottom duration-500 shadow-2xl">
-          <div className="flex justify-between items-center mb-8">
-            <h3 className="text-xl font-black text-slate-800">验证码</h3>
-            <button onClick={closeModal} className="p-2 text-slate-300 hover:text-slate-500">
-              <X size={24} />
-            </button>
-          </div>
-
-          <div className="space-y-10">
-            <p className="text-sm text-slate-400 font-medium">
-              验证码已发送至手机号 {phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')}
-            </p>
-
-            <div className="flex justify-between gap-2">
-              {vCode.map((digit, i) => (
-                <input
-                  key={i}
-                  ref={(el) => (vCodeRefs.current[i] = el)}
-                  type="tel"
-                  maxLength={1}
-                  value={digit}
-                  autoFocus={i === 0}
-                  onChange={(e) => handleCodeChange(i, e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(i, e)}
-                  className="w-12 h-16 sm:w-14 sm:h-20 bg-emerald-50/50 border-2 border-emerald-600/20 rounded-2xl text-center text-2xl font-black text-slate-800 focus:border-emerald-600 focus:bg-white outline-none transition-all shadow-sm"
-                />
-              ))}
-            </div>
-
-            <div className="text-center">
-              <button 
-                disabled={countdown > 0}
-                className={`text-sm font-bold ${countdown > 0 ? 'text-slate-400' : 'text-emerald-600'}`}
-              >
-                重新发送 {countdown > 0 ? `(${countdown}s)` : ''}
+        <>
+          <div 
+            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm z-40 animate-in fade-in duration-300" 
+            onClick={closeModal}
+          />
+          <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-[40px] p-8 pb-12 z-50 animate-in slide-in-from-bottom-out duration-500 shadow-2xl">
+            <div className="flex justify-between items-center mb-8">
+              <h3 className="text-xl font-black text-slate-800">{step === 'phone' ? '手机号登录' : '输入验证码'}</h3>
+              <button onClick={closeModal} className="p-2 text-slate-300 hover:text-slate-500">
+                <X size={24} />
               </button>
             </div>
+
+            {step === 'phone' && (
+              <div className="space-y-8">
+                <div className="flex items-center space-x-0 bg-emerald-50/50 border-2 border-emerald-600/30 rounded-3xl overflow-hidden focus-within:border-emerald-600 transition-colors">
+                  <div className="flex items-center space-x-1 px-5 py-4 text-slate-700 font-bold border-r border-emerald-600/20">
+                    <span>+86</span>
+                  </div>
+                  <input 
+                    autoFocus
+                    type="tel" 
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, '').slice(0, 11))}
+                    placeholder="请输入手机号"
+                    className="flex-1 bg-transparent px-5 py-4 font-bold text-slate-800 outline-none placeholder:text-slate-300"
+                  />
+                </div>
+                <button 
+                  disabled={phoneNumber.length < 11 || loading}
+                  onClick={handlePhoneSubmit}
+                  className="w-full bg-emerald-700 disabled:opacity-50 text-white py-5 rounded-full font-black text-lg shadow-xl shadow-emerald-500/10 active:scale-95 transition-all flex items-center justify-center"
+                >
+                  {loading ? <Loader2 className="animate-spin" size={24} /> : '获取验证码'}
+                </button>
+                {error && <p className="text-center text-red-500 text-sm font-bold">{error}</p>}
+              </div>
+            )}
+
+            {step === 'code' && (
+              <div className="space-y-10">
+                <p className="text-sm text-slate-400 font-medium">
+                  验证码已发送至 +86 {phoneNumber.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')}
+                </p>
+                <div className="flex justify-between gap-2">
+                  {vCode.map((digit, i) => (
+                    <input
+                      key={i}
+                      ref={(el) => (vCodeRefs.current[i] = el)}
+                      type="tel"
+                      maxLength={1}
+                      value={digit}
+                      autoFocus={i === 0}
+                      onChange={(e) => handleCodeChange(i, e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(i, e)}
+                      className="w-12 h-16 sm:w-14 sm:h-20 bg-emerald-50/50 border-2 border-emerald-600/20 rounded-2xl text-center text-2xl font-black text-slate-800 focus:border-emerald-600 focus:bg-white outline-none transition-all shadow-sm"
+                    />
+                  ))}
+                </div>
+                 {loading ? (
+                    <div className="flex justify-center items-center space-x-2 text-slate-400 font-bold">
+                        <Loader2 className="animate-spin" size={18} />
+                        <span>正在验证...</span>
+                    </div>
+                 ) : (
+                    <div className="text-center">
+                        <button 
+                            disabled={countdown > 0}
+                            onClick={handlePhoneSubmit}
+                            className={`text-sm font-bold ${countdown > 0 ? 'text-slate-400' : 'text-emerald-600'}`}
+                        >
+                            重新发送 {countdown > 0 ? `(${countdown}s)` : ''}
+                        </button>
+                    </div>
+                 )}
+                {error && <p className="text-center text-red-500 text-sm font-bold">{error}</p>}
+              </div>
+            )}
           </div>
-        </div>
+        </>
       )}
 
       <style dangerouslySetInnerHTML={{ __html: `
-        @keyframes shake {
-          0%, 100% { transform: translateX(0); }
-          25% { transform: translateX(-5px); }
-          75% { transform: translateX(5px); }
-        }
-        .animate-shake {
-          animation: shake 0.2s cubic-bezier(.36,.07,.19,.97) both;
-          animation-iteration-count: 2;
-        }
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+        .animate-shake { animation: shake 0.2s cubic-bezier(.36,.07,.19,.97) both; animation-iteration-count: 2; }
+        .slide-in-from-bottom-out { animation-direction: reverse; }
       `}} />
     </div>
   );

@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts';
 import { PatientProfile, NursingScores } from '../types';
@@ -7,7 +6,7 @@ import { AlertCircle, RefreshCw, Watch, ChevronRight, Sparkles, Play, Lightbulb,
 import { fetchWearableMetrics } from '../services/healthService';
 import { generatePersonalizedPlan, PersonalizedPlan } from '../services/geminiService';
 
-interface DashboardProps {
+interface HomeProps {
   profile: PatientProfile;
   onUpdateProfile: (updates: Partial<PatientProfile>) => void;
   onSelectNursing: (nursing: keyof NursingScores) => void;
@@ -16,7 +15,7 @@ interface DashboardProps {
   onStartAssessment: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ profile, onUpdateProfile, onSelectNursing, updatedCategory, onStartReport, onStartAssessment }) => {
+const Home: React.FC<HomeProps> = ({ profile, onUpdateProfile, onSelectNursing, updatedCategory, onStartReport, onStartAssessment }) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [showPlanOverlay, setShowPlanOverlay] = useState(false);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
@@ -281,4 +280,4 @@ const MetricCard: React.FC<{ title: string; score: number; label: string; icon: 
   );
 };
 
-export default Dashboard;
+export default Home;

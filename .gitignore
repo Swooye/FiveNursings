@@ -1,4 +1,17 @@
-# Logs
+# --- 1. 敏感信息与私钥 (必须添加) ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+service-account-file.json
+# 拦截所有包含 secret 的文件
+*secret*
+
+# --- 2. 依赖与日志 ---
+node_modules
+dist
+dist-ssr
 logs
 *.log
 npm-debug.log*
@@ -7,12 +20,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
+# --- 3. 编辑器与系统 ---
 .vscode/*
 !.vscode/extensions.json
 .idea
@@ -22,3 +30,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# --- 4. Firebase 特定 (添加) ---
+.firebase/
+firebase-debug.log*
+# 存储本地模拟器数据的目录
+.emulators/

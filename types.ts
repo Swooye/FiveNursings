@@ -122,6 +122,8 @@ export interface PatientProfile {
   vipExpiry?: string;
   coachSessionsRemaining: number;
   referralCode: string;
+  // AI Voice setting
+  voicePreference?: string;
 }
 
 export interface DailyTask {

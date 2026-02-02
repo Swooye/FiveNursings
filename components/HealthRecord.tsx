@@ -136,7 +136,7 @@ const HealthRecord: React.FC<HealthRecordProps> = ({ profile, onBack, onUpdatePr
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col animate-in slide-in-from-right duration-500 pb-32 no-scrollbar relative">
+    <div className="min-h-screen max-w-md mx-auto bg-slate-50 dark:bg-slate-950 flex flex-col animate-in slide-in-from-right duration-500 pb-32 shadow-2xl border-x border-slate-200 dark:border-slate-800 no-scrollbar relative">
       {/* Toast Notification */}
       {showToast && (
         <div className="fixed top-12 left-1/2 -translate-x-1/2 z-[300] animate-in slide-in-from-top-4">

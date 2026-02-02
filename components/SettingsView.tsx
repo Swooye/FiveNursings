@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { PatientProfile } from '../types';
 import { 
   ArrowLeft, 
   LogOut, 
@@ -13,7 +14,7 @@ import {
   Smartphone, 
   Ruler,
   Check,
-  Database
+  Voicemail
 } from 'lucide-react';
 
 interface SettingsViewProps {
@@ -22,8 +23,8 @@ interface SettingsViewProps {
   onDeleteAccount: () => void;
   onUnbindDevice?: () => void;
   isDeviceConnected: boolean;
-  
-  // States from App
+  profile: PatientProfile;
+  onUpdateProfile: (updates: Partial<PatientProfile>) => void;
   fontSize: string;
   setFontSize: (size: string) => void;
   themeMode: 'light' | 'dark' | 'system';
@@ -59,13 +60,64 @@ const UNIT_LABELS: Record<string, string> = {
   'imperial': '英制'
 };
 
+const VOICE_DISPLAY_MAP: Record<string, { displayName: string; gender: '男' | '女' }> = {
+  'Ting-Ting': { displayName: '婷婷', gender: '女' },
+  'Li-Mu': { displayName: '立牧', gender: '男' },
+  'Yu-shu': { displayName: '语书', gender: '女' },
+  'Xiaoyun': { displayName: '晓云', gender: '女' },
+  'Yunxi': { displayName: '云溪', gender: '男' },
+  'Zhiqi': { displayName: '知琦', gender: '女' },
+  'Yunjian': { displayName: '云健', gender: '男' },
+};
+
 const SettingsView: React.FC<SettingsViewProps> = ({ 
   onBack, onLogout, onDeleteAccount, onUnbindDevice, isDeviceConnected,
+  profile, onUpdateProfile,
   fontSize, setFontSize, themeMode, setThemeMode, language, setLanguage, hapticFeedback, setHapticFeedback, unitSystem, setUnitSystem
 }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [currentSubPage, setCurrentSubPage] = useState<'main' | 'font-size' | 'theme' | 'language' | 'unit'>('main');
+  const [currentSubPage, setCurrentSubPage] = useState<'main' | 'font-size' | 'theme' | 'language' | 'unit' | 'voice'>('main');
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+
+  useEffect(() => {
+    const getVoices = () => {
+      const voices = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith('zh'));
+      setAvailableVoices(voices);
+    };
+    // Voices may load asynchronously. Call it once and also set up the event listener.
+    getVoices();
+    window.speechSynthesis.onvoiceschanged = getVoices;
+    return () => { window.speechSynthesis.onvoiceschanged = null; };
+  }, []);
+
+  const speak = useCallback((text: string, voiceName?: string) => {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = 'zh-CN';
+    if (voiceName && voiceName !== 'default') {
+      const allVoices = window.speechSynthesis.getVoices();
+      const selectedVoice = allVoices.find(v => v.name === voiceName);
+      if (selectedVoice) utterance.voice = selectedVoice;
+    }
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  const handleVoiceSelection = (voiceName: string) => {
+    onUpdateProfile({ voicePreference: voiceName });
+    speak(`你好！${profile.name || '用户'}`, voiceName);
+    if (hapticFeedback && navigator.vibrate) navigator.vibrate(10);
+  };
+  
+  const getVoiceDisplayName = (voiceName: string) => {
+    if (voiceName === 'default') return '默认';
+    for (const key in VOICE_DISPLAY_MAP) {
+      if (voiceName.toLowerCase().includes(key.toLowerCase())) {
+        return VOICE_DISPLAY_MAP[key as keyof typeof VOICE_DISPLAY_MAP].displayName;
+      }
+    }
+    return voiceName.split(' ')[0];
+  };
 
   const SettingCard: React.FC<{ 
     icon: React.ReactNode; 
@@ -101,8 +153,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     </h3>
   );
 
-  // Sub-page Renderer Helper
-  const renderSelectionPage = (title: string, options: {key: string, label: string, desc?: string}[], currentKey: string, onSelect: (key: any) => void) => (
+  const renderSelectionPage = (title: string, options: {key: string, label: string, desc?: string, gender?: '男' | '女'}[], currentKey: string, onSelect: (key: any) => void) => (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 animate-in slide-in-from-right duration-300 flex flex-col no-scrollbar">
       <header className="px-6 pt-12 pb-6 flex items-center space-x-4 bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
         <button onClick={() => setCurrentSubPage('main')} className="p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-slate-400"><ArrowLeft size={20} /></button>
@@ -113,15 +164,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           {options.map((opt) => (
             <button 
               key={opt.key}
-              onClick={() => {
-                onSelect(opt.key);
-                if (hapticFeedback && navigator.vibrate) navigator.vibrate(10);
-              }}
+              onClick={() => onSelect(opt.key)}
               className="w-full flex items-center justify-between p-6 border-b border-slate-50 dark:border-slate-800 last:border-0 active:bg-slate-50 dark:active:bg-slate-800/50 transition-colors text-left"
             >
               <div className="flex flex-col">
                 <span className={`font-bold ${currentKey === opt.key ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200'}`}>
                   {opt.label}
+                  {opt.gender && <span className="text-xs ml-2 font-medium text-slate-400">【{opt.gender}】</span>}
                 </span>
                 {opt.desc && <span className="text-[10px] text-slate-400 mt-1">{opt.desc}</span>}
               </div>
@@ -141,7 +190,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           <h1 className="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">字体大小</h1>
         </header>
         <div className="flex-1 p-6 space-y-12">
-          {/* Preview Area */}
           <div className="bg-white dark:bg-slate-900 rounded-[40px] p-8 border border-slate-100 dark:border-slate-800 shadow-sm space-y-6">
             <div className="flex justify-end">
                <div className="bg-emerald-600 text-white px-6 py-4 rounded-[28px] rounded-tr-none text-sm font-bold shadow-lg shadow-emerald-500/10">
@@ -153,14 +201,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
                  你可以通过拖动滑块来调整字体大小。
                </div>
             </div>
-            <div className="flex justify-start">
-               <div className="bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 px-6 py-4 rounded-[28px] rounded-tl-none text-sm font-medium border border-slate-200 dark:border-slate-700">
-                 设置后，会改变对话中的字体大小。如果在不便使用时遇到问题，可反馈给康养家。
-               </div>
-            </div>
           </div>
-
-          {/* Slider Area */}
           <div className="space-y-8 px-4">
             <div className="relative pt-10 pb-6">
                <input 
@@ -204,7 +245,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         { key: 'system', label: '跟随系统', desc: '根据设备的系统设置自动切换' }
       ],
       themeMode,
-      setThemeMode
+      (key) => setThemeMode(key)
     );
   }
 
@@ -216,7 +257,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         { key: 'en', label: 'English' }
       ],
       language,
-      setLanguage
+      (key) => setLanguage(key)
     );
   }
 
@@ -228,7 +269,42 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         { key: 'imperial', label: '英制', desc: '使用磅(lb)、英尺(ft)、华氏度(℉)' }
       ],
       unitSystem,
-      setUnitSystem
+      (key) => setUnitSystem(key)
+    );
+  }
+
+  if (currentSubPage === 'voice') {
+    const voiceOptions = [
+      { key: 'default', label: '默认音色', desc: '使用您设备或浏览器的默认中文语音' },
+      ...availableVoices.map(v => {
+        const displayNameInfo = Object.entries(VOICE_DISPLAY_MAP).find(([key, _]) => v.name.toLowerCase().includes(key.toLowerCase()));
+        const label = displayNameInfo ? displayNameInfo[1].displayName : v.name.split(' ')[0];
+        
+        let gender: '男' | '女' | undefined = undefined;
+        if (displayNameInfo) {
+          gender = displayNameInfo[1].gender;
+        } else {
+          const lowerCaseName = v.name.toLowerCase();
+          if (lowerCaseName.includes('male') || lowerCaseName.includes('男')) {
+            gender = '男';
+          } else if (lowerCaseName.includes('female') || lowerCaseName.includes('女')) {
+            gender = '女';
+          }
+        }
+
+        return {
+          key: v.name,
+          label: label,
+          gender: gender,
+          desc: `${v.localService ? '本地' : '在线'} · ${v.lang}`
+        }
+      })
+    ];
+    return renderSelectionPage(
+      'AI 语音音色',
+      voiceOptions,
+      profile.voicePreference || 'default',
+      handleVoiceSelection
     );
   }
 
@@ -242,52 +318,30 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       </header>
 
       <main className="p-4 flex flex-col flex-1 pb-24">
-        {/* Display Group */}
         <SectionTitle>显示</SectionTitle>
         <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 overflow-hidden shadow-sm">
-          <SettingCard 
-            icon={<Type size={18} />} 
-            label="字体大小" 
-            value={FONT_SIZE_LABELS[fontSize]} 
-            onClick={() => setCurrentSubPage('font-size')} 
-          />
-          <SettingCard 
-            icon={<Moon size={18} />} 
-            label="深色模式" 
-            value={THEME_LABELS[themeMode]} 
-            onClick={() => setCurrentSubPage('theme')} 
-          />
+          <SettingCard icon={<Type size={18} />} label="字体大小" value={FONT_SIZE_LABELS[fontSize]} onClick={() => setCurrentSubPage('font-size')} />
+          <SettingCard icon={<Moon size={18} />} label="深色模式" value={THEME_LABELS[themeMode]} onClick={() => setCurrentSubPage('theme')} />
         </div>
 
-        {/* General Group */}
         <SectionTitle>通用</SectionTitle>
         <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 overflow-hidden shadow-sm">
           <SettingCard 
-            icon={<Languages size={18} />} 
-            label="语言" 
-            value={LANGUAGE_LABELS[language]} 
-            onClick={() => setCurrentSubPage('language')} 
+            icon={<Voicemail size={18} />} 
+            label="AI 语音音色" 
+            value={getVoiceDisplayName(profile.voicePreference || 'default')}
+            onClick={() => setCurrentSubPage('voice')}
+            description="选择AI健康报告的播报声音"
           />
-          <SettingCard 
-            icon={<Smartphone size={18} />} 
-            label="震动反馈" 
-            value={hapticFeedback ? '开启' : '关闭'} 
-            onClick={() => setHapticFeedback(!hapticFeedback)} 
-          />
+          <SettingCard icon={<Languages size={18} />} label="语言" value={LANGUAGE_LABELS[language]} onClick={() => setCurrentSubPage('language')} />
+          <SettingCard icon={<Smartphone size={18} />} label="震动反馈" value={hapticFeedback ? '开启' : '关闭'} onClick={() => setHapticFeedback(!hapticFeedback)} showChevron={false} />
         </div>
 
-        {/* Data Group */}
         <SectionTitle>数据</SectionTitle>
         <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 overflow-hidden shadow-sm">
-          <SettingCard 
-            icon={<Ruler size={18} />} 
-            label="单位制" 
-            value={UNIT_LABELS[unitSystem]} 
-            onClick={() => setCurrentSubPage('unit')} 
-          />
+          <SettingCard icon={<Ruler size={18} />} label="单位制" value={UNIT_LABELS[unitSystem]} onClick={() => setCurrentSubPage('unit')} />
         </div>
 
-        {/* Account Group */}
         <SectionTitle>账号与安全</SectionTitle>
         <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 overflow-hidden shadow-sm">
           {isDeviceConnected && onUnbindDevice && (
@@ -302,7 +356,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
               <ChevronRight size={16} className="text-slate-200" />
             </button>
           )}
-          
           <button 
             onClick={() => setShowDeleteConfirm(true)}
             className="w-full p-5 flex justify-between items-center group active:bg-rose-50/30 transition-colors"
@@ -318,7 +371,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           </button>
         </div>
 
-        {/* Standalone Logout Button at the Bottom */}
         <div className="mt-12 pt-6">
           <button 
             onClick={() => setShowLogoutConfirm(true)}
@@ -330,7 +382,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </main>
 
-      {/* Logout Modal */}
       {showLogoutConfirm && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 animate-in fade-in duration-300">
           <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowLogoutConfirm(false)}></div>
@@ -346,7 +397,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       )}
 
-      {/* Delete Account Modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 animate-in fade-in duration-300">
           <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => setShowDeleteConfirm(false)}></div>

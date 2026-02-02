@@ -1,10 +1,17 @@
-# Compiled JavaScript files
-lib/**/*.js
-lib/**/*.js.map
+# --- 1. 编译产物 ---
+# 这一行确保只上传 TS 源码，不上传编译后的 JS 成品
+lib/
 
-# TypeScript v1 declaration files
-typings/
-
-# Node.js dependency directory
+# --- 2. 依赖包 ---
 node_modules/
+
+# --- 3. 后端秘钥与配置 (必须添加) ---
+# Firebase CLI 自动生成的运行时配置，严禁上传
+.runtimeconfig.json
+.env
+.env.*
 *.local
+
+# --- 4. 调试日志 ---
+npm-debug.log*
+firebase-debug.log*

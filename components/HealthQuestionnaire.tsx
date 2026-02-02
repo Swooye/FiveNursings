@@ -136,7 +136,7 @@ const HealthQuestionnaire: React.FC<HealthQuestionnaireProps> = ({ profile, onCo
   );
 
   return (
-    <div className="fixed inset-0 z-[120] bg-slate-50 dark:bg-slate-950 flex flex-col animate-in fade-in duration-500">
+    <div className="min-h-full bg-slate-50 dark:bg-slate-950 flex flex-col animate-in fade-in duration-500">
       {isAnalyzing && (
         <div className="absolute inset-0 z-[200] bg-slate-900 flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-500">
           <div className="relative mb-12">

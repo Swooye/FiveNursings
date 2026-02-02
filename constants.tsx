@@ -30,9 +30,9 @@ export const NURSING_ICONS = {
 };
 
 export const NAV_ITEMS = [
-  { id: 'dashboard', label: '健康看板', icon: <LayoutDashboard size={22} /> },
-  { id: 'program', label: '康复计划', icon: <ClipboardCheck size={22} /> },
+  { id: 'dashboard', label: '首页', icon: <LayoutDashboard size={22} /> },
+  { id: 'program', label: '计划', icon: <ClipboardCheck size={22} /> },
   { id: 'chat', label: 'AI 教练', icon: <MessageCircle size={22} /> },
-  { id: 'mall', label: '康养商城', icon: <ShoppingBag size={22} /> },
-  { id: 'profile', label: '个人中心', icon: <User size={22} /> },
+  { id: 'mall', label: '商城', icon: <ShoppingBag size={22} /> },
+  { id: 'profile', label: '我的', icon: <User size={22} /> },
 ];

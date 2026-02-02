@@ -153,7 +153,7 @@ const SafetyWarningSettings: React.FC<SafetyWarningSettingsProps> = ({ profile, 
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col animate-in slide-in-from-right duration-500 pb-32 no-scrollbar relative">
+    <div className="min-h-screen max-w-md mx-auto bg-slate-50 dark:bg-slate-950 flex flex-col animate-in slide-in-from-right duration-500 pb-32 no-scrollbar relative shadow-2xl border-x border-slate-200 dark:border-slate-800">
       {/* Header */}
       <header className="px-6 pt-12 pb-6 bg-white dark:bg-slate-900 sticky top-0 z-40 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shadow-sm">
         <div className="flex items-center space-x-4">
