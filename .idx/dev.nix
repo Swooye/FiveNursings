@@ -20,6 +20,7 @@
       # 每次启动时强制执行一次认证检查
       onStart = {
         firebase-auth = "firebase login --no-localhost";
+        start-server = "npm --prefix server start";
       };
     };
     previews = {
@@ -28,6 +29,11 @@
         web = {
           command = ["npm" "--prefix" "user" "run" "dev" "--" "--port" "$PORT" "--host" "0.0.0.0"];
           manager = "web";
+        };
+        server = {
+          command = ["npm" "--prefix" "server" "start"];
+          manager = "web";
+          # 不需要写 port 属性，只要你的 server 内部代码监听的是 3001 即可
         };
       };
     };
