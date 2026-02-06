@@ -77,14 +77,20 @@ const planSchema = new mongoose.Schema({
 });
 const Plan = mongoose.model('Plan', planSchema);
 
-// Mall Items
+// Mall Items (Enhanced for E-commerce)
 const mallItemSchema = new mongoose.Schema({
-  name: String,
-  price: Number,
-  category: String,
-  stock: Number,
+  name: { type: String, required: true },
+  price: { type: Number, required: true },
+  originalPrice: { type: Number }, // 原价
+  category: { type: String, required: true }, // 膏方, 滋补, 器械, 药食同源
+  stock: { type: Number, default: 0 },
   description: String,
-  imageUrl: String
+  imageUrl: String,
+  status: { type: String, enum: ['on_sale', 'off_sale'], default: 'off_sale' }, // 上架/下架
+  brand: String,
+  spec: String, // 规格: 如 500g/瓶
+  sales: { type: Number, default: 0 }, // 销量
+  createdAt: { type: Date, default: Date.now }
 });
 const MallItem = mongoose.model('MallItem', mallItemSchema);
 
@@ -108,13 +114,32 @@ const format = (doc) => {
 const seedData = async () => {
   if (await MallItem.countDocuments() === 0) {
     await MallItem.create([
-      { name: '五养人参膏', price: 299, category: '滋补', stock: 100, description: '补气养血' },
-      { name: '康复拉力器', price: 88, category: '器械', stock: 50, description: '机能恢复训练' }
+      { 
+        name: '五养人参膏', 
+        price: 299, 
+        originalPrice: 399,
+        category: '膏方', 
+        stock: 100, 
+        description: '甄选长白山人参，科学配比，补气养血。',
+        status: 'on_sale',
+        spec: '250g/瓶',
+        imageUrl: 'https://images.unsplash.com/photo-1584017945366-b97b0e9b11f7?auto=format&fit=crop&q=80&w=200'
+      },
+      { 
+        name: '康复拉力器', 
+        price: 88, 
+        category: '器械', 
+        stock: 50, 
+        description: '机能恢复训练，可调节阻力。',
+        status: 'on_sale',
+        spec: '标准款',
+        imageUrl: 'https://images.unsplash.com/photo-1591940742878-13aba4b7a35e?auto=format&fit=crop&q=80&w=200'
+      }
     ]);
   }
   if (await Protocol.countDocuments() === 0) {
     await Protocol.create([
-      { key: 'service', title: '服务协议', content: '欢迎使用五养康复管理平台。本协议是您与平台之间关于服务使用的法律合约。' },
+      { key: 'service', title: '服务协议', content: '欢迎使用康养家康复管理平台。本协议是您与平台之间关于服务使用的法律合约。' },
       { key: 'privacy', title: '隐私政策', content: '保护您的健康数据隐私是我们的首要任务。' }
     ]);
   }
@@ -125,7 +150,7 @@ const seedData = async () => {
 const createRoutes = (path, Model) => {
   app.get(`/api/${path}`, async (req, res) => {
     try {
-      const data = await Model.find();
+      const data = await Model.find().sort({ createdAt: -1 });
       res.json(data.map(format));
     } catch (e) { res.status(500).json({ error: e.message }); }
   });

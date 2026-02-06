@@ -20,6 +20,8 @@ import { UserEdit } from "./pages/users/edit";
 import { UserShow } from "./pages/users/show";
 import { PlanList } from "./pages/plans/list";
 import { MallItemList } from "./pages/mall_items/list";
+import { MallItemCreate } from "./pages/mall_items/create";
+import { MallItemEdit } from "./pages/mall_items/edit";
 import { ProtocolList } from "./pages/protocols/list";
 import { AdminList } from "./pages/admins/list";
 
@@ -103,6 +105,8 @@ const App = () => {
               {
                 name: "mall_items",
                 list: "/mall_items",
+                create: "/mall_items/create",
+                edit: "/mall_items/edit/:id",
                 meta: { label: "商城商品" },
               },
               {
@@ -140,6 +144,8 @@ const App = () => {
                 </Route>
                 <Route path="/mall_items">
                   <Route index element={<MallItemList />} />
+                  <Route path="create" element={<MallItemCreate />} />
+                  <Route path="edit/:id" element={<MallItemEdit />} />
                 </Route>
                 <Route path="/protocols">
                   <Route index element={<ProtocolList />} />
