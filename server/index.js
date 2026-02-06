@@ -8,7 +8,11 @@ const app = express();
 const port = process.env.PORT || 3002;
 
 // Middlewares
-app.use(cors());
+app.use(cors({
+  origin: '*', 
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(bodyParser.json());
 
 // User Schema
@@ -17,6 +21,17 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   role: { type: String, default: 'Admin' },
+  nickname: { type: String },
+  name: { type: String }, // 真实姓名
+  avatar: { type: String },
+  gender: { type: String },
+  birthDate: { type: String },
+  height: { type: Number },
+  weight: { type: Number },
+  isVerified: { type: Boolean, default: false },
+  isProfileComplete: { type: Boolean, default: false },
+  firebaseUid: { type: String, index: true },
+  phoneNumber: { type: String, index: true }
 });
 
 const User = mongoose.model('User', userSchema);
@@ -38,12 +53,10 @@ const initializeSuperAdmin = async () => {
       console.log('Super admin created successfully.');
     } else {
       let needsUpdate = false;
-      // Ensure the admin user has an email
       if (!adminUser.email) {
         adminUser.email = 'admin@example.com';
         needsUpdate = true;
       }
-      // Ensure the admin user's role is 'Super Admin'
       if (adminUser.role !== 'Super Admin') {
         adminUser.role = 'Super Admin';
         needsUpdate = true;
@@ -52,21 +65,18 @@ const initializeSuperAdmin = async () => {
       if (needsUpdate) {
         await adminUser.save();
         console.log('Super admin account has been corrected and updated.');
-      } else {
-        console.log('Super admin already exists with correct role and email.');
       }
     }
   } catch (error) {
     console.error('Error initializing super admin:', error);
-    process.exit(1);
   }
 };
 
 
 // API Routes
 
-// Login
-app.post('/login', async (req, res) => {
+// Login (Admin)
+app.post('/api/login', async (req, res) => {
   const { username, password } = req.body;
   try {
     const user = await User.findOne({ username });
@@ -86,10 +96,29 @@ app.post('/login', async (req, res) => {
   }
 });
 
-// GET all users
+// GET user by Firebase UID or Phone
+app.get('/api/user/sync', async (req, res) => {
+  const { uid, phone, email } = req.query;
+  try {
+    let user = null;
+    if (uid) user = await User.findOne({ firebaseUid: uid });
+    if (!user && phone) user = await User.findOne({ phoneNumber: phone });
+    if (!user && email) user = await User.findOne({ email: email });
+
+    if (user) {
+      res.status(200).json(user);
+    } else {
+      res.status(404).json({ message: 'User not found' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// GET all users (Admin)
 app.get('/api/users', async (req, res) => {
     try {
-        const users = await User.find({}, '-password'); // Exclude password from result
+        const users = await User.find({}, '-password'); 
         res.status(200).json(users);
     } catch (error) {
         res.status(500).json({ message: 'Server error' });
@@ -98,60 +127,57 @@ app.get('/api/users', async (req, res) => {
 
 // POST a new user
 app.post('/api/users', async (req, res) => {
-    const { username, email, password } = req.body;
+    const { username, email, password, firebaseUid, phoneNumber } = req.body;
     try {
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = new User({ username, email, password: hashedPassword, role: 'Admin' });
+        const hashedPassword = await bcrypt.hash(password || 'default_password', 10);
+        const newUser = new User({ 
+          username: username || phoneNumber || email || firebaseUid, 
+          email: email || `${phoneNumber || firebaseUid}@fivenursings.com`, 
+          password: hashedPassword, 
+          role: 'Admin',
+          firebaseUid,
+          phoneNumber
+        });
         await newUser.save();
         const userResponse = newUser.toObject();
         delete userResponse.password;
         res.status(201).json(userResponse);
     } catch (error) {
-        if (error.code === 11000) { // Duplicate key error
+        if (error.code === 11000) { 
             return res.status(409).json({ message: 'Username or email already exists' });
         }
         res.status(500).json({ message: 'Server error' });
     }
 });
 
-// PUT (update) a user's password
-app.put('/api/users/:id/password', async (req, res) => {
-    const { id } = req.params;
-    const { password, originalPassword } = req.body; // originalPassword can be undefined
+// PATCH /api/user/:id - Update user profile
+app.patch('/api/user/:id', async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
 
-    try {
-        if (!password) {
-            return res.status(400).json({ message: 'New password is required' });
-        }
-
-        const user = await User.findById(id);
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-
-        // If the user is a Super Admin, we must verify the original password
-        if (user.role === 'Super Admin') {
-            if (!originalPassword) {
-                return res.status(400).json({ message: 'Original password is required for Super Admin' });
-            }
-            const isMatch = await bcrypt.compare(originalPassword, user.password);
-            if (!isMatch) {
-                return res.status(403).json({ message: 'Incorrect original password' });
-            }
-        }
-
-        // Hash the new password and update the user
-        const hashedPassword = await bcrypt.hash(password, 10);
-        user.password = hashedPassword;
-        await user.save();
-
-        res.status(200).json({ message: 'Password updated successfully' });
-    } catch (error) {
-        console.error("Update password error:", error);
-        res.status(500).json({ message: 'Server error' });
+  try {
+    if (updates.nickname || updates.name || updates.gender) {
+      updates.isVerified = true;
+      updates.isProfileComplete = true;
     }
-});
 
+    let query = { _id: mongoose.Types.ObjectId.isValid(id) ? id : null };
+    if (!query._id) {
+       query = { firebaseUid: id };
+    }
+
+    const updatedUser = await User.findOneAndUpdate(query, { $set: updates }, { new: true, select: '-password' });
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.status(200).json({ message: 'Profile updated successfully', user: updatedUser });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 
 // DELETE a user
 app.delete('/api/users/:id', async (req, res) => {
@@ -174,17 +200,14 @@ app.delete('/api/users/:id', async (req, res) => {
 // Server Initialization
 const startServer = async () => {
     try {
-        // Connect to MongoDB
         await mongoose.connect('mongodb+srv://admin:5Nursings+A@cluster0.k2sadls.mongodb.net/?appName=Cluster0', {
             useNewUrlParser: true,
             useUnifiedTopology: true,
         });
         console.log('Connected to MongoDB');
 
-        // Initialize Super Admin (and wait for it to finish)
         await initializeSuperAdmin();
 
-        // Start the Express server
         app.listen(port, () => {
             console.log(`Server is running on port ${port}`);
         });
@@ -194,5 +217,4 @@ const startServer = async () => {
     }
 };
 
-// Run the server
 startServer();

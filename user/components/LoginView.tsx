@@ -10,6 +10,8 @@ interface LoginViewProps {
 declare global {
   interface Window {
     confirmationResult?: ConfirmationResult;
+    recaptchaVerifier: any;
+    grecaptcha: any;
   }
 }
 
@@ -26,8 +28,17 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
-  const recaptchaVerifierRef = useRef<RecaptchaVerifier | null>(null);
   const vCodeRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  // 针对本地开发模式启用 Firebase 模拟器手机号测试逻辑
+  useEffect(() => {
+    if (auth) {
+      const isDev = window.location.hostname === 'localhost' || window.location.hostname.includes('cloudworkstations.dev');
+      if (isDev) {
+        auth.settings.appVerificationDisabledForTesting = true;
+      }
+    }
+  }, []);
 
   // Timer for verification code countdown
   useEffect(() => {
@@ -43,14 +54,14 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     setError('');
   }, [step]);
 
-  // **SOLUTION**: Add a cleanup effect that runs only when the component unmounts.
+  // Cleanup reCAPTCHA
   useEffect(() => {
     return () => {
-      if (recaptchaVerifierRef.current) {
-        recaptchaVerifierRef.current.clear();
+      if (window.recaptchaVerifier && typeof window.recaptchaVerifier.clear === 'function') {
+        window.recaptchaVerifier.clear();
       }
     };
-  }, []); // Empty dependency array ensures this runs only on mount and unmount.
+  }, []);
 
   const triggerReminder = () => {
     setShakeAgreement(true);
@@ -64,7 +75,6 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
       triggerReminder();
       return;
     }
-    alert("“本机号码一键登录”功能需要原生 App 环境支持，此处将模拟登录成功。");
     onLogin();
   };
 
@@ -76,7 +86,6 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     setStep('phone');
   };
 
-  // **SOLUTION**: Use useRef to create and manage the verifier instance.
   const handlePhoneSubmit = async () => {
     if (phoneNumber.length < 11) return;
     
@@ -84,29 +93,54 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     setError('');
     
     try {
-      let verifier = recaptchaVerifierRef.current;
-      if (!verifier) {
-        verifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-          'size': 'invisible',
-          'callback': () => console.log('reCAPTCHA automatically solved'),
-          'expired-callback': () => {
-            setError("reCAPTCHA 已过期，请重试。");
-          }
-        });
-        recaptchaVerifierRef.current = verifier;
+      const isDev = window.location.hostname === 'localhost' || window.location.hostname.includes('cloudworkstations.dev');
+      
+      if (isDev) {
+        // 关键点 1: 在初始化前确保禁用验证
+        auth.settings.appVerificationDisabledForTesting = true;
+        
+        // 关键点 2: 开发环境下使用 Mock 对象，避免加载 reCAPTCHA 脚本
+        // 修复：添加 _reset 方法以满足 Firebase Auth 内部调用需求
+        if (!window.recaptchaVerifier) {
+          window.recaptchaVerifier = {
+            type: 'recaptcha',
+            verify: async () => 'fake-token',
+            render: async () => 0,
+            clear: () => {},
+            _reset: () => {} 
+          };
+        }
+      } else {
+        // 生产环境逻辑
+        if (!window.recaptchaVerifier) {
+          window.recaptchaVerifier = new RecaptchaVerifier(auth, 'sign-in-button', {
+            'size': 'invisible',
+            'callback': () => {
+              console.log('reCAPTCHA solved');
+            },
+            'expired-callback': () => {
+              console.log('reCAPTCHA expired');
+            }
+          });
+        }
       }
 
+      // 关键点 3: 手动触发验证 (Mock 对象也会返回)
+      await window.recaptchaVerifier.verify();
+
       const fullPhoneNumber = `+86${phoneNumber}`;
-      const confirmationResult = await signInWithPhoneNumber(auth, fullPhoneNumber, verifier);
+      const confirmationResult = await signInWithPhoneNumber(auth, fullPhoneNumber, window.recaptchaVerifier);
       window.confirmationResult = confirmationResult;
       setStep('code');
       setCountdown(59);
     } catch (err: any) {
       console.error("SMS send error:", err);
-      if (err.code === 'auth/invalid-phone-number') {
-          setError('手机号码格式不正确，请检查。');
-      } else {
-          setError(`发送失败，请稍后重试。`);
+      setError('发送失败，请稍后重试。');
+      // 发生错误时尝试重置 (仅在非 Mock 且 grecaptcha 存在时)
+      if (window.recaptchaVerifier && window.grecaptcha && typeof window.recaptchaVerifier.render === 'function') {
+        window.recaptchaVerifier.render().then((widgetId: any) => {
+          window.grecaptcha.reset(widgetId);
+        });
       }
     } finally {
       setLoading(false);
@@ -153,19 +187,19 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
     }
   };
 
-  // **SOLUTION**: Clean up the verifier when the modal is explicitly closed.
   const closeModal = () => {
     setStep('none');
     setVCode(['', '', '', '', '', '']);
-    if (recaptchaVerifierRef.current) {
-      recaptchaVerifierRef.current.clear();
-      recaptchaVerifierRef.current = null;
+    if (window.recaptchaVerifier) {
+      if (typeof window.recaptchaVerifier.clear === 'function') {
+        window.recaptchaVerifier.clear();
+      }
+      window.recaptchaVerifier = null;
     }
   };
 
   return (
     <div className="min-h-screen max-w-md mx-auto bg-slate-50 flex flex-col items-center px-10 pt-32 pb-16 animate-in fade-in duration-700 relative shadow-2xl border-x border-slate-200 dark:border-slate-800 no-scrollbar">
-      <div id="recaptcha-container" />
       
       <div className="flex flex-col items-center space-y-4 mb-32 z-10">
         <h1 className="text-5xl font-black text-emerald-600 tracking-tighter drop-shadow-sm">
@@ -261,6 +295,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
                   />
                 </div>
                 <button 
+                  id="sign-in-button"
                   disabled={phoneNumber.length < 11 || loading}
                   onClick={handlePhoneSubmit}
                   className="w-full bg-emerald-700 disabled:opacity-50 text-white py-5 rounded-full font-black text-lg shadow-xl shadow-emerald-500/10 active:scale-95 transition-all flex items-center justify-center"

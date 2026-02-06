@@ -12,6 +12,16 @@ export default defineConfig({
       clientPort: 443,
       protocol: 'wss',
     },
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3002',
+        changeOrigin: true,
+      },
+      '/user': {
+        target: 'http://localhost:3002',
+        changeOrigin: true,
+      }
+    }
   },
   resolve: {
     alias: {

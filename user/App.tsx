@@ -40,8 +40,12 @@ import {
   Loader2
 } from 'lucide-react';
 
+// Using relative path to trigger Vite Proxy
+const API_BASE_URL = ''; 
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
+  const [dbUser, setDbUser] = useState<any>(null);
   const [loadingAuth, setLoadingAuth] = useState(true);
   const [_, setForceUpdate] = useState(0);
 
@@ -74,13 +78,86 @@ const App: React.FC = () => {
 
   const [isDarkEffective, setIsDarkEffective] = useState(false);
 
+  const [profile, setProfile] = useState<PatientProfile>({
+    id: 'user_123',
+    name: '李先生',
+    age: 52,
+    cancerType: CancerType.OTHER,
+    stage: TreatmentStage.UNTREATED,
+    scores: { diet: 78, exercise: 45, sleep: 42, mental: 65, function: 58 },
+    hasWarnings: false,
+    wearable: { deviceType: 'Apple Watch', isConnected: true, lastSync: new Date().toISOString() },
+    isProfileComplete: false,
+    isQuestionnaireComplete: false,
+    familyMembers: [],
+    isVIP: false,
+    coachSessionsRemaining: 1,
+    referralCode: 'REHAB-888',
+    voicePreference: 'default'
+  });
+
+  // Sync profile when dbUser changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    if (dbUser) {
+      setProfile(prev => ({
+        ...prev,
+        name: dbUser.name || prev.name,
+        nickname: dbUser.nickname || prev.nickname,
+        gender: dbUser.gender || prev.gender,
+        birthDate: dbUser.birthDate || prev.birthDate,
+        height: dbUser.height || prev.height,
+        weight: dbUser.weight || prev.weight,
+      }));
+    }
+  }, [dbUser]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
-      setLoadingAuth(false);
       if (currentUser) {
+        try {
+          // Use Proxy path
+          const res = await fetch(`/api/users`);
+          if (res.ok) {
+            const users = await res.json();
+            let found = users.find((u: any) => 
+              u.firebaseUid === currentUser.uid || 
+              u.username === currentUser.phoneNumber || 
+              u.username === currentUser.email
+            );
+            
+            if (!found) {
+              const createRes = await fetch(`/api/users`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  firebaseUid: currentUser.uid,
+                  username: currentUser.phoneNumber || currentUser.email,
+                  phoneNumber: currentUser.phoneNumber,
+                  email: currentUser.email || `${currentUser.phoneNumber}@phone.com`,
+                  password: 'default_password'
+                })
+              });
+              if (createRes.ok) {
+                found = await createRes.json();
+              }
+            }
+            
+            if (found) {
+              setDbUser(found);
+              // Only auto-show complete profile if not verified
+              if (!found.isVerified) {
+                setShowCompleteProfile(true);
+                setCompleteProfileMode('onboarding');
+              }
+            }
+          }
+        } catch (err) {
+          console.error("Sync user error:", err);
+        }
         setActiveTab('dashboard');
       }
+      setLoadingAuth(false);
     });
     return () => unsubscribe();
   }, []);
@@ -114,25 +191,41 @@ const App: React.FC = () => {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
 
-  const [profile, setProfile] = useState<PatientProfile>({
-    id: 'user_123',
-    name: '李先生',
-    age: 52,
-    cancerType: CancerType.OTHER,
-    stage: TreatmentStage.UNTREATED,
-    scores: { diet: 78, exercise: 45, sleep: 42, mental: 65, function: 58 },
-    hasWarnings: false,
-    wearable: { deviceType: 'Apple Watch', isConnected: true, lastSync: new Date().toISOString() },
-    isProfileComplete: false,
-    isQuestionnaireComplete: false,
-    familyMembers: [],
-    isVIP: false,
-    coachSessionsRemaining: 1,
-    referralCode: 'REHAB-888',
-    voicePreference: 'default'
-  });
+  const handleUpdateProfile = async (updates: Partial<PatientProfile>) => {
+    // Determine target ID
+    const targetId = dbUser?._id;
 
-  const handleUpdateProfile = (updates: Partial<PatientProfile>) => {
+    if (targetId) {
+      try {
+        const response = await fetch(`/api/user/${targetId}`, { // Ensure /api prefix matches proxy
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: updates.name,
+            nickname: updates.nickname,
+            gender: updates.gender,
+            birthDate: updates.birthDate,
+            height: updates.height,
+            weight: updates.weight,
+            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.uid}`
+          })
+        });
+        
+        if (response.ok) {
+          const updatedUserData = await response.json();
+          setDbUser(updatedUserData.user);
+          setShowCompleteProfile(false);
+        } else {
+          const errText = await response.text();
+          console.error("Save failed with status:", response.status, errText);
+        }
+      } catch (error) {
+        console.error("Failed to update profile:", error);
+      }
+    } else {
+      console.warn("No dbUser found to update");
+    }
+
     const newProfile = { ...profile, ...updates };
     setProfile(newProfile);
     if (updates.isProfileComplete && !newProfile.isQuestionnaireComplete && completeProfileMode === 'onboarding') {
@@ -170,6 +263,7 @@ const App: React.FC = () => {
   const handleLogout = async () => {
     try {
       await auth.signOut();
+      setDbUser(null);
     } catch (error) {
       console.error("Logout Error:", error);
     }
@@ -261,7 +355,7 @@ const App: React.FC = () => {
               <div className="relative z-10 flex items-center space-x-6">
                 <div className="relative">
                   <div className="w-20 h-20 bg-white/10 dark:bg-slate-800 rounded-3xl flex items-center justify-center border border-white/10 dark:border-slate-700 p-1.5 backdrop-blur-md overflow-hidden">
-                    <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} alt="Avatar" className="w-full h-full rounded-2xl bg-white" />
+                    <img src={dbUser?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} alt="Avatar" className="w-full h-full rounded-2xl bg-white" />
                   </div>
                   {profile.isVIP && (
                     <div className="absolute -top-2 -right-2 w-7 h-7 bg-amber-500 rounded-full border-2 border-slate-800 flex items-center justify-center shadow-lg">
@@ -270,7 +364,7 @@ const App: React.FC = () => {
                   )}
                 </div>
                 <div className="flex-1 text-left">
-                  <h3 className="text-2xl font-black text-white tracking-tight">{profile.name || '新用户'}</h3>
+                  <h3 className="text-2xl font-black text-white tracking-tight">{profile.nickname || profile.name || '新用户'}</h3>
                   <div className="flex items-center space-x-2 mt-1">
                     <span className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em]">{profile.cancerType}</span>
                     <span className="text-[10px] font-bold text-slate-400">· {profile.isVIP ? '尊享会员' : '普通用户'}</span>
