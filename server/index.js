@@ -11,209 +11,183 @@ const port = process.env.PORT || 3002;
 app.use(cors({
   origin: '*', 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-total-count']
 }));
 app.use(bodyParser.json());
 
-// User Schema
+// Add X-Total-Count header for Refine
+app.use((req, res, next) => {
+  const originalJson = res.json;
+  res.json = function (data) {
+    if (Array.isArray(data)) {
+      res.setHeader('Access-Control-Expose-Headers', 'X-Total-Count');
+      res.setHeader('X-Total-Count', data.length);
+    }
+    return originalJson.call(this, data);
+  };
+  next();
+});
+
+// --- Schemas ---
+
+// User (Customers)
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  role: { type: String, default: 'Admin' },
+  role: { type: String, default: 'User' },
   nickname: { type: String },
-  name: { type: String }, // 真实姓名
+  name: { type: String },
   avatar: { type: String },
   gender: { type: String },
   birthDate: { type: String },
   height: { type: Number },
   weight: { type: Number },
-  isVerified: { type: Boolean, default: false },
-  isProfileComplete: { type: Boolean, default: false },
-  firebaseUid: { type: String, index: true },
-  phoneNumber: { type: String, index: true }
+  phoneNumber: { type: String },
+  cancerType: { type: String, default: '未设置' },
+  stage: { type: String, default: '康复期' },
+  constitution: { type: String, default: '平和质' },
+  scores: {
+    diet: { type: Number, default: 0 },
+    exercise: { type: Number, default: 0 },
+    sleep: { type: Number, default: 0 },
+    mental: { type: Number, default: 0 },
+    function: { type: Number, default: 0 }
+  }
 });
-
 const User = mongoose.model('User', userSchema);
 
-// Super Admin Initialization
-const initializeSuperAdmin = async () => {
-  try {
-    let adminUser = await User.findOne({ username: 'admin' });
+// Admin
+const adminSchema = new mongoose.Schema({
+  username: { type: String, required: true, unique: true },
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },
+  role: { type: String, default: 'Admin' },
+  nickname: { type: String }
+});
+const Admin = mongoose.model('Admin', adminSchema);
 
-    if (!adminUser) {
-      const hashedPassword = await bcrypt.hash('123789', 10);
-      adminUser = new User({
-        username: 'admin',
-        email: 'admin@example.com',
-        password: hashedPassword,
-        role: 'Super Admin',
-      });
-      await adminUser.save();
-      console.log('Super admin created successfully.');
-    } else {
-      let needsUpdate = false;
-      if (!adminUser.email) {
-        adminUser.email = 'admin@example.com';
-        needsUpdate = true;
-      }
-      if (adminUser.role !== 'Super Admin') {
-        adminUser.role = 'Super Admin';
-        needsUpdate = true;
-      }
+// Plans
+const planSchema = new mongoose.Schema({
+  title: String,
+  description: String,
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  status: { type: String, enum: ['Active', 'Completed', 'Draft'], default: 'Active' },
+  createdAt: { type: Date, default: Date.now }
+});
+const Plan = mongoose.model('Plan', planSchema);
 
-      if (needsUpdate) {
-        await adminUser.save();
-        console.log('Super admin account has been corrected and updated.');
-      }
-    }
-  } catch (error) {
-    console.error('Error initializing super admin:', error);
+// Mall Items
+const mallItemSchema = new mongoose.Schema({
+  name: String,
+  price: Number,
+  category: String,
+  stock: Number,
+  description: String,
+  imageUrl: String
+});
+const MallItem = mongoose.model('MallItem', mallItemSchema);
+
+// Protocols
+const protocolSchema = new mongoose.Schema({
+  key: { type: String, unique: true },
+  title: String,
+  content: String,
+  updatedAt: { type: Date, default: Date.now }
+});
+const Protocol = mongoose.model('Protocol', protocolSchema);
+
+// --- Helper for Refine REST ---
+const format = (doc) => {
+  if (!doc) return null;
+  const obj = doc.toObject ? doc.toObject() : doc;
+  return { ...obj, id: obj._id };
+};
+
+// --- Seed Data Function ---
+const seedData = async () => {
+  if (await MallItem.countDocuments() === 0) {
+    await MallItem.create([
+      { name: '五养人参膏', price: 299, category: '滋补', stock: 100, description: '补气养血' },
+      { name: '康复拉力器', price: 88, category: '器械', stock: 50, description: '机能恢复训练' }
+    ]);
+  }
+  if (await Protocol.countDocuments() === 0) {
+    await Protocol.create([
+      { key: 'service', title: '服务协议', content: '欢迎使用五养康复管理平台。本协议是您与平台之间关于服务使用的法律合约。' },
+      { key: 'privacy', title: '隐私政策', content: '保护您的健康数据隐私是我们的首要任务。' }
+    ]);
   }
 };
 
+// --- Routes ---
 
-// API Routes
+const createRoutes = (path, Model) => {
+  app.get(`/api/${path}`, async (req, res) => {
+    try {
+      const data = await Model.find();
+      res.json(data.map(format));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.get(`/api/${path}/:id`, async (req, res) => {
+    try {
+      const data = await Model.findById(req.params.id);
+      res.json(format(data));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.post(`/api/${path}`, async (req, res) => {
+    try {
+      const data = await Model.create(req.body);
+      res.json(format(data));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.patch(`/api/${path}/:id`, async (req, res) => {
+    try {
+      const data = await Model.findByIdAndUpdate(req.params.id, req.body, { new: true });
+      res.json(format(data));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+  app.delete(`/api/${path}/:id`, async (req, res) => {
+    try {
+      await Model.findByIdAndDelete(req.params.id);
+      res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+};
 
-// Login (Admin)
 app.post('/api/login', async (req, res) => {
-  const { username, password } = req.body;
   try {
-    const user = await User.findOne({ username });
-    if (user && (await bcrypt.compare(password, user.password))) {
-      const userResponse = {
-        id: user._id,
-        username: user.username,
-        role: user.role,
-        email: user.email,
-      };
-      res.status(200).json({ message: 'Login successful', user: userResponse });
+    const { email, password } = req.body;
+    const admin = await Admin.findOne({ $or: [{ email }, { username: email }] });
+    if (admin && (await bcrypt.compare(password, admin.password))) {
+      res.json({ user: format(admin) });
     } else {
       res.status(401).json({ message: 'Invalid credentials' });
     }
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// GET user by Firebase UID or Phone
-app.get('/api/user/sync', async (req, res) => {
-  const { uid, phone, email } = req.query;
-  try {
-    let user = null;
-    if (uid) user = await User.findOne({ firebaseUid: uid });
-    if (!user && phone) user = await User.findOne({ phoneNumber: phone });
-    if (!user && email) user = await User.findOne({ email: email });
+createRoutes('users', User);
+createRoutes('admins', Admin);
+createRoutes('plans', Plan);
+createRoutes('mall_items', MallItem);
+createRoutes('protocols', Protocol);
 
-    if (user) {
-      res.status(200).json(user);
-    } else {
-      res.status(404).json({ message: 'User not found' });
-    }
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// GET all users (Admin)
-app.get('/api/users', async (req, res) => {
-    try {
-        const users = await User.find({}, '-password'); 
-        res.status(200).json(users);
-    } catch (error) {
-        res.status(500).json({ message: 'Server error' });
-    }
-});
-
-// POST a new user
-app.post('/api/users', async (req, res) => {
-    const { username, email, password, firebaseUid, phoneNumber } = req.body;
-    try {
-        const hashedPassword = await bcrypt.hash(password || 'default_password', 10);
-        const newUser = new User({ 
-          username: username || phoneNumber || email || firebaseUid, 
-          email: email || `${phoneNumber || firebaseUid}@fivenursings.com`, 
-          password: hashedPassword, 
-          role: 'Admin',
-          firebaseUid,
-          phoneNumber
-        });
-        await newUser.save();
-        const userResponse = newUser.toObject();
-        delete userResponse.password;
-        res.status(201).json(userResponse);
-    } catch (error) {
-        if (error.code === 11000) { 
-            return res.status(409).json({ message: 'Username or email already exists' });
-        }
-        res.status(500).json({ message: 'Server error' });
-    }
-});
-
-// PATCH /api/user/:id - Update user profile
-app.patch('/api/user/:id', async (req, res) => {
-  const { id } = req.params;
-  const updates = req.body;
-
-  try {
-    if (updates.nickname || updates.name || updates.gender) {
-      updates.isVerified = true;
-      updates.isProfileComplete = true;
-    }
-
-    let query = { _id: mongoose.Types.ObjectId.isValid(id) ? id : null };
-    if (!query._id) {
-       query = { firebaseUid: id };
-    }
-
-    const updatedUser = await User.findOneAndUpdate(query, { $set: updates }, { new: true, select: '-password' });
-
-    if (!updatedUser) {
-      return res.status(404).json({ message: 'User not found' });
-    }
-
-    res.status(200).json({ message: 'Profile updated successfully', user: updatedUser });
-  } catch (error) {
-    console.error("Update profile error:", error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// DELETE a user
-app.delete('/api/users/:id', async (req, res) => {
-    const { id } = req.params;
-    try {
-        const userToDelete = await User.findById(id);
-        if (!userToDelete) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-        if (userToDelete.role === 'Super Admin') {
-            return res.status(403).json({ message: 'Super Admin cannot be deleted' });
-        }
-        await User.findByIdAndDelete(id);
-        res.status(200).json({ message: 'User deleted successfully' });
-    } catch (error) {
-        res.status(500).json({ message: 'Server error' });
-    }
-});
-
-// Server Initialization
 const startServer = async () => {
     try {
-        await mongoose.connect('mongodb+srv://admin:5Nursings+A@cluster0.k2sadls.mongodb.net/?appName=Cluster0', {
-            useNewUrlParser: true,
-            useUnifiedTopology: true,
-        });
+        const uri = 'mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net/?appName=Cluster0';
+        await mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true });
         console.log('Connected to MongoDB');
-
-        await initializeSuperAdmin();
-
-        app.listen(port, () => {
-            console.log(`Server is running on port ${port}`);
-        });
+        
+        const adminEmail = 'admin@fivenursings.com';
+        if (!await Admin.findOne({ email: adminEmail })) {
+          const hashedPassword = await bcrypt.hash('123789', 10);
+          await Admin.create({ username: 'admin', email: adminEmail, password: hashedPassword, role: 'Super Admin', nickname: '超级管理员' });
+        }
+        await seedData();
+        app.listen(port, () => console.log(`Server is running on port ${port}`));
     } catch (err) {
         console.error('Failed to start server:', err);
-        process.exit(1);
     }
 };
 
