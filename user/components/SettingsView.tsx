@@ -358,14 +358,14 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           )}
           <button 
             onClick={() => setShowDeleteConfirm(true)}
-            className="w-full p-5 flex justify-between items-center group active:bg-rose-50/30 transition-colors"
+            className="w-full p-5 flex justify-between items-center group active:bg-slate-50 dark:active:bg-slate-800/50 transition-colors"
           >
-            <div className="flex items-center space-x-3 text-rose-500">
+            <div className="flex items-center space-x-3 text-slate-400 dark:text-slate-500">
               <UserX size={18} />
               <span className="font-bold">注销账号</span>
             </div>
             <div className="flex items-center space-x-2">
-              <span className="text-[9px] font-black text-rose-200 dark:text-rose-900/50 uppercase tracking-widest">危险操作</span>
+              <span className="text-[9px] font-black text-slate-300 dark:text-slate-700 uppercase tracking-widest">危险操作</span>
               <ChevronRight size={16} className="text-slate-200" />
             </div>
           </button>

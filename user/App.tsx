@@ -264,6 +264,8 @@ const App: React.FC = () => {
     try {
       await auth.signOut();
       setDbUser(null);
+      setShowSettings(false);
+      setActiveTab('dashboard');
     } catch (error) {
       console.error("Logout Error:", error);
     }
