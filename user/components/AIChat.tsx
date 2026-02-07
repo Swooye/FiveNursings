@@ -222,6 +222,12 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, sessions, active
 
   const handleNewChat = () => { onSetActiveSession(null); setShowHistory(false); };
 
+  // 修复返回逻辑：
+  // 直接调用父组件传递的 onBack 函数，确保能退出 AI 聊天界面
+  const handleBack = () => {
+    onBack();
+  };
+
   return (
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 relative overflow-hidden animate-in fade-in-25 duration-300">
       {/* History Panel */}
@@ -250,7 +256,10 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, sessions, active
 
        {/* Header */}
        <header className="absolute top-0 left-0 right-0 z-50 p-6 pt-12 flex justify-between items-center bg-slate-50/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-slate-100 dark:border-slate-800">
-        <button onClick={onBack} className="w-11 h-11 bg-white dark:bg-slate-900 rounded-2xl flex items-center justify-center border border-slate-200 dark:border-slate-700 shadow-sm">
+        <button 
+          onClick={handleBack} 
+          className="w-11 h-11 bg-white dark:bg-slate-900 rounded-2xl flex items-center justify-center border border-slate-200 dark:border-slate-700 shadow-sm active:scale-90 transition-transform"
+        >
           <ArrowLeft size={22} className="text-slate-600 dark:text-slate-300"/>
         </button>
         <div className="text-center">
@@ -258,7 +267,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, sessions, active
             <p className="text-xs text-emerald-600 font-bold">AI 正在提供服务</p>
         </div>
         <div className="flex items-center space-x-3">
-          <button onClick={() => setShowHistory(true)} className="w-11 h-11 bg-white dark:bg-slate-900 rounded-2xl flex items-center justify-center border border-slate-200 dark:border-slate-700 shadow-sm">
+          <button onClick={() => setShowHistory(true)} className="w-11 h-11 bg-white dark:bg-slate-900 rounded-2xl flex items-center justify-center border border-slate-200 dark:border-slate-700 shadow-sm active:scale-90 transition-transform">
             <History size={20} className="text-slate-600 dark:text-slate-300" />
           </button>
         </div>

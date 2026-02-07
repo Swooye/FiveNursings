@@ -135,7 +135,6 @@ const App: React.FC = () => {
       setUser(currentUser);
       if (currentUser) {
         try {
-          // 核心修复：通过专用的 sync 接口获取或创建用户，并回显完整信息
           const res = await fetch(`${API_URL}/api/users/sync`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -202,6 +201,9 @@ const App: React.FC = () => {
         }
       } catch (error) { console.error("Failed to update profile:", error); }
     }
+    setProfile(prev => ({ ...prev, ...updates }));
+    if (updates.isProfileComplete && !profile.isQuestionnaireComplete && completeProfileMode === 'onboarding') setShowQuestionnaire(true);
+    if (updates.isQuestionnaireComplete) { setShowQuestionnaire(false); setShowHealthRecord(true); }
   };
 
   const handleLogout = async () => {
@@ -249,7 +251,7 @@ const App: React.FC = () => {
           </div>
         );
       case 'program': return <Program onStartVoice={() => setAssistantMode('logging')} recentLogs={voiceLogs} onViewJournal={() => setShowJournal(true)} />;
-      case 'chat': return <AIChat profile={profile} onStartVoice={() => setAssistantMode('chat')} sessions={chatSessions} activeSessionId={activeSessionId} onSetActiveSession={setActiveSessionId} onSaveSession={(s) => setChatSessions(prev => [s, ...prev.filter(x => x.id !== s.id)])} onClearAllSessions={() => setChatSessions([])} onBack={() => {}} onStartAssessment={() => {}} />;
+      case 'chat': return <AIChat profile={profile} onStartVoice={() => setAssistantMode('chat')} sessions={chatSessions} activeSessionId={activeSessionId} onSetActiveSession={setActiveSessionId} onSaveSession={(s) => setChatSessions(prev => [s, ...prev.filter(x => x.id !== s.id)])} onClearAllSessions={() => setChatSessions([])} onBack={() => { setAssistantMode(null); setPreviousTab('dashboard'); setActiveTab('dashboard'); }} onStartAssessment={() => setShowQuestionnaire(true)} />;
       case 'mall': return <Marketplace profile={profile} cartCount={cart.length} favorites={favorites} onToggleFavorite={toggleFavorite} onOpenCart={() => setShowCart(true)} onAddToCart={(sku, q) => setCart(prev => [...prev, {...sku, quantity: q, selected: true}])} />;
       case 'profile':
         return (
@@ -310,7 +312,7 @@ const App: React.FC = () => {
             </div>
 
             <div className="pt-8 pb-10 text-center">
-               <p className="text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.4em]">NURSING PLUS ONCOLOGY AI</p>
+               <p className="text-[9px] font-black text-slate-300 dark:text-slate-700 uppercase tracking-[0.4em]">NURSING PLUS ONCOLOGY AI</p>
                <p className="text-[8px] text-slate-400 dark:text-slate-800 mt-1">Version 2.4.5</p>
             </div>
           </div>
