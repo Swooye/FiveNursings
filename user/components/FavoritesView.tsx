@@ -44,7 +44,7 @@ const FavoritesView: React.FC<FavoritesViewProps> = ({ onBack, favorites, onRemo
               <div 
                 key={sku.id}
                 onClick={() => onSelectProduct(sku)}
-                className="bg-white dark:bg-slate-900 rounded-[32px] p-4 flex items-center space-x-4 border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all"
+                className="bg-white dark:bg-slate-900 rounded-[32px] p-4 flex items-center space-x-4 border border-slate-100 dark:border-slate-800 shadow-sm active:scale-[0.98] transition-all cursor-pointer"
               >
                 <div className="w-20 h-20 rounded-2xl overflow-hidden shrink-0">
                   <img src={sku.image} className="w-full h-full object-cover" alt={sku.name} />
@@ -60,7 +60,7 @@ const FavoritesView: React.FC<FavoritesViewProps> = ({ onBack, favorites, onRemo
                     e.stopPropagation();
                     onRemoveFavorite(sku.id);
                   }}
-                  className="p-3 text-rose-500 bg-rose-50 dark:bg-rose-900/20 rounded-2xl"
+                  className="p-3 text-rose-500 bg-rose-50 dark:bg-rose-900/20 rounded-2xl active:scale-90 transition-transform"
                 >
                   <Trash2 size={18} />
                 </button>

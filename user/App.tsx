@@ -168,7 +168,32 @@ const App: React.FC = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
 
   const handleUpdateProfile = async (updates: Partial<PatientProfile>) => {
+    const targetId = dbUser?._id;
+    if (targetId) {
+      try {
+        const response = await fetch(`/api/user/${targetId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: updates.name,
+            nickname: updates.nickname,
+            gender: updates.gender,
+            birthDate: updates.birthDate,
+            height: updates.height,
+            weight: updates.weight,
+            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.uid}`
+          })
+        });
+        if (response.ok) {
+          const updatedUserData = await response.json();
+          setDbUser(updatedUserData.user);
+          setShowCompleteProfile(false);
+        }
+      } catch (error) { console.error("Failed to update profile:", error); }
+    }
     setProfile(prev => ({ ...prev, ...updates }));
+    if (updates.isProfileComplete && !profile.isQuestionnaireComplete && completeProfileMode === 'onboarding') setShowQuestionnaire(true);
+    if (updates.isQuestionnaireComplete) { setShowQuestionnaire(false); setShowHealthRecord(true); }
   };
 
   const handleLogout = async () => {

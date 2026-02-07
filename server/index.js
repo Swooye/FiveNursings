@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -8,7 +9,7 @@ const path = require('path');
 const fs = require('fs');
 
 const app = express();
-const port = 3002;
+const port = process.env.PORT || 3002;
 
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -37,6 +38,7 @@ app.use((req, res, next) => {
   next();
 });
 
+// 使用 strict: false 保证所有字段都能存入
 const User = mongoose.model('User', new mongoose.Schema({}, { strict: false }));
 const Admin = mongoose.model('Admin', new mongoose.Schema({}, { strict: false }));
 const MallItem = mongoose.model('MallItem', new mongoose.Schema({}, { strict: false }));
@@ -57,6 +59,15 @@ app.post('/api/login', async (req, res) => {
     if (admin && (await bcrypt.compare(password, admin.password))) {
       res.json({ user: format(admin) });
     } else { res.status(401).json({ message: 'Invalid credentials' }); }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /api/users/:id - 用户更新个人信息接口
+app.patch('/api/user/:id', async (req, res) => {
+  try {
+    const updated = await User.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!updated) return res.status(404).json({ message: 'User not found' });
+    res.json({ message: 'Success', user: format(updated) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -85,11 +96,9 @@ createRoutes('protocols', Protocol);
 
 const startServer = async () => {
     try {
-        const user = 'admin';
-        const pass = encodeURIComponent('5Nursings+A');
-        const uri = `mongodb+srv://${user}:${pass}@cluster0.k2sadls.mongodb.net/?appName=Cluster0`;
+        const uri = process.env.MONGODB_URI;
         await mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true });
-        console.log('Connected to MongoDB');
+        console.log(`Connected to database: ${mongoose.connection.name}`);
         const adminEmail = 'admin@fivenursings.com';
         if (!await Admin.findOne({ email: adminEmail })) {
           const hashedPassword = await bcrypt.hash('123789', 10);
