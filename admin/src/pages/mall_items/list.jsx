@@ -1,6 +1,6 @@
 import React from "react";
-import { List, useTable, EditButton, ShowButton, DeleteButton, TextField, NumberField } from "@refinedev/antd";
-import { Table, Space, Tag, Image, Switch, message } from "antd";
+import { List, useTable, EditButton, ShowButton, DeleteButton, TextField } from "@refinedev/antd";
+import { Table, Space, Image, Switch, message } from "antd";
 import { useUpdate } from "@refinedev/core";
 
 export const MallItemList = () => {
@@ -13,10 +13,6 @@ export const MallItemList = () => {
             id: id,
             values: { status: checked ? "on_sale" : "off_sale" },
             mutationMode: "optimistic",
-        }, {
-            onSuccess: () => {
-                message.success(checked ? "商品已上架" : "商品已下架");
-            }
         });
     };
 
@@ -26,7 +22,15 @@ export const MallItemList = () => {
                 <Table.Column 
                     dataIndex="imageUrl" 
                     title="预览" 
-                    render={(value) => <Image src={value} width={40} height={40} style={{ objectFit: 'cover', borderRadius: '4px' }} />}
+                    render={(value) => (
+                        <Image 
+                            src={value} 
+                            width={50} 
+                            height={50} 
+                            style={{ objectFit: 'cover', borderRadius: '8px' }} 
+                            fallback="https://via.placeholder.com/50?text=无图"
+                        />
+                    )}
                 />
                 <Table.Column dataIndex="name" title="商品名称" />
                 <Table.Column dataIndex="category" title="分类" />
@@ -36,16 +40,15 @@ export const MallItemList = () => {
                     render={(value) => <TextField value={`￥${value}`} />} 
                 />
                 <Table.Column dataIndex="stock" title="库存" />
-                <Table.Column dataIndex="sales" title="累计销量" />
                 <Table.Column 
                     dataIndex="status" 
-                    title="上架状态" 
+                    title="状态" 
                     render={(value, record) => (
                         <Switch 
                             checked={value === "on_sale"} 
                             onChange={(checked) => handleStatusChange(record.id, checked)}
-                            checkedChildren="售卖中"
-                            unCheckedChildren="已下架"
+                            checkedChildren="上架"
+                            unCheckedChildren="下架"
                         />
                     )}
                 />
