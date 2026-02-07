@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, X, Check } from 'lucide-react';
+import { ChevronLeft, Check } from 'lucide-react';
 import { PatientProfile } from '../types';
 
 interface CompleteProfileProps {
@@ -14,8 +14,9 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ profile, onUpdate, on
   const isEditMode = mode === 'edit';
   const today = new Date();
   
+  // 核心修复：确保 formData 始终与最新的 profile 保持同步
   const [formData, setFormData] = useState({
-    nickname: profile.nickname || (isEditMode ? '' : '五养用户8030'),
+    nickname: profile.nickname || '',
     name: profile.name || '',
     birthDate: profile.birthDate || '',
     gender: profile.gender || '',
@@ -23,12 +24,30 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ profile, onUpdate, on
     weight: profile.weight ? String(profile.weight) : ''
   });
 
+  // 当外部 profile 变化时（例如刚登录成功获取到数据），同步到内部表单
+  useEffect(() => {
+    setFormData({
+      nickname: profile.nickname || '',
+      name: profile.name || '',
+      birthDate: profile.birthDate || '',
+      gender: profile.gender || '',
+      height: profile.height ? String(profile.height) : '',
+      weight: profile.weight ? String(profile.weight) : ''
+    });
+  }, [profile]);
+
   const [activePicker, setActivePicker] = useState<'gender' | 'height' | 'weight' | 'birthDate' | null>(null);
   
-  const [tempDate, setTempDate] = useState({
-    year: '1980',
-    month: String(today.getMonth() + 1).padStart(2, '0'),
-    day: String(today.getDate()).padStart(2, '0')
+  const [tempDate, setTempDate] = useState(() => {
+    if (profile.birthDate) {
+      const [y, m, d] = profile.birthDate.split('-');
+      return { year: y, month: m, day: d };
+    }
+    return {
+      year: '1980',
+      month: String(today.getMonth() + 1).padStart(2, '0'),
+      day: String(today.getDate()).padStart(2, '0')
+    };
   });
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -60,7 +79,7 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ profile, onUpdate, on
         scrollToValue(scrollRef.current, valToScroll);
       }, 50);
     }
-  }, [activePicker]);
+  }, [activePicker, formData, tempDate]);
 
   const isFormValid = formData.nickname && formData.name && formData.birthDate && formData.gender && formData.height && formData.weight;
 
@@ -127,7 +146,7 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ profile, onUpdate, on
           {activePicker === 'birthDate' ? (
             <div className="flex-1 overflow-hidden flex p-8 gap-4">
               <div ref={yearScrollRef} className="flex-1 overflow-y-auto no-scrollbar h-64 snap-y snap-mandatory">
-                {Array.from({ length: 100 }, (_, i) => 2024 - i).map(year => (
+                {Array.from({ length: 100 }, (_, i) => today.getFullYear() - i).map(year => (
                   <button 
                     key={year} 
                     data-value={year}
@@ -189,7 +208,6 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ profile, onUpdate, on
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col animate-in slide-in-from-right duration-300 no-scrollbar relative max-w-md mx-auto">
-      {/* Header */}
       <header className="px-6 pt-12 pb-6 flex items-center justify-between bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
         <button onClick={onClose} className="p-2 -ml-2 text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors">
           <ChevronLeft size={28} strokeWidth={2.5} />
@@ -210,7 +228,6 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ profile, onUpdate, on
         </div>
 
         <div className="space-y-4">
-          {/* Nickname Input */}
           <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[32px] p-6 shadow-sm group focus-within:border-emerald-500/50 transition-all">
             <label className="block text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest mb-1 ml-1">昵称</label>
             <input
@@ -222,7 +239,6 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ profile, onUpdate, on
             />
           </div>
 
-          {/* Real Name Input (mapping to db.name) */}
           <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[32px] p-6 shadow-sm group focus-within:border-emerald-500/50 transition-all">
             <label className="block text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest mb-1 ml-1">真实姓名</label>
             <input
@@ -235,19 +251,12 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ profile, onUpdate, on
           </div>
 
           <button 
-            onClick={() => {
-              if (formData.birthDate) {
-                const [y, m, d] = formData.birthDate.split('-');
-                setTempDate({ year: y, month: m, day: d });
-              }
-              setActivePicker('birthDate');
-            }}
+            onClick={() => setActivePicker('birthDate')}
             className="w-full bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[32px] p-7 flex items-center justify-between shadow-sm active:scale-[0.98] transition-all group"
           >
             <span className="font-black text-slate-800 dark:text-slate-200 text-xl">出生日期</span>
             <div className="flex items-center space-x-2 text-slate-300 dark:text-slate-600 group-hover:text-emerald-500">
               <span className="text-lg font-bold">{formData.birthDate ? formData.birthDate.replace(/-/g, '/') : '点击选择'}</span>
-              <ChevronDown size={20} />
             </div>
           </button>
 
@@ -258,7 +267,6 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ profile, onUpdate, on
             <span className="font-black text-slate-800 dark:text-slate-200 text-xl">性别</span>
             <div className="flex items-center space-x-2 text-slate-300 dark:text-slate-600 group-hover:text-emerald-500">
               <span className="text-lg font-bold">{formData.gender || '点击选择'}</span>
-              <ChevronDown size={20} />
             </div>
           </button>
 
@@ -269,7 +277,6 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ profile, onUpdate, on
             <span className="font-black text-slate-800 dark:text-slate-200 text-xl">身高</span>
             <div className="flex items-center space-x-2 text-slate-300 dark:text-slate-600 group-hover:text-emerald-500">
               <span className="text-lg font-bold">{formData.height ? `${formData.height} cm` : '点击选择'}</span>
-              <ChevronDown size={20} />
             </div>
           </button>
 
@@ -280,16 +287,9 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ profile, onUpdate, on
             <span className="font-black text-slate-800 dark:text-slate-200 text-xl">体重</span>
             <div className="flex items-center space-x-2 text-slate-300 dark:text-slate-600 group-hover:text-emerald-500">
               <span className="text-lg font-bold">{formData.weight ? `${formData.weight} kg` : '点击选择'}</span>
-              <ChevronDown size={20} />
             </div>
           </button>
         </div>
-
-        <footer className="pt-4 px-2">
-          <p className="text-[12px] text-slate-300 dark:text-slate-600 leading-relaxed font-bold">
-            注意：姓名、性别、身高、体重和生日将用于个性化计算消耗的卡路里、运动时的心率范围以及其他指标。我们尊重您的隐私 and 数据安全，这些信息仅用于为您提供更准确的健康数据分析。
-          </p>
-        </footer>
       </main>
 
       <div className="p-6 pb-12 bg-slate-50/80 dark:bg-slate-950/80 backdrop-blur-sm">
@@ -307,19 +307,8 @@ const CompleteProfile: React.FC<CompleteProfileProps> = ({ profile, onUpdate, on
       </div>
 
       {renderPicker()}
-
-      <style dangerouslySetInnerHTML={{ __html: `
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      `}} />
     </div>
   );
 };
 
 export default CompleteProfile;
-
-const ChevronDown = ({ size = 20 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m6 9 6 6 6-6"/>
-  </svg>
-);

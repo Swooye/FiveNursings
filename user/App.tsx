@@ -43,6 +43,9 @@ import {
   Heart
 } from 'lucide-react';
 
+// 动态识别环境
+const API_URL = import.meta.env.DEV ? "" : "https://api-u46fik5vcq-uc.a.run.app";
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [dbUser, setDbUser] = useState<any>(null);
@@ -81,21 +84,12 @@ const App: React.FC = () => {
   const [isDarkEffective, setIsDarkEffective] = useState(false);
 
   const [profile, setProfile] = useState<PatientProfile>({
-    id: 'user_123',
-    name: '李先生',
-    age: 52,
-    cancerType: CancerType.OTHER,
-    stage: TreatmentStage.UNTREATED,
-    scores: { diet: 78, exercise: 45, sleep: 42, mental: 65, function: 58 },
-    hasWarnings: false,
-    wearable: { deviceType: 'Apple Watch', isConnected: true, lastSync: new Date().toISOString() },
-    isProfileComplete: false,
-    isQuestionnaireComplete: false,
-    familyMembers: [],
-    isVIP: false,
-    coachSessionsRemaining: 1,
-    referralCode: 'REHAB-888',
-    voicePreference: 'default'
+    id: '', name: '', nickname: '', age: 0,
+    cancerType: CancerType.OTHER, stage: TreatmentStage.UNTREATED,
+    scores: { diet: 0, exercise: 0, sleep: 0, mental: 0, function: 0 },
+    hasWarnings: false, wearable: { deviceType: 'None', isConnected: false, lastSync: null },
+    isProfileComplete: false, isQuestionnaireComplete: false,
+    familyMembers: [], isVIP: false, coachSessionsRemaining: 0, referralCode: '', voicePreference: 'default'
   });
 
   const [favorites, setFavorites] = useState<SKU[]>(() => {
@@ -119,12 +113,19 @@ const App: React.FC = () => {
     if (dbUser) {
       setProfile(prev => ({
         ...prev,
-        name: dbUser.name || prev.name,
-        nickname: dbUser.nickname || prev.nickname,
+        id: dbUser.id || dbUser._id || prev.id,
+        name: dbUser.name || '',
+        nickname: dbUser.nickname || '',
         gender: dbUser.gender || prev.gender,
         birthDate: dbUser.birthDate || prev.birthDate,
         height: dbUser.height || prev.height,
         weight: dbUser.weight || prev.weight,
+        cancerType: dbUser.cancerType || prev.cancerType,
+        stage: dbUser.stage || prev.stage,
+        scores: dbUser.scores || prev.scores,
+        isProfileComplete: !!dbUser.isProfileComplete,
+        isQuestionnaireComplete: !!dbUser.isQuestionnaireComplete,
+        isVIP: !!dbUser.isVIP
       }));
     }
   }, [dbUser]);
@@ -134,13 +135,21 @@ const App: React.FC = () => {
       setUser(currentUser);
       if (currentUser) {
         try {
-          const res = await fetch(`/api/users`);
+          // 核心修复：通过专用的 sync 接口获取或创建用户，并回显完整信息
+          const res = await fetch(`${API_URL}/api/users/sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              firebaseUid: currentUser.uid,
+              email: currentUser.email,
+              phoneNumber: currentUser.phoneNumber
+            })
+          });
           if (res.ok) {
-            const users = await res.json();
-            let found = users.find((u: any) => u.firebaseUid === currentUser.uid);
-            if (found) setDbUser(found);
+            const userData = await res.json();
+            setDbUser(userData);
           }
-        } catch (err) { console.error(err); }
+        } catch (err) { console.error("Login sync error:", err); }
       }
       setLoadingAuth(false);
     });
@@ -163,25 +172,27 @@ const App: React.FC = () => {
     localStorage.setItem('themeMode', themeMode);
   }, [themeMode]);
 
+  useEffect(() => {
+    const root = document.documentElement;
+    ['font-size-standard', 'font-size-large', 'font-size-extra', 'font-size-max'].forEach(c => root.classList.remove(c));
+    root.classList.add(`font-size-${fontSize}`);
+    localStorage.setItem('font-size', fontSize);
+  }, [fontSize]);
+
   const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
 
   const handleUpdateProfile = async (updates: Partial<PatientProfile>) => {
-    const targetId = dbUser?._id;
+    const targetId = dbUser?._id || dbUser?.id;
     if (targetId) {
       try {
-        const response = await fetch(`/api/user/${targetId}`, {
+        const response = await fetch(`${API_URL}/api/user/${targetId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            name: updates.name,
-            nickname: updates.nickname,
-            gender: updates.gender,
-            birthDate: updates.birthDate,
-            height: updates.height,
-            weight: updates.weight,
-            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.uid}`
+            ...updates,
+            isProfileComplete: true // 只要点保存，标记为已完善
           })
         });
         if (response.ok) {
@@ -191,15 +202,21 @@ const App: React.FC = () => {
         }
       } catch (error) { console.error("Failed to update profile:", error); }
     }
-    setProfile(prev => ({ ...prev, ...updates }));
-    if (updates.isProfileComplete && !profile.isQuestionnaireComplete && completeProfileMode === 'onboarding') setShowQuestionnaire(true);
-    if (updates.isQuestionnaireComplete) { setShowQuestionnaire(false); setShowHealthRecord(true); }
   };
 
   const handleLogout = async () => {
     await auth.signOut();
     setDbUser(null);
+    setProfile({
+      id: '', name: '', nickname: '', age: 0,
+      cancerType: CancerType.OTHER, stage: TreatmentStage.UNTREATED,
+      scores: { diet: 0, exercise: 0, sleep: 0, mental: 0, function: 0 },
+      hasWarnings: false, wearable: { deviceType: 'None', isConnected: false, lastSync: null },
+      isProfileComplete: false, isQuestionnaireComplete: false,
+      familyMembers: [], isVIP: false, coachSessionsRemaining: 0, referralCode: '', voicePreference: 'default'
+    });
     setShowSettings(false);
+    setActiveTab('dashboard');
   };
   
   if (loadingAuth) {
@@ -243,7 +260,7 @@ const App: React.FC = () => {
                   <img src={dbUser?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.uid}`} alt="Avatar" className="w-full h-full rounded-2xl bg-white" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-2xl font-black text-white tracking-tight">{profile.nickname || profile.name || '新用户'}</h3>
+                  <h3 className="text-2xl font-black text-white tracking-tight">{profile.nickname || '新用户'}</h3>
                   <div className="flex items-center space-x-2 mt-1">
                     <span className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.2em]">{profile.cancerType}</span>
                     <span className="text-[10px] font-bold text-slate-400">· {profile.isVIP ? '尊享会员' : '普通用户'}</span>
@@ -293,7 +310,7 @@ const App: React.FC = () => {
             </div>
 
             <div className="pt-8 pb-10 text-center">
-               <p className="text-[9px] font-black text-slate-300 dark:text-slate-700 uppercase tracking-[0.4em]">NURSING PLUS ONCOLOGY AI</p>
+               <p className="text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.4em]">NURSING PLUS ONCOLOGY AI</p>
                <p className="text-[8px] text-slate-400 dark:text-slate-800 mt-1">Version 2.4.5</p>
             </div>
           </div>

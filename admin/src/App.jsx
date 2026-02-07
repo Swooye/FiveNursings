@@ -27,7 +27,8 @@ import { AdminList } from "./pages/admins/list";
 
 import "@refinedev/antd/dist/reset.css";
 
-const API_URL = "/api";
+// 动态识别环境：开发环境用代理，生产环境用 Firebase URL
+const API_URL = import.meta.env.DEV ? "/api" : "https://api-u46fik5vcq-uc.a.run.app";
 
 const authProvider = {
   login: async ({ email, password }) => {

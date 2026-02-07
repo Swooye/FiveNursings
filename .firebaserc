@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "fivenursings-73917017-a0dfd"
-  }
+  },
+  "targets": {
+    "fivenursings-73917017-a0dfd": {
+      "hosting": {
+        "user": [
+          "fivenursings-73917017-a0dfd"
+        ],
+        "admin": [
+          "fivenursings-admin"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }
