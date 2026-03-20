@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from './src/firebase';
 import { PatientProfile, CancerType, TreatmentStage, NursingScores, VoiceLog, CartItem, SKU, ChatSession } from './types';
@@ -158,34 +158,24 @@ const App: React.FC = () => {
   }, []);
 
   // --- 轮询检查未读消息 ---
-  useEffect(() => {
+  const checkUnread = useCallback(async () => {
     if (!user) return;
-    const checkUnread = async () => {
-      try {
-        const res = await fetch(`${API_URL}/api/messages/unread-count/${user.uid}`);
-        if (res.ok) {
-          const data = await res.json();
-          setUnreadCount(data.count || 0);
-        }
-      } catch (e) { console.error("Failed to check unread:", e); }
-    };
-    checkUnread();
-    const timer = setInterval(checkUnread, 30000); // 30秒检查一次
-    return () => clearInterval(timer);
+    try {
+      const res = await fetch(`${API_URL}/api/messages/unread-count/${user.uid}`);
+      if (res.ok) {
+        const data = await res.json();
+        setUnreadCount(data.count || 0);
+      }
+    } catch (e) { console.error("Failed to check unread:", e); }
   }, [user]);
 
-  // --- 切换到聊天 Tab 时标记已读 ---
   useEffect(() => {
-    if (activeTab === 'chat' && user) {
-        const markAsRead = async () => {
-            try {
-                await fetch(`${API_URL}/api/messages/read-all/${user.uid}`, { method: 'PATCH' });
-                setUnreadCount(0);
-            } catch (e) { console.error("Failed to mark messages as read:", e); }
-        };
-        markAsRead();
-    }
-  }, [activeTab, user]);
+    checkUnread();
+    const timer = setInterval(checkUnread, 30000); 
+    return () => clearInterval(timer);
+  }, [checkUnread]);
+
+  // 已读权交给 AIChat 组件处理，此处移除自动标记逻辑
 
   useEffect(() => {
     const root = document.documentElement;
@@ -283,7 +273,7 @@ const App: React.FC = () => {
           </div>
         );
       case 'program': return <Program onStartVoice={() => setAssistantMode('logging')} recentLogs={voiceLogs} onViewJournal={() => setShowJournal(true)} />;
-      case 'chat': return <AIChat profile={profile} onStartVoice={() => setAssistantMode('chat')} sessions={chatSessions} activeSessionId={activeSessionId} onSetActiveSession={setActiveSessionId} onSaveSession={(s) => setChatSessions(prev => [s, ...prev.filter(x => x.id !== s.id)])} onClearAllSessions={() => setChatSessions([])} onBack={() => { setAssistantMode(null); setPreviousTab('dashboard'); setActiveTab('dashboard'); }} onStartAssessment={() => setShowQuestionnaire(true)} />;
+      case 'chat': return <AIChat profile={profile} onStartVoice={() => setAssistantMode('chat')} onBack={() => { setAssistantMode(null); setPreviousTab('dashboard'); setActiveTab('dashboard'); }} onStartAssessment={() => setShowQuestionnaire(true)} onReadMessages={() => setUnreadCount(0)} />;
       case 'mall': return <Marketplace profile={profile} cartCount={cart.length} favorites={favorites} onToggleFavorite={toggleFavorite} onOpenCart={() => setShowCart(true)} onAddToCart={(sku, q) => setCart(prev => [...prev, {...sku, quantity: q, selected: true}])} />;
       case 'profile':
         return (

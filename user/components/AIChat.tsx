@@ -96,9 +96,10 @@ interface AIChatProps {
   onStartVoice: () => void;
   onBack: () => void;
   onStartAssessment: () => void;
+  onReadMessages: () => void; // 新增：通知父组件清除红点
 }
 
-const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartAssessment }) => {
+const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartAssessment, onReadMessages }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -128,6 +129,14 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
                 if (data.length === 0) {
                    setMessages([{ role: 'model', text: WELCOME_TEXT(profile.name), timestamp: new Date().toISOString() }]);
                 }
+                
+                // 关键点：首屏加载完成后标记已读
+                setTimeout(async () => {
+                    try {
+                        await fetch(`${API_URL}/api/messages/read-all/${auth.currentUser?.uid}`, { method: 'PATCH' });
+                        onReadMessages(); // 通知父组件清除红点
+                    } catch (e) {}
+                }, 800); // 给 800ms 让用户看到新消息，然后再消红点
             }
         }
     } catch (e) { console.error(e); }
@@ -135,7 +144,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
         setIsInitialLoading(false);
         setIsHistoryLoading(false);
     }
-  }, [profile.name]);
+  }, [profile.name, onReadMessages]);
 
   useEffect(() => {
     fetchMessages();
