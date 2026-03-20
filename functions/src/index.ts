@@ -22,14 +22,14 @@ const connectDb = async () => {
         if (!mongoose.models.User) mongoose.model('User', new mongoose.Schema({}, { strict: false }));
         if (!mongoose.models.MallItem) mongoose.model('MallItem', new mongoose.Schema({}, { strict: false }));
         if (!mongoose.models.Protocol) mongoose.model('Protocol', new mongoose.Schema({}, { strict: false }));
-        // 新增消息模型：用于存储 AI 消息和 OpenClaw 干预建议
         if (!mongoose.models.ChatMessage) {
             mongoose.model('ChatMessage', new mongoose.Schema({
-                userId: { type: String, required: true },
+                userId: { type: String, required: true, index: true },
                 role: { type: String, enum: ['user', 'model'], required: true },
                 text: { type: String, required: true },
                 type: { type: String, default: 'chat' }, // chat 或 intervention
-                isRead: { type: Boolean, default: false },
+                category: { type: String },
+                isRead: { type: Boolean, default: true },
                 timestamp: { type: Date, default: Date.now }
             }));
         }
@@ -67,19 +67,63 @@ app.use(async (req, res, next) => {
 
 const apiRouter = express.Router();
 
-// --- OpenClaw 对接接口 ---
-apiRouter.post('/interventions', async (req, res) => {
-    const { userId, content, category, title } = req.body;
-    
-    if (!userId || !content) {
-        return res.status(400).json({ error: "Missing userId or content" });
-    }
+// --- 消息管理接口 ---
+
+// 1. 保存消息 (用户或AI发送的消息)
+apiRouter.post('/messages', async (req, res) => {
+    const { userId, role, text, type } = req.body;
+    if (!userId || !text || !role) return res.status(400).json({ error: "Missing fields" });
 
     try {
         const ChatMessage = getModel('ChatMessage');
-        // 1. 存入数据库
         const message = await ChatMessage.create({
             userId,
+            role,
+            text,
+            type: type || 'chat',
+            isRead: true,
+            timestamp: new Date()
+        });
+        res.json(format(message));
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 2. 分页获取历史消息
+apiRouter.get('/messages/:userId', async (req, res) => {
+    const { limit = 20, before } = req.query;
+    try {
+        const ChatMessage = getModel('ChatMessage');
+        const query: any = { userId: req.params.userId };
+        
+        if (before) {
+            query.timestamp = { $lt: new Date(before as string) };
+        }
+
+        const data = await ChatMessage.find(query)
+            .sort({ timestamp: -1 })
+            .limit(Number(limit));
+            
+        // 返回按时间正序排列的记录，方便前端展示
+        res.json(data.map(format).reverse());
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 3. OpenClaw 对接
+apiRouter.post('/interventions', async (req, res) => {
+    const { userId, content, category, title } = req.body;
+    if (!userId || !content) return res.status(400).json({ error: "Missing userId or content" });
+
+    try {
+        const User = getModel('User');
+        const ChatMessage = getModel('ChatMessage');
+        let user;
+        if (mongoose.Types.ObjectId.isValid(userId)) user = await User.findById(userId);
+        if (!user) user = await User.findOne({ firebaseUid: userId });
+        if (!user || !user.firebaseUid) return res.status(404).json({ error: "User not found" });
+
+        const targetUid = user.firebaseUid;
+        const message = await ChatMessage.create({
+            userId: targetUid,
             role: 'model',
             text: content,
             type: 'intervention',
@@ -88,33 +132,17 @@ apiRouter.post('/interventions', async (req, res) => {
             timestamp: new Date()
         });
 
-        // 2. 发送 FCM 推送（通知用户）
         const payload = {
-            notification: {
-                title: title || "五养教练的新建议",
-                body: content.substring(0, 50) + "..."
-            },
-            data: {
-                type: "intervention",
-                messageId: message._id.toString(),
-                click_action: "FLUTTER_NOTIFICATION_CLICK" // 适配移动端点击跳转
-            },
-            topic: `user_${userId}` // 假设用户订阅了自己的主题
+            notification: { title: title || "五养教练的新建议", body: content.substring(0, 50) + "..." },
+            data: { type: "intervention", messageId: message._id.toString() },
+            topic: `user_${targetUid}`
         };
-
-        try {
-            await admin.messaging().send(payload);
-        } catch (fcmError) {
-            console.warn("FCM Push Failed, but database saved:", fcmError);
-        }
+        try { await admin.messaging().send(payload); } catch (e) {}
 
         res.json({ success: true, messageId: message._id });
-    } catch (e: any) {
-        res.status(500).json({ error: e.message });
-    }
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// 获取未读消息统计
 apiRouter.get('/messages/unread-count/:userId', async (req, res) => {
     try {
         const ChatMessage = getModel('ChatMessage');
@@ -123,7 +151,6 @@ apiRouter.get('/messages/unread-count/:userId', async (req, res) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// 标记消息为已读
 apiRouter.patch('/messages/read-all/:userId', async (req, res) => {
     try {
         const ChatMessage = getModel('ChatMessage');
@@ -132,7 +159,7 @@ apiRouter.patch('/messages/read-all/:userId', async (req, res) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// --- 原有接口保持不变 ---
+// --- 其余路由 ---
 apiRouter.post('/login', async (req, res) => {
     const { email, password } = req.body;
     try {
@@ -234,17 +261,12 @@ export const getAIChatResponse = onCall({ region: "us-central1", secrets: ["OPEN
     const { text, profile } = request.data;
     const apiKey = process.env.OPENROUTER_API_KEY;
 
-    if (!apiKey) {
-        return { reply: "抱歉，系统尚未配置 AI 服务密钥，请联系管理员。" };
-    }
+    if (!apiKey) return { reply: "抱歉，系统尚未配置 AI 服务密钥，请联系管理员。" };
 
     try {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
-            headers: {
-                "Authorization": `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-            },
+            headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
             body: JSON.stringify({
                 model: "google/gemini-2.0-flash-lite-001",
                 messages: [
@@ -259,11 +281,7 @@ export const getAIChatResponse = onCall({ region: "us-central1", secrets: ["OPEN
             })
         });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            console.error("OpenRouter Error:", errorData);
-            return { reply: "抱歉，AI 接口目前不可用，请稍后再试。" };
-        }
+        if (!response.ok) return { reply: "抱歉，AI 接口目前不可用，请稍后再试。" };
 
         const data = await response.json();
         const reply = data.choices?.[0]?.message?.content || "抱歉，我目前无法生成回复。";
@@ -277,10 +295,7 @@ export const getAIChatResponse = onCall({ region: "us-central1", secrets: ["OPEN
 export const generateHealthReport = onCall({ region: "us-central1", secrets: ["OPENROUTER_API_KEY"] }, async (request) => {
     const { profile } = request.data;
     const apiKey = process.env.OPENROUTER_API_KEY;
-
-    if (!apiKey) {
-        return { report: "抱歉，系统尚未配置 AI 服务密钥，请联系管理员。" };
-    }
+    if (!apiKey) return { report: "抱歉，系统尚未配置 AI 服务密钥，请联系管理员。" };
 
     const reportInstruction = `你是一位专业的肿瘤康复专家。请根据患者的个人健康档案（病种、阶段、五养评分）生成一份今日康复简报。
     要求：
@@ -293,10 +308,7 @@ export const generateHealthReport = onCall({ region: "us-central1", secrets: ["O
     try {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
-            headers: {
-                "Authorization": `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-            },
+            headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
             body: JSON.stringify({
                 model: "google/gemini-2.0-flash-lite-001",
                 messages: [
@@ -311,16 +323,9 @@ export const generateHealthReport = onCall({ region: "us-central1", secrets: ["O
                 ]
             })
         });
-
-        if (!response.ok) {
-            return { report: "抱歉，AI 简报服务暂时不可用，请稍后再试。" };
-        }
-
+        if (!response.ok) return { report: "抱歉，AI 简报服务暂时不可用，请稍后再试。" };
         const data = await response.json();
         const report = data.choices?.[0]?.message?.content || "抱歉，无法生成今日简报。";
         return { report };
-    } catch (e: any) {
-        console.error("GenerateReport Error:", e);
-        return { report: "抱歉，生成简报时遇到错误。" };
-    }
+    } catch (e: any) { return { report: "抱歉，生成简报时遇到错误。" }; }
 });
