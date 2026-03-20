@@ -6,6 +6,8 @@ import { Send, Mic, History, Plus, X, Calendar, MessageSquare, ArrowLeft, PhoneC
 import { auth, functions } from '../src/firebase';
 import { ResponsiveContainer, LineChart, BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Line, Bar } from 'recharts';
 
+const API_URL = import.meta.env.DEV ? "" : "https://api-u46fik5vcq-uc.a.run.app";
+
 const ChartRenderer: React.FC<{ chartData: any }> = ({ chartData }) => {
   const { type, data, xAxisKey, grid, tooltip, lines, bars } = chartData;
   return (
@@ -111,6 +113,18 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, sessions, active
   const streamIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const wasLoading = useRef(false);
 
+  // --- 拉取数据库中的消息 (OpenClaw 干预建议) ---
+  const fetchExternalMessages = async () => {
+    if (!auth.currentUser) return [];
+    try {
+        const res = await fetch(`${API_URL}/api/messages/${auth.currentUser.uid}`);
+        if (res.ok) {
+            return await res.json();
+        }
+    } catch (e) { console.error("Fetch external messages failed", e); }
+    return [];
+  };
+
   const saveCurrentSession = (currentMessages: ChatMessage[]) => {
     const lastUserMessage = currentMessages.findLast(m => m.role === 'user');
     if (!lastUserMessage) return;
@@ -134,12 +148,21 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, sessions, active
   }, []);
 
   useEffect(() => {
-    if (activeSessionId) {
-      const session = sessions.find(s => s.id === activeSessionId);
-      if (session) setMessages(session.messages);
-    } else {
-      setMessages([{ role: 'model', text: WELCOME_TEXT(profile.name), timestamp: new Date().toISOString() }]);
-    }
+    const initMessages = async () => {
+        const externalMsgs = await fetchExternalMessages();
+        
+        if (activeSessionId) {
+            const session = sessions.find(s => s.id === activeSessionId);
+            if (session) setMessages(session.messages);
+        } else {
+            // 如果是新会话，合并欢迎语和干预建议
+            const baseWelcome: ChatMessage = { role: 'model', text: WELCOME_TEXT(profile.name), timestamp: new Date().toISOString() };
+            setMessages([baseWelcome, ...externalMsgs]);
+        }
+    };
+    
+    initMessages();
+
     if (streamIntervalRef.current) {
       clearInterval(streamIntervalRef.current);
       setLoading(false);
@@ -222,8 +245,6 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, sessions, active
 
   const handleNewChat = () => { onSetActiveSession(null); setShowHistory(false); };
 
-  // 修复返回逻辑：
-  // 直接调用父组件传递的 onBack 函数，确保能退出 AI 聊天界面
   const handleBack = () => {
     onBack();
   };
@@ -289,7 +310,13 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, sessions, active
           <div key={i} className={`flex items-end gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
              {msg.role === 'model' && <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center text-lg shrink-0 border-4 border-white dark:border-slate-900 shadow-sm">🤖</div>}
             <div className={`max-w-[85%] inline-block px-5 py-4 rounded-t-2xl shadow-sm ${msg.role === 'user' ? 'bg-emerald-600 text-white font-bold rounded-l-2xl' : 'bg-white dark:bg-slate-800 rounded-r-2xl'}`}>
-              {msg.role === 'model' ? (
+              <div className="flex flex-col">
+                {(msg as any).type === 'intervention' && (
+                    <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mb-1 flex items-center">
+                        <Sparkles size={10} className="mr-1" /> OpenClaw 干预建议
+                    </span>
+                )}
+                {msg.role === 'model' ? (
                   msg.text ? <MarkdownContent content={msg.text} /> : (
                     <div className="flex space-x-1.5 items-center h-5 px-2">
                       <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></div>
@@ -298,6 +325,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, sessions, active
                     </div>
                   )
                 ) : msg.text}
+              </div>
             </div>
           </div>
         ))}
