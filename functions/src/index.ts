@@ -22,6 +22,17 @@ const connectDb = async () => {
         if (!mongoose.models.User) mongoose.model('User', new mongoose.Schema({}, { strict: false }));
         if (!mongoose.models.MallItem) mongoose.model('MallItem', new mongoose.Schema({}, { strict: false }));
         if (!mongoose.models.Protocol) mongoose.model('Protocol', new mongoose.Schema({}, { strict: false }));
+        // 新增消息模型：用于存储 AI 消息和 OpenClaw 干预建议
+        if (!mongoose.models.ChatMessage) {
+            mongoose.model('ChatMessage', new mongoose.Schema({
+                userId: { type: String, required: true },
+                role: { type: String, enum: ['user', 'model'], required: true },
+                text: { type: String, required: true },
+                type: { type: String, default: 'chat' }, // chat 或 intervention
+                isRead: { type: Boolean, default: false },
+                timestamp: { type: Date, default: Date.now }
+            }));
+        }
 
         const Admin = mongoose.models.Admin;
         const adminEmail = 'admin@fivenursings.com';
@@ -56,6 +67,72 @@ app.use(async (req, res, next) => {
 
 const apiRouter = express.Router();
 
+// --- OpenClaw 对接接口 ---
+apiRouter.post('/interventions', async (req, res) => {
+    const { userId, content, category, title } = req.body;
+    
+    if (!userId || !content) {
+        return res.status(400).json({ error: "Missing userId or content" });
+    }
+
+    try {
+        const ChatMessage = getModel('ChatMessage');
+        // 1. 存入数据库
+        const message = await ChatMessage.create({
+            userId,
+            role: 'model',
+            text: content,
+            type: 'intervention',
+            category: category,
+            isRead: false,
+            timestamp: new Date()
+        });
+
+        // 2. 发送 FCM 推送（通知用户）
+        const payload = {
+            notification: {
+                title: title || "五养教练的新建议",
+                body: content.substring(0, 50) + "..."
+            },
+            data: {
+                type: "intervention",
+                messageId: message._id.toString(),
+                click_action: "FLUTTER_NOTIFICATION_CLICK" // 适配移动端点击跳转
+            },
+            topic: `user_${userId}` // 假设用户订阅了自己的主题
+        };
+
+        try {
+            await admin.messaging().send(payload);
+        } catch (fcmError) {
+            console.warn("FCM Push Failed, but database saved:", fcmError);
+        }
+
+        res.json({ success: true, messageId: message._id });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// 获取未读消息统计
+apiRouter.get('/messages/unread-count/:userId', async (req, res) => {
+    try {
+        const ChatMessage = getModel('ChatMessage');
+        const count = await ChatMessage.countDocuments({ userId: req.params.userId, isRead: false });
+        res.json({ count });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 标记消息为已读
+apiRouter.patch('/messages/read-all/:userId', async (req, res) => {
+    try {
+        const ChatMessage = getModel('ChatMessage');
+        await ChatMessage.updateMany({ userId: req.params.userId, isRead: false }, { isRead: true });
+        res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// --- 原有接口保持不变 ---
 apiRouter.post('/login', async (req, res) => {
     const { email, password } = req.body;
     try {

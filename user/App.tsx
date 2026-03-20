@@ -75,6 +75,8 @@ const App: React.FC = () => {
   const [lastUpdatedCategory, setLastUpdatedCategory] = useState<keyof NursingScores | null>(null);
   const [reportCache, setReportCache] = useState<{ date: string; profileJSON: string; text: string } | null>(null);
 
+  const [unreadCount, setUnreadCount] = useState(0);
+
   const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>(() => (localStorage.getItem('themeMode') as any) || 'system');
   const [fontSize, setFontSize] = useState(() => localStorage.getItem('font-size') || 'standard');
   const [language, setLanguage] = useState(() => localStorage.getItem('language') || 'zh');
@@ -155,6 +157,36 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // --- 轮询检查未读消息 ---
+  useEffect(() => {
+    if (!user) return;
+    const checkUnread = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/messages/unread-count/${user.uid}`);
+        if (res.ok) {
+          const data = await res.json();
+          setUnreadCount(data.count || 0);
+        }
+      } catch (e) { console.error("Failed to check unread:", e); }
+    };
+    checkUnread();
+    const timer = setInterval(checkUnread, 30000); // 30秒检查一次
+    return () => clearInterval(timer);
+  }, [user]);
+
+  // --- 切换到聊天 Tab 时标记已读 ---
+  useEffect(() => {
+    if (activeTab === 'chat' && user) {
+        const markAsRead = async () => {
+            try {
+                await fetch(`${API_URL}/api/messages/read-all/${user.uid}`, { method: 'PATCH' });
+                setUnreadCount(0);
+            } catch (e) { console.error("Failed to mark messages as read:", e); }
+        };
+        markAsRead();
+    }
+  }, [activeTab, user]);
+
   useEffect(() => {
     const root = document.documentElement;
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -191,7 +223,7 @@ const App: React.FC = () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...updates,
-            isProfileComplete: true // 只要点保存，标记为已完善
+            isProfileComplete: true 
           })
         });
         if (response.ok) {
@@ -247,7 +279,7 @@ const App: React.FC = () => {
       case 'dashboard':
         return (
           <div className="flex flex-col text-left">
-            <Home profile={profile} onUpdateProfile={handleUpdateProfile} onSelectNursing={(n) => setSelectedNursing(n)} updatedCategory={lastUpdatedCategory} onStartReport={() => setShowReport(true)} onStartAssessment={() => setShowQuestionnaire(true)} />
+            <Home profile={profile} unreadCount={unreadCount} onUpdateProfile={handleUpdateProfile} onSelectNursing={(n) => setSelectedNursing(n)} updatedCategory={lastUpdatedCategory} onStartReport={() => setShowReport(true)} onStartAssessment={() => setShowQuestionnaire(true)} />
           </div>
         );
       case 'program': return <Program onStartVoice={() => setAssistantMode('logging')} recentLogs={voiceLogs} onViewJournal={() => setShowJournal(true)} />;
@@ -317,7 +349,7 @@ const App: React.FC = () => {
             </div>
           </div>
         );
-      default: return <Home profile={profile} onUpdateProfile={handleUpdateProfile} onSelectNursing={(n) => setSelectedNursing(n)} onStartReport={() => setShowReport(true)} onStartAssessment={() => setShowQuestionnaire(true)} />;
+      default: return <Home profile={profile} unreadCount={unreadCount} onUpdateProfile={handleUpdateProfile} onSelectNursing={(n) => setSelectedNursing(n)} onStartReport={() => setShowReport(true)} onStartAssessment={() => setShowQuestionnaire(true)} />;
     }
   };
 
@@ -334,7 +366,15 @@ const App: React.FC = () => {
       {!selectedNursing && !showJournal && !showOrders && !showCart && !showCompleteProfile && !showQuestionnaire && !showHealthRecord && !showSafetySettings && !protocolType && !showSettings && activeTab !== 'chat' && !showHumanCoach && !showMembership && !showFavorites && !viewingProduct && (
         <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-[360px] bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-100 dark:border-slate-800 flex justify-around items-center py-3.5 px-2 shadow-2xl z-50 rounded-[32px]">
           {NAV_ITEMS.map((item) => (
-            <button key={item.id} onClick={() => { setPreviousTab(activeTab); setActiveTab(item.id); }} className={`flex flex-col items-center justify-center min-w-[56px] transition-all duration-300 ${activeTab === item.id ? 'text-emerald-600 dark:text-emerald-400 transform scale-110' : 'text-slate-400'}`}><div className={`p-1.5 rounded-xl ${activeTab === item.id ? 'bg-emerald-50 dark:bg-emerald-900/20' : ''}`}>{item.icon}</div><span className={`text-[9px] mt-0.5 font-bold uppercase tracking-wider transition-all duration-300 transform ${activeTab === item.id ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-1 scale-75 h-0 overflow-hidden'}`}>{item.label}</span></button>
+            <button key={item.id} onClick={() => { setPreviousTab(activeTab); setActiveTab(item.id); }} className={`flex flex-col items-center justify-center min-w-[56px] transition-all duration-300 relative ${activeTab === item.id ? 'text-emerald-600 dark:text-emerald-400 transform scale-110' : 'text-slate-400'}`}>
+              <div className={`p-1.5 rounded-xl ${activeTab === item.id ? 'bg-emerald-50 dark:bg-emerald-900/20' : ''}`}>
+                {item.icon}
+                {item.id === 'chat' && unreadCount > 0 && (
+                   <span className="absolute top-0 right-1 w-4 h-4 bg-rose-500 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white dark:border-slate-900 animate-bounce">{unreadCount}</span>
+                )}
+              </div>
+              <span className={`text-[9px] mt-0.5 font-bold uppercase tracking-wider transition-all duration-300 transform ${activeTab === item.id ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-1 scale-75 h-0 overflow-hidden'}`}>{item.label}</span>
+            </button>
           ))}
         </nav>
       )}

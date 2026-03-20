@@ -8,6 +8,7 @@ import { generatePersonalizedPlan, PersonalizedPlan } from '../services/geminiSe
 
 interface HomeProps {
   profile: PatientProfile;
+  unreadCount: number;
   onUpdateProfile: (updates: Partial<PatientProfile>) => void;
   onSelectNursing: (nursing: keyof NursingScores) => void;
   updatedCategory?: keyof NursingScores | null;
@@ -15,7 +16,7 @@ interface HomeProps {
   onStartAssessment: () => void;
 }
 
-const Home: React.FC<HomeProps> = ({ profile, onUpdateProfile, onSelectNursing, updatedCategory, onStartReport, onStartAssessment }) => {
+const Home: React.FC<HomeProps> = ({ profile, unreadCount, onUpdateProfile, onSelectNursing, updatedCategory, onStartReport, onStartAssessment }) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [showPlanOverlay, setShowPlanOverlay] = useState(false);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
@@ -64,7 +65,7 @@ const Home: React.FC<HomeProps> = ({ profile, onUpdateProfile, onSelectNursing, 
 
   return (
     <div className="p-5 space-y-6 pb-28 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* Questionnaire Reminder Banner - CRITICAL FOR VIP/NON-VIP */}
+      {/* Questionnaire Reminder Banner */}
       {!profile.isQuestionnaireComplete && (
         <button 
           onClick={onStartAssessment}
@@ -213,23 +214,41 @@ const Home: React.FC<HomeProps> = ({ profile, onUpdateProfile, onSelectNursing, 
 
       <div className="relative group overflow-hidden rounded-[40px] transition-all duration-500 hover:translate-y-[-2px]">
         <div className="absolute inset-0 bg-gradient-to-br from-emerald-400/10 via-transparent to-emerald-600/10 opacity-40 dark:opacity-20 blur-2xl transition-opacity"></div>
-        <div className="relative bg-white/60 dark:bg-slate-900/80 backdrop-blur-xl border border-white dark:border-slate-800 p-7 rounded-[40px] shadow-sm">
+        <div className={`relative bg-white/60 dark:bg-slate-900/80 backdrop-blur-xl border-2 p-7 rounded-[40px] shadow-sm transition-all ${unreadCount > 0 ? 'border-emerald-500 dark:border-emerald-400 ring-4 ring-emerald-500/10' : 'border-white dark:border-slate-800'}`}>
           <div className="flex justify-between items-start mb-6">
             <div className="flex items-center space-x-4 text-left">
-              <div className="w-14 h-14 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-emerald-500 dark:to-emerald-600 rounded-[22px] flex items-center justify-center text-slate-600 dark:text-white shadow-sm border border-slate-200 dark:border-transparent"><BrainCircuit size={28} /></div>
+              <div className="w-14 h-14 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-emerald-500 dark:to-emerald-600 rounded-[22px] flex items-center justify-center text-slate-600 dark:text-white shadow-sm border border-slate-200 dark:border-transparent relative">
+                <BrainCircuit size={28} />
+                {unreadCount > 0 && (
+                  <div className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-white dark:border-slate-900 animate-pulse shadow-lg">
+                    {unreadCount}
+                  </div>
+                )}
+              </div>
               <div>
                 <h3 className="text-lg font-black text-slate-800 dark:text-slate-100 tracking-tight">AI 深度洞察</h3>
                 <span className="flex items-center text-[9px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-md uppercase tracking-[0.1em] border border-emerald-100 dark:border-emerald-800 mt-1"><Sparkles size={10} className="mr-1" /> 算法推送</span>
               </div>
             </div>
-            <div className="p-2.5 bg-slate-50 dark:bg-slate-800 rounded-2xl text-slate-400 group-hover:text-emerald-500 transition-colors"><Lightbulb size={20} /></div>
+            <div className="p-2.5 bg-slate-50 dark:bg-slate-800 rounded-2xl text-slate-400 group-hover:text-emerald-500 transition-colors relative">
+               <Lightbulb size={20} />
+               {unreadCount > 0 && <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full animate-ping"></span>}
+            </div>
           </div>
           <div className="space-y-4">
             <div className="p-5 bg-slate-100/40 dark:bg-gradient-to-br dark:from-slate-800/80 dark:to-slate-900/30 rounded-[28px] border border-slate-200/50 dark:border-slate-800/50 relative overflow-hidden">
               <div className="flex items-start space-x-3 relative z-10 text-left">
                 <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mt-2 shrink-0"></div>
                 <div className="flex-1">
-                  <p className="text-[13px] text-slate-600 dark:text-slate-400 leading-relaxed font-bold">分析发现：您的<span className="text-slate-900 dark:text-slate-100 font-black">睡眠深度</span>与<span className="text-slate-900 dark:text-slate-100 font-black">步数指标</span>呈现高度相关。昨日步数突破 4000 后，深度睡眠增加了 22 分钟。</p>
+                  {unreadCount > 0 ? (
+                    <p className="text-[13px] text-emerald-600 dark:text-emerald-400 leading-relaxed font-black">
+                      林教练发现了新的干预机会！您有 {unreadCount} 条未读建议，请点击下方进入“五养教练”查看详情。
+                    </p>
+                  ) : (
+                    <p className="text-[13px] text-slate-600 dark:text-slate-400 leading-relaxed font-bold">
+                      分析发现：您的<span className="text-slate-900 dark:text-slate-100 font-black">睡眠深度</span>与<span className="text-slate-900 dark:text-slate-100 font-black">步数指标</span>呈现高度相关。昨日步数突破 4000 后，深度睡眠增加了 22 分钟。
+                    </p>
+                  )}
                   <div className="flex justify-center mt-5">
                     <button onClick={handleGetPlan} className="flex items-center space-x-2 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 transition-all group/btn bg-emerald-50 dark:bg-emerald-400/10 px-4 py-2 rounded-2xl border border-emerald-100 dark:border-emerald-400/20 active:scale-95 shadow-sm">
                       <span className="text-[11px] font-black whitespace-nowrap">{profile.isQuestionnaireComplete ? '获取个性化方案' : '完善评估解锁方案'}</span>
@@ -240,9 +259,13 @@ const Home: React.FC<HomeProps> = ({ profile, onUpdateProfile, onSelectNursing, 
               </div>
             </div>
             <div className="flex flex-wrap gap-1.5 px-1">
-              {['#指标优化', '#生活模式'].map(tag => (
-                <span key={tag} className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-full text-[8.5px] font-black text-slate-400 shadow-sm whitespace-nowrap">{tag}</span>
-              ))}
+              {unreadCount > 0 ? (
+                <span className="px-2.5 py-1 bg-emerald-500 text-white rounded-full text-[8.5px] font-black shadow-lg animate-pulse uppercase tracking-widest">New Intervention</span>
+              ) : (
+                ['#指标优化', '#生活模式'].map(tag => (
+                  <span key={tag} className="px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-full text-[8.5px] font-black text-slate-400 shadow-sm whitespace-nowrap">{tag}</span>
+                ))
+              )}
             </div>
           </div>
         </div>
