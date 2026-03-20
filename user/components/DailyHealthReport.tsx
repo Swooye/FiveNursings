@@ -20,8 +20,11 @@ const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose,
   const [isPlaying, setIsPlaying] = useState(false);
 
   const speak = useCallback((text: string, voiceName?: string) => {
+    window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'zh-CN';
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
 
     const trySpeak = () => {
         const voices = window.speechSynthesis.getVoices();
@@ -32,15 +35,19 @@ const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose,
             }
             utterance.onstart = () => setIsPlaying(true);
             utterance.onend = () => setIsPlaying(false);
-            utterance.onerror = () => setIsPlaying(false);
+            utterance.onerror = (e) => {
+              console.error("SpeechSynthesis Error:", e);
+              setIsPlaying(false);
+            };
             window.speechSynthesis.speak(utterance);
         } else {
-          window.speechSynthesis.onvoiceschanged = trySpeak;
+          window.speechSynthesis.onvoiceschanged = () => {
+            trySpeak();
+            window.speechSynthesis.onvoiceschanged = null;
+          };
         }
     };
-
     trySpeak();
-
   }, []);
 
   useEffect(() => {
@@ -60,8 +67,13 @@ const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose,
         const generateHealthReport = httpsCallable(functions, 'generateHealthReport');
         const result = await generateHealthReport({ profile });
         const data = result.data as { report: string };
-        setReportText(data.report);
-        onUpdateCache({ date: today, profileJSON: currentProfileJSON, text: data.report });
+        
+        if (data && data.report) {
+          setReportText(data.report);
+          onUpdateCache({ date: today, profileJSON: currentProfileJSON, text: data.report });
+        } else {
+          throw new Error("Invalid report data received from AI");
+        }
       } catch (err: any) {
         console.error("Report Generation Error:", err);
         const errorMessage = err.message || 'AI 服务暂时不可用，请稍后再试。';
@@ -75,15 +87,18 @@ const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose,
 
   useEffect(() => {
     if (reportText && !loading && !error) {
-      window.speechSynthesis.cancel();
-      speak(reportText, profile.voicePreference);
+      const timer = setTimeout(() => {
+        speak(reportText, profile.voicePreference);
+      }, 500);
+      return () => clearTimeout(timer);
     }
-    return () => {
-      setIsPlaying(false);
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.onvoiceschanged = null;
-    };
   }, [reportText, loading, error, profile.voicePreference, speak]);
+
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
 
   const handleClose = () => {
     window.speechSynthesis.cancel();
@@ -91,50 +106,114 @@ const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose,
   };
 
   return (
-    <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-xl flex flex-col items-center justify-center p-4 sm:p-6 animate-in fade-in duration-500">
-      <button onClick={handleClose} className="absolute top-6 right-6 p-3 bg-white/5 rounded-full text-white/50 hover:text-white hover:bg-white/10 transition-all border border-white/10">
-        <X size={24} />
-      </button>
-
-      <div className="w-full max-w-2xl bg-slate-900/80 backdrop-blur-3xl rounded-[32px] p-8 border border-white/10 shadow-2xl flex flex-col">
-        <div className="flex items-center justify-between mb-6">
+    <div className="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-xl flex flex-col items-center justify-center p-4 animate-in fade-in duration-500 overflow-hidden">
+      {/* Container - Fixed constraints to prevent overflow */}
+      <div className="w-full max-w-sm h-full max-h-[85vh] bg-slate-900 rounded-[40px] flex flex-col relative shadow-2xl overflow-hidden border border-white/10">
+        
+        {/* Header Section */}
+        <header className="px-6 pt-10 pb-4 flex items-center justify-between sticky top-0 z-20 bg-slate-900/80 backdrop-blur-md shrink-0">
           <div className="flex items-center space-x-3">
-            <div className={`relative w-6 h-6 flex items-center justify-center`}>
-              <div className={`absolute w-full h-full rounded-full bg-emerald-400/30 animate-ping ${isPlaying ? '' : 'hidden'}`}></div>
-              <Volume2 size={20} className="text-emerald-400" />
+            <div className="w-10 h-10 bg-emerald-500/20 rounded-xl flex items-center justify-center border border-emerald-500/20">
+              <Sparkles className={`text-emerald-400 ${loading ? 'animate-pulse' : ''}`} size={20} />
             </div>
-            <h2 className="text-xl font-black text-white tracking-tight">AI 康复简报</h2>
+            <div>
+              <h2 className="text-lg font-black text-white tracking-tight">AI 康复简报</h2>
+              <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">
+                Daily Intelligence
+              </p>
+            </div>
           </div>
-          <span className="text-xs font-bold text-slate-500">{new Date().toLocaleDateString('zh-CN')}</span>
-        </div>
+          <button 
+            onClick={handleClose} 
+            className="p-2.5 bg-white/5 rounded-xl text-slate-400 hover:text-white active:scale-90 transition-all border border-white/10"
+          >
+            <X size={18} />
+          </button>
+        </header>
 
-        <div className="h-[60vh] overflow-y-auto pr-2 custom-scrollbar space-y-4">
+        {/* Status indicator */}
+        {isPlaying && (
+          <div className="px-6 py-2 bg-emerald-500/10 border-y border-emerald-500/20 flex items-center justify-between shrink-0">
+            <div className="flex items-center space-x-2">
+              <div className="flex space-x-0.5 items-end h-3">
+                <div className="w-1 bg-emerald-400 rounded-full animate-pulse h-full"></div>
+                <div className="w-1 bg-emerald-400 rounded-full animate-pulse h-2 [animation-delay:0.2s]"></div>
+                <div className="w-1 bg-emerald-400 rounded-full animate-pulse h-3 [animation-delay:0.4s]"></div>
+              </div>
+              <span className="text-[9px] font-black text-emerald-400 uppercase tracking-wider">正在播放分析语音...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Content Section - Scrollable */}
+        <div className="flex-1 overflow-y-auto px-6 py-6 custom-scrollbar relative">
           {loading ? (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <Loader2 size={40} className="text-emerald-500 animate-spin" />
-              <h3 className="text-white font-bold text-lg mt-6">AI 正在为您生成专属简报...</h3>
-              <p className="text-slate-400 text-sm mt-2">请稍候，正在结合您的数据进行分析</p>
+            <div className="flex flex-col items-center justify-center h-full text-center space-y-6">
+              <div className="relative">
+                <div className="w-16 h-16 border-4 border-emerald-500/10 rounded-full"></div>
+                <div className="absolute inset-0 w-16 h-16 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                   <Loader2 size={24} className="text-emerald-500 animate-pulse" />
+                </div>
+              </div>
+              <p className="text-slate-400 text-xs font-bold leading-relaxed max-w-[180px]">
+                正在结合您的档案数据<br/>生成个性化建议...
+              </p>
             </div>
           ) : error ? (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-                <AlertTriangle size={40} className="text-amber-500" />
-                <h3 className="text-white font-bold text-lg mt-6">无法生成简报</h3>
-                <p className="text-slate-400 text-sm mt-2 px-4">{error}</p>
+            <div className="flex flex-col items-center justify-center h-full text-center space-y-6">
+                <div className="w-16 h-16 bg-rose-500/10 rounded-2xl flex items-center justify-center text-rose-500">
+                  <AlertTriangle size={32} />
+                </div>
+                <p className="text-slate-500 text-[11px] font-medium px-4 leading-relaxed">{error}</p>
+                <button 
+                  onClick={() => window.location.reload()}
+                  className="px-6 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-[10px] font-black uppercase tracking-widest"
+                >
+                  重试生成
+                </button>
             </div>
           ) : (
-            <div className="prose prose-invert text-slate-200 prose-strong:text-emerald-400 w-full max-w-none">
-              <ReactMarkdown>
-                {reportText}
-              </ReactMarkdown>
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
+              <div className="bg-white/5 rounded-[28px] p-6 border border-white/5 shadow-inner">
+                <div className="prose prose-invert text-slate-300 prose-strong:text-emerald-400 prose-p:leading-relaxed prose-p:text-[13px] prose-p:font-medium w-full max-w-none">
+                  <ReactMarkdown>
+                    {reportText}
+                  </ReactMarkdown>
+                </div>
+                
+                <div className="mt-8 pt-6 border-t border-white/5 flex flex-col items-center">
+                  <p className="text-[8px] font-black text-slate-600 uppercase tracking-[0.3em]">
+                    Five-Nursings Protection
+                  </p>
+                </div>
+              </div>
             </div>
           )}
         </div>
+
+        {/* Footer */}
+        <footer className="p-6 bg-slate-900 border-t border-white/5 shrink-0">
+           {!loading && !error && (
+             <button 
+               onClick={() => speak(reportText, profile.voicePreference)}
+               className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-4 rounded-[20px] font-black text-xs shadow-xl shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center space-x-2"
+             >
+               <Volume2 size={16} />
+               <span className="uppercase tracking-widest">{isPlaying ? '正在播放' : '再次播放简报'}</span>
+             </button>
+           )}
+           <p className="text-center text-[9px] text-slate-600 font-bold mt-4 tracking-widest uppercase">
+             {new Date().toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })} · HEALTH UPDATE
+           </p>
+        </footer>
       </div>
-       <style dangerouslySetInnerHTML={{ __html: `
+      
+      <style dangerouslySetInnerHTML={{ __html: `
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
-        .custom-scrollbar:hover::-webkit-scrollbar-thumb { background: rgba(52,211,153,0.4); }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.05); border-radius: 10px; }
+        .custom-scrollbar:hover::-webkit-scrollbar-thumb { background: rgba(16, 185, 129, 0.2); }
       `}} />
     </div>
   );
