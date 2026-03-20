@@ -14,8 +14,11 @@ import {
   Smartphone, 
   Ruler,
   Check,
-  Voicemail
+  Voicemail,
+  FileText,
+  Shield
 } from 'lucide-react';
+import ProtocolView from './ProtocolView';
 
 interface SettingsViewProps {
   onBack: () => void;
@@ -77,7 +80,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [currentSubPage, setCurrentSubPage] = useState<'main' | 'font-size' | 'theme' | 'language' | 'unit' | 'voice'>('main');
+  const [currentSubPage, setCurrentSubPage] = useState<'main' | 'font-size' | 'theme' | 'language' | 'unit' | 'voice' | 'protocol_service' | 'protocol_privacy'>('main');
   const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
 
   useEffect(() => {
@@ -308,6 +311,15 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     );
   }
 
+  if (currentSubPage === 'protocol_service' || currentSubPage === 'protocol_privacy') {
+    return (
+      <ProtocolView 
+        onBack={() => setCurrentSubPage('main')} 
+        initialTab={currentSubPage === 'protocol_service' ? 'service' : 'privacy'}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex flex-col animate-in slide-in-from-right duration-300 pb-20 no-scrollbar">
       <header className="px-6 pt-12 pb-6 bg-white dark:bg-slate-900 sticky top-0 z-40 border-b border-slate-100 dark:border-slate-800 flex items-center space-x-4 shadow-sm">
@@ -340,6 +352,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         <SectionTitle>数据</SectionTitle>
         <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 overflow-hidden shadow-sm">
           <SettingCard icon={<Ruler size={18} />} label="单位制" value={UNIT_LABELS[unitSystem]} onClick={() => setCurrentSubPage('unit')} />
+        </div>
+
+        <SectionTitle>关于</SectionTitle>
+        <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 overflow-hidden shadow-sm">
+           <SettingCard icon={<FileText size={18} />} label="服务协议" onClick={() => setCurrentSubPage('protocol_service')} />
+           <SettingCard icon={<Shield size={18} />} label="隐私政策" onClick={() => setCurrentSubPage('protocol_privacy')} />
         </div>
 
         <SectionTitle>账号与安全</SectionTitle>

@@ -26,32 +26,38 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-app.use((req, res, next) => {
-  const originalJson = res.json;
-  res.json = function (data) {
-    if (Array.isArray(data)) {
-      res.setHeader('Access-Control-Expose-Headers', 'X-Total-Count');
-      res.setHeader('X-Total-Count', data.length);
-    }
-    return originalJson.call(this, data);
-  };
-  next();
-});
+// 中间件：处理数组返回时的头部信息
+const arrayHeadersMiddleware = (req, res, next) => {
+    const originalJson = res.json;
+    res.json = function (data) {
+        if (Array.isArray(data)) {
+            res.setHeader('Access-Control-Expose-Headers', 'X-Total-Count');
+            res.setHeader('X-Total-Count', data.length);
+        }
+        return originalJson.call(this, data);
+    };
+    next();
+};
+app.use(arrayHeadersMiddleware);
 
-// 使用 strict: false 保证所有字段都能存入，避免信息缺失
+// Model Definitions
 const User = mongoose.model('User', new mongoose.Schema({}, { strict: false }));
 const Admin = mongoose.model('Admin', new mongoose.Schema({}, { strict: false }));
 const MallItem = mongoose.model('MallItem', new mongoose.Schema({}, { strict: false }));
-const Protocol = mongoose.model('Protocol', new mongoose.Schema({}, { strict: false }));
+const Protocol = mongoose.model('Protocol', new mongoose.Schema({
+    key: { type: String, unique: true, required: true },
+    title: { type: String, required: true },
+    content: { type: String, required: true },
+    updatedAt: { type: Date, default: Date.now }
+}, { strict: false }));
 
-app.post('/api/upload', upload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ message: 'No file' });
-  const url = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
-  res.json({ url });
-});
+const format = (doc) => { 
+    if (!doc) return null; 
+    const obj = doc.toObject ? doc.toObject() : doc; 
+    return { ...obj, id: obj._id }; 
+};
 
-const format = (doc) => { if (!doc) return null; const obj = doc.toObject ? doc.toObject() : doc; return { ...obj, id: obj._id }; };
-
+// --- AUTH ---
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
   try {
@@ -62,7 +68,7 @@ app.post('/api/login', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 统一用户同步接口 (Find or Create)
+// --- USERS ---
 app.post('/api/users/sync', async (req, res) => {
   const { firebaseUid, email, phoneNumber } = req.body;
   try {
@@ -101,18 +107,41 @@ const handleUserPatch = async (req, res) => {
 app.patch('/api/user/:id', handleUserPatch);
 app.patch('/api/users/:id', handleUserPatch);
 
+// --- GENERIC CRUD ---
 const createRoutes = (path, Model) => {
   app.get(`/api/${path}`, async (req, res) => {
-    try { const data = await Model.find().sort({ createdAt: -1 }); res.json(data.map(format)); } catch (e) { res.status(500).json({ error: e.message }); }
+    try { 
+        const data = await Model.find().sort({ createdAt: -1 }); 
+        res.json(data.map(format)); 
+    } catch (e) { res.status(500).json({ error: e.message }); }
   });
+  
   app.get(`/api/${path}/:id`, async (req, res) => {
-    try { const data = await Model.findById(req.params.id); res.json(format(data)); } catch (e) { res.status(500).json({ error: e.message }); }
+    try { 
+        const data = await Model.findById(req.params.id); 
+        res.json(format(data)); 
+    } catch (e) { res.status(500).json({ error: e.message }); }
   });
+  
   app.post(`/api/${path}`, async (req, res) => {
-    try { const data = await Model.create(req.body); res.json(format(data)); } catch (e) { res.status(500).json({ error: e.message }); }
+    try { 
+        const data = await Model.create(req.body); 
+        res.json(format(data)); 
+    } catch (e) { res.status(500).json({ error: e.message }); }
   });
+  
+  app.patch(`/api/${path}/:id`, async (req, res) => {
+    try { 
+        const updated = await Model.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true });
+        res.json(format(updated)); 
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.delete(`/api/${path}/:id`, async (req, res) => {
-    try { await Model.findByIdAndDelete(req.params.id); res.json({ success: true }); } catch (e) { res.status(500).json({ error: e.message }); }
+    try { 
+        await Model.findByIdAndDelete(req.params.id); 
+        res.json({ success: true }); 
+    } catch (e) { res.status(500).json({ error: e.message }); }
   });
 };
 
@@ -127,12 +156,36 @@ const startServer = async () => {
         if (!uri) throw new Error('MONGODB_URI not set');
         await mongoose.connect(uri, { useNewUrlParser: true, useUnifiedTopology: true });
         console.log(`Connected to database: ${mongoose.connection.name}`);
+        
+        // Init Admin
         const adminEmail = 'admin@fivenursings.com';
         const adminExists = await Admin.findOne({ email: adminEmail });
         if (!adminExists) {
           const hashedPassword = await bcrypt.hash('123789', 10);
           await Admin.create({ username: 'admin', email: adminEmail, password: hashedPassword, role: 'Super Admin', nickname: '超级管理员' });
         }
+
+        // Init Protocols
+        const serviceProtocol = await Protocol.findOne({ key: 'service_agreement' });
+        if (!serviceProtocol) {
+            await Protocol.create({
+                key: 'service_agreement',
+                title: '服务协议',
+                content: `欢迎使用康养家康复管理平台。本协议是您与平台之间关于服务使用的法律合约。\n\n1. 服务说明：康养家利用AI技术为肿瘤患者提供康复建议。所有建议仅供参考，不作为医疗诊断依据。\n2. 用户义务：用户需提供真实准确的健康数据，以便AI进行更精准的分析。\n3. 免责声明：康复方案受个体差异影响，用户在执行重大运动或饮食变更前应咨询主治医生。\n4. 账号安全：请妥善保管您的登录信息，避免泄露个人健康隐私。`
+            });
+            console.log('Initialized service protocol');
+        }
+
+        const privacyProtocol = await Protocol.findOne({ key: 'privacy_policy' });
+        if (!privacyProtocol) {
+            await Protocol.create({
+                key: 'privacy_policy',
+                title: '隐私政策',
+                content: `保护您的健康数据隐私是我们的首要任务。\n\n1. 数据收集：我们收集您的年龄、病种、阶段、穿戴设备数据及录音日志，用于生成个性化康复建议。\n2. 数据使用：数据仅用于您的康复看板展示及AI模型分析，未经许可不会向第三方泄露。\n3. 存储安全：我们采用行业标准的加密技术存储您的敏感健康档案。\n4. 用户权利：您可以随时在个人中心删除您的健康日志或注销账号。`
+            });
+            console.log('Initialized privacy protocol');
+        }
+
         app.listen(port, () => console.log(`Server is running on port ${port}`));
     } catch (err) { console.error('Failed to start server:', err); }
 };

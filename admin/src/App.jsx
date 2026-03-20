@@ -23,11 +23,16 @@ import { MallItemList } from "./pages/mall_items/list";
 import { MallItemCreate } from "./pages/mall_items/create";
 import { MallItemEdit } from "./pages/mall_items/edit";
 import { ProtocolList } from "./pages/protocols/list";
+import { ProtocolEdit } from "./pages/protocols/edit";
 import { AdminList } from "./pages/admins/list";
 
 import "@refinedev/antd/dist/reset.css";
 
 // 动态识别环境：开发环境用代理，生产环境用 Firebase URL
+// 注意：在 refine 中，dataProvider 的 URL 不需要手动加 /api 前缀，如果配置了 proxy
+// refine 的 simple-rest dataProvider 会自动处理请求。
+// 如果是本地开发，且 vite 配置了 proxy /api -> http://localhost:3002
+// 那么 API_URL 应该设置为 "/api" 
 const API_URL = import.meta.env.DEV ? "/api" : "https://api-u46fik5vcq-uc.a.run.app";
 
 const authProvider = {
@@ -150,6 +155,7 @@ const App = () => {
                 </Route>
                 <Route path="/protocols">
                   <Route index element={<ProtocolList />} />
+                  <Route path="edit/:id" element={<ProtocolEdit />} />
                 </Route>
                 <Route path="/admins">
                   <Route index element={<AdminList />} />

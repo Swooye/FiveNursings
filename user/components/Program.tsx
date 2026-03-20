@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { DailyTask, VoiceLog } from '../types';
 import { NURSING_ICONS } from '../constants';
 import { Check, Calendar as CalendarIcon, Mic, Sparkles, ChevronRight, History, Info, X, ChevronLeft } from 'lucide-react';
+import TodaySymptoms from './TodaySymptoms';
 
 interface ProgramProps {
   onStartVoice: () => void;
@@ -181,6 +182,8 @@ const Program: React.FC<ProgramProps> = ({ onStartVoice, recentLogs, onViewJourn
           </div>
         </div>
       )}
+      
+      {isToday && <TodaySymptoms />}
 
       <div className="space-y-4">
         <div className="flex justify-between items-center px-1">

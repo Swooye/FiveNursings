@@ -53,7 +53,26 @@ app.get('/protocols', async (req, res) => {
     try {
         const Protocol = getProtocolModel();
         const data = await Protocol.find();
+        res.setHeader('X-Total-Count', data.length);
+        res.setHeader('Access-Control-Expose-Headers', 'X-Total-Count');
         res.json(data.map(format));
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/protocols/:id', async (req, res) => {
+    try {
+        const Protocol = getProtocolModel();
+        const data = await Protocol.findById(req.params.id);
+        res.json(format(data));
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/protocols/:id', async (req, res) => {
+    try {
+        const Protocol = getProtocolModel();
+        const { id } = req.params;
+        const updated = await Protocol.findByIdAndUpdate(id, { ...req.body, updatedAt: new Date() }, { new: true });
+        res.json(format(updated));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
