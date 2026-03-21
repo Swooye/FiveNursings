@@ -7,18 +7,13 @@ import bcrypt from 'bcryptjs';
 
 admin.initializeApp();
 
-// 基础连接串（不含库名）
 const BASE_URI = "mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net/";
 const AUTH_PARAMS = "?retryWrites=true&w=majority";
 
-// 根据 Firebase 环境变量动态判断数据库
 const getDbName = () => {
-    // 如果是 Firebase 模拟器环境，或者没有特定的 Project ID，通常视为开发环境
     const projectId = process.env.GCLOUD_PROJECT || "";
-    if (projectId.includes("fivenursings-73917017-a0dfd")) {
-        return "fivenursing_pro"; // 正式项目 ID 对应生产库
-    }
-    return "fivenursing_dev"; // 其余情况（含本地调试）对应开发库
+    if (projectId.includes("fivenursings-73917017-a0dfd")) return "fivenursing_pro";
+    return "fivenursing_dev";
 };
 
 let isConnected = false;
@@ -27,10 +22,8 @@ const connectDb = async () => {
     if (isConnected) return;
     try {
         const dbName = getDbName();
-        const fullUri = `${BASE_URI}${dbName}${AUTH_PARAMS}`;
-        await mongoose.connect(fullUri);
+        await mongoose.connect(`${BASE_URI}${dbName}${AUTH_PARAMS}`);
         isConnected = true;
-        console.log(`Connected to database: ${dbName}`);
         
         if (!mongoose.models.Admin) mongoose.model('Admin', new mongoose.Schema({}, { strict: false }));
         if (!mongoose.models.User) mongoose.model('User', new mongoose.Schema({}, { strict: false }));
@@ -67,12 +60,52 @@ app.use(async (req, res, next) => {
 
 const apiRouter = express.Router();
 
-// --- 消息管理接口 ---
+// --- 用户同步核心修复 ---
+apiRouter.post('/users/sync', async (req, res) => {
+    const { firebaseUid, email, phoneNumber } = req.body;
+    try {
+        const User = getModel('User');
+        
+        // 1. 查
+        let user = await User.findOne({ firebaseUid });
+        
+        // 2. 补
+        if (!user && (email || phoneNumber)) {
+            user = await User.findOne({ 
+                $or: [
+                    { email: email || '_none_' }, 
+                    { phoneNumber: phoneNumber || '_none_' }
+                ] 
+            });
+            if (user) {
+                user.firebaseUid = firebaseUid;
+                await user.save();
+            }
+        }
+        
+        // 3. 创
+        if (!user) {
+            user = await User.create({
+                firebaseUid,
+                email: email || `${firebaseUid}@fivenursings.com`,
+                phoneNumber,
+                username: email || phoneNumber || firebaseUid,
+                nickname: '新用户',
+                isProfileComplete: false,
+                scores: { diet: 0, exercise: 0, sleep: 0, mental: 0, function: 0 }
+            });
+        }
+        
+        res.json(format(user));
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// --- 其余消息接口 ---
 apiRouter.post('/messages', async (req, res) => {
     const { userId, role, text, type } = req.body;
     try {
         const ChatMessage = getModel('ChatMessage');
-        const message = await ChatMessage.create({ userId, role, text, type: type || 'chat', isRead: true });
+        const message = await ChatMessage.create({ userId, role, text, type: type || 'chat', isRead: true, timestamp: new Date() });
         res.json(format(message));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
@@ -104,7 +137,6 @@ apiRouter.patch('/messages/read-all/:userId', async (req, res) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// --- OpenClaw ---
 apiRouter.get('/users/:userId/full-context', async (req, res) => {
     const { userId } = req.params;
     try {
@@ -113,7 +145,6 @@ apiRouter.get('/users/:userId/full-context', async (req, res) => {
         const user = await User.findOne({ $or: [{ firebaseUid: userId }, { _id: mongoose.Types.ObjectId.isValid(userId) ? userId : null }] });
         if (!user) return res.status(404).json({ error: "User not found" });
         const recentMessages = await ChatMessage.find({ userId: user.firebaseUid }).sort({ timestamp: -1 }).limit(5);
-
         res.json({
             profile: format(user),
             recentMessages: recentMessages.map(format),
@@ -132,27 +163,14 @@ apiRouter.post('/interventions', async (req, res) => {
         const ChatMessage = getModel('ChatMessage');
         let user = await User.findOne({ $or: [{ firebaseUid: userId }, { _id: mongoose.Types.ObjectId.isValid(userId) ? userId : null }] });
         if (!user) return res.status(404).json({ error: "User not found" });
-
-        const message = await ChatMessage.create({
-            userId: user.firebaseUid,
-            role: 'model',
-            text: content,
-            type: 'intervention',
-            category: category,
-            isRead: false
-        });
-
-        const payload = {
-            notification: { title: title || "五养教练的新建议", body: content.substring(0, 50) + "..." },
-            data: { type: "intervention", messageId: message._id.toString() },
-            topic: `user_${user.firebaseUid}`
-        };
+        const message = await ChatMessage.create({ userId: user.firebaseUid, role: 'model', text: content, type: 'intervention', category, isRead: false, timestamp: new Date() });
+        const payload = { notification: { title: title || "五养教练的新建议", body: content.substring(0, 50) + "..." }, data: { type: "intervention", messageId: message._id.toString() }, topic: `user_${user.firebaseUid}` };
         try { await admin.messaging().send(payload); } catch (e) {}
         res.json({ success: true, messageId: message._id });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// --- Auth & Generic ---
+// Auth & Admin Logic...
 apiRouter.post('/login', async (req, res) => {
     const { email, password } = req.body;
     try {
@@ -164,32 +182,6 @@ apiRouter.post('/login', async (req, res) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-apiRouter.post('/users/sync', async (req, res) => {
-    const { firebaseUid, email, phoneNumber } = req.body;
-    try {
-        const User = getModel('User');
-        let user = await User.findOne({ firebaseUid });
-        if (!user && (email || phoneNumber)) {
-            user = await User.findOne({ $or: [{ email: email || '_none_' }, { phoneNumber: phoneNumber || '_none_' }] });
-        }
-        if (!user) {
-            user = await User.create({
-                firebaseUid,
-                email: email || `${firebaseUid}@fivenursings.com`,
-                phoneNumber,
-                username: email || phoneNumber || firebaseUid,
-                password: await bcrypt.hash('default_password', 10),
-                isProfileComplete: false,
-                scores: { diet: 0, exercise: 0, sleep: 0, mental: 0, function: 0 }
-            });
-        } else if (!user.firebaseUid) {
-            user.firebaseUid = firebaseUid;
-            await user.save();
-        }
-        res.json(format(user));
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
 const handleUserUpdate = async (req: any, res: any) => {
     try {
         const User = getModel('User');
@@ -198,7 +190,6 @@ const handleUserUpdate = async (req: any, res: any) => {
         res.json({ message: 'Success', user: format(data) });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 };
-
 apiRouter.patch('/users/:id', handleUserUpdate);
 apiRouter.patch('/user/:id', handleUserUpdate);
 
@@ -215,37 +206,24 @@ resources.forEach(resource => {
         } catch (e: any) { res.status(500).json({ error: e.message }); }
     });
     apiRouter.get(`/${resource}/:id`, async (req, res) => {
-        try {
-            const Model = getModel(ModelName);
-            const data = await Model.findById(req.params.id);
-            res.json(format(data));
-        } catch (e: any) { res.status(500).json({ error: e.message }); }
+        try { const Model = getModel(ModelName); const data = await Model.findById(req.params.id); res.json(format(data)); } catch (e: any) { res.status(500).json({ error: e.message }); }
     });
     apiRouter.post(`/${resource}`, async (req, res) => {
-        try {
-            const Model = getModel(ModelName);
-            const data = await Model.create(req.body);
-            res.json(format(data));
-        } catch (e: any) { res.status(500).json({ error: e.message }); }
+        try { const Model = getModel(ModelName); const data = await Model.create(req.body); res.json(format(data)); } catch (e: any) { res.status(500).json({ error: e.message }); }
     });
     apiRouter.delete(`/${resource}/:id`, async (req, res) => {
-        try {
-            const Model = getModel(ModelName);
-            await Model.findByIdAndDelete(req.params.id);
-            res.json({ success: true });
-        } catch (e: any) { res.status(500).json({ error: e.message }); }
+        try { const Model = getModel(ModelName); await Model.findByIdAndDelete(req.params.id); res.json({ success: true }); } catch (e: any) { res.status(500).json({ error: e.message }); }
     });
 });
 
 app.use('/api', apiRouter);
 app.use('/', apiRouter);
-
 export const api = onRequest({ region: "us-central1" }, app);
 
 export const getAIChatResponse = onCall({ region: "us-central1", secrets: ["OPENROUTER_API_KEY"] }, async (request) => {
     const { text, profile } = request.data;
     const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) return { reply: "抱歉，系统尚未配置 AI 服务密钥。" };
+    if (!apiKey) return { reply: "系统未配置 AI 密钥。" };
     try {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
@@ -256,14 +234,14 @@ export const getAIChatResponse = onCall({ region: "us-central1", secrets: ["OPEN
             })
         });
         const data = await response.json();
-        return { reply: data.choices?.[0]?.message?.content || "抱歉，我目前无法生成回复。" };
-    } catch (e: any) { return { reply: "网络错误，请稍后再试。" }; }
+        return { reply: data.choices?.[0]?.message?.content || "AI 响应异常。" };
+    } catch (e: any) { return { reply: "网络错误。" }; }
 });
 
 export const generateHealthReport = onCall({ region: "us-central1", secrets: ["OPENROUTER_API_KEY"] }, async (request) => {
     const { profile } = request.data;
     const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) return { report: "系统未配置密钥。" };
+    if (!apiKey) return { report: "密钥未配置。" };
     try {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
@@ -274,6 +252,6 @@ export const generateHealthReport = onCall({ region: "us-central1", secrets: ["O
             })
         });
         const data = await response.json();
-        return { report: data.choices?.[0]?.message?.content || "无法生成简报。" };
-    } catch (e: any) { return { report: "生成失败。" }; }
+        return { report: data.choices?.[0]?.message?.content || "生成失败。" };
+    } catch (e: any) { return { report: "无法生成简报。" }; }
 });

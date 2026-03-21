@@ -11,6 +11,7 @@ const fs = require('fs');
 const app = express();
 const port = 3002;
 
+// 强制本地连接开发库
 const BASE_URI = "mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net/fivenursing_dev?retryWrites=true&w=majority";
 
 const uploadDir = path.join(__dirname, 'uploads');
@@ -39,7 +40,13 @@ app.use(arrayHeadersMiddleware);
 const User = mongoose.model('User', new mongoose.Schema({}, { strict: false }));
 const Admin = mongoose.model('Admin', new mongoose.Schema({}, { strict: false }));
 const MallItem = mongoose.model('MallItem', new mongoose.Schema({}, { strict: false }));
-const Protocol = mongoose.model('Protocol', new mongoose.Schema({}, { strict: false }));
+const Protocol = mongoose.model('Protocol', new mongoose.Schema({
+    key: { type: String, unique: true, required: true },
+    title: { type: String, required: true },
+    content: { type: String, required: true },
+    updatedAt: { type: Date, default: Date.now }
+}, { strict: false }));
+
 const ChatMessage = mongoose.model('ChatMessage', new mongoose.Schema({
     userId: { type: String, required: true, index: true },
     role: { type: String, enum: ['user', 'model'], required: true },
@@ -55,6 +62,48 @@ const format = (doc) => {
     return { ...obj, id: obj._id }; 
 };
 
+// --- 用户同步核心逻辑 (修复“新用户”问题) ---
+app.post('/api/users/sync', async (req, res) => {
+    const { firebaseUid, email, phoneNumber } = req.body;
+    try {
+        // 1. 优先通过 firebaseUid 查找
+        let user = await User.findOne({ firebaseUid });
+        
+        // 2. 如果没找到，尝试通过邮箱或手机号找回老数据
+        if (!user && (email || phoneNumber)) {
+            user = await User.findOne({ 
+                $or: [
+                    { email: email || '_none_' }, 
+                    { phoneNumber: phoneNumber || '_none_' }
+                ] 
+            });
+            
+            // 如果找到了老数据，立即绑定 firebaseUid
+            if (user) {
+                user.firebaseUid = firebaseUid;
+                await user.save();
+                console.log(`Linked existing user ${user.nickname || user.name} to Firebase UID ${firebaseUid}`);
+            }
+        }
+        
+        // 3. 依然没找到，才创建新用户
+        if (!user) {
+            user = await User.create({
+                firebaseUid,
+                email: email || `${firebaseUid}@fivenursings.com`,
+                phoneNumber,
+                username: email || phoneNumber || firebaseUid,
+                nickname: '新用户',
+                isProfileComplete: false,
+                scores: { diet: 0, exercise: 0, sleep: 0, mental: 0, function: 0 }
+            });
+        }
+        
+        res.json(format(user));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// --- AUTH ---
 app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
   try {
@@ -65,6 +114,7 @@ app.post('/api/login', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// --- 其他路由保持一致 ---
 app.post('/api/messages', async (req, res) => {
     try {
         const msg = await ChatMessage.create({ ...req.body, timestamp: new Date() });
@@ -126,7 +176,7 @@ app.get('/api/users/:userId/full-context', async (req, res) => {
             environment: { location: "上海", solarTerm: "春分", weather: "晴", temperature: 20 },
             vitals: { heartRate: 75, stepsToday: 5000, bodyTemperature: 36.5 },
             adherence: { completionRate: "90%", missedTasks: [] },
-            lastMedicalOrder: "本地开发测试：保持心情愉快。"
+            lastMedicalOrder: "保持心情愉快。"
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
