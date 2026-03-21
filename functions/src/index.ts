@@ -7,16 +7,30 @@ import bcrypt from 'bcryptjs';
 
 admin.initializeApp();
 
-const MONGODB_URI = "mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net/fivenursing_pro?retryWrites=true&w=majority";
+// 基础连接串（不含库名）
+const BASE_URI = "mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net/";
+const AUTH_PARAMS = "?retryWrites=true&w=majority";
+
+// 根据 Firebase 环境变量动态判断数据库
+const getDbName = () => {
+    // 如果是 Firebase 模拟器环境，或者没有特定的 Project ID，通常视为开发环境
+    const projectId = process.env.GCLOUD_PROJECT || "";
+    if (projectId.includes("fivenursings-73917017-a0dfd")) {
+        return "fivenursing_pro"; // 正式项目 ID 对应生产库
+    }
+    return "fivenursing_dev"; // 其余情况（含本地调试）对应开发库
+};
 
 let isConnected = false;
 
 const connectDb = async () => {
     if (isConnected) return;
     try {
-        await mongoose.connect(MONGODB_URI);
+        const dbName = getDbName();
+        const fullUri = `${BASE_URI}${dbName}${AUTH_PARAMS}`;
+        await mongoose.connect(fullUri);
         isConnected = true;
-        console.log("Connected to production database: fivenursing_pro");
+        console.log(`Connected to database: ${dbName}`);
         
         if (!mongoose.models.Admin) mongoose.model('Admin', new mongoose.Schema({}, { strict: false }));
         if (!mongoose.models.User) mongoose.model('User', new mongoose.Schema({}, { strict: false }));
@@ -27,25 +41,11 @@ const connectDb = async () => {
                 userId: { type: String, required: true, index: true },
                 role: { type: String, enum: ['user', 'model'], required: true },
                 text: { type: String, required: true },
-                type: { type: String, default: 'chat' }, // chat 或 intervention
+                type: { type: String, default: 'chat' },
                 category: { type: String },
                 isRead: { type: Boolean, default: true },
                 timestamp: { type: Date, default: Date.now }
             }));
-        }
-
-        const Admin = mongoose.models.Admin;
-        const adminEmail = 'admin@fivenursings.com';
-        const adminExists = await Admin.findOne({ email: adminEmail });
-        if (!adminExists) {
-            const hashedPassword = await bcrypt.hash('123789', 10);
-            await Admin.create({ 
-                username: 'admin', 
-                email: adminEmail, 
-                password: hashedPassword, 
-                role: 'Super Admin',
-                nickname: '超级管理员'
-            });
         }
     } catch (err) { console.error(err); throw err; }
 };
@@ -68,78 +68,23 @@ app.use(async (req, res, next) => {
 const apiRouter = express.Router();
 
 // --- 消息管理接口 ---
-
-// 1. 保存消息 (用户或AI发送的消息)
 apiRouter.post('/messages', async (req, res) => {
     const { userId, role, text, type } = req.body;
-    if (!userId || !text || !role) return res.status(400).json({ error: "Missing fields" });
-
     try {
         const ChatMessage = getModel('ChatMessage');
-        const message = await ChatMessage.create({
-            userId,
-            role,
-            text,
-            type: type || 'chat',
-            isRead: true,
-            timestamp: new Date()
-        });
+        const message = await ChatMessage.create({ userId, role, text, type: type || 'chat', isRead: true });
         res.json(format(message));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// 2. 分页获取历史消息
 apiRouter.get('/messages/:userId', async (req, res) => {
     const { limit = 20, before } = req.query;
     try {
         const ChatMessage = getModel('ChatMessage');
         const query: any = { userId: req.params.userId };
-        
-        if (before) {
-            query.timestamp = { $lt: new Date(before as string) };
-        }
-
-        const data = await ChatMessage.find(query)
-            .sort({ timestamp: -1 })
-            .limit(Number(limit));
-            
-        // 返回按时间正序排列的记录，方便前端展示
+        if (before) query.timestamp = { $lt: new Date(before as string) };
+        const data = await ChatMessage.find(query).sort({ timestamp: -1 }).limit(Number(limit));
         res.json(data.map(format).reverse());
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-// 3. OpenClaw 对接
-apiRouter.post('/interventions', async (req, res) => {
-    const { userId, content, category, title } = req.body;
-    if (!userId || !content) return res.status(400).json({ error: "Missing userId or content" });
-
-    try {
-        const User = getModel('User');
-        const ChatMessage = getModel('ChatMessage');
-        let user;
-        if (mongoose.Types.ObjectId.isValid(userId)) user = await User.findById(userId);
-        if (!user) user = await User.findOne({ firebaseUid: userId });
-        if (!user || !user.firebaseUid) return res.status(404).json({ error: "User not found" });
-
-        const targetUid = user.firebaseUid;
-        const message = await ChatMessage.create({
-            userId: targetUid,
-            role: 'model',
-            text: content,
-            type: 'intervention',
-            category: category,
-            isRead: false,
-            timestamp: new Date()
-        });
-
-        const payload = {
-            notification: { title: title || "五养教练的新建议", body: content.substring(0, 50) + "..." },
-            data: { type: "intervention", messageId: message._id.toString() },
-            topic: `user_${targetUid}`
-        };
-        try { await admin.messaging().send(payload); } catch (e) {}
-
-        res.json({ success: true, messageId: message._id });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
@@ -159,7 +104,55 @@ apiRouter.patch('/messages/read-all/:userId', async (req, res) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// --- 其余路由 ---
+// --- OpenClaw ---
+apiRouter.get('/users/:userId/full-context', async (req, res) => {
+    const { userId } = req.params;
+    try {
+        const User = getModel('User');
+        const ChatMessage = getModel('ChatMessage');
+        const user = await User.findOne({ $or: [{ firebaseUid: userId }, { _id: mongoose.Types.ObjectId.isValid(userId) ? userId : null }] });
+        if (!user) return res.status(404).json({ error: "User not found" });
+        const recentMessages = await ChatMessage.find({ userId: user.firebaseUid }).sort({ timestamp: -1 }).limit(5);
+
+        res.json({
+            profile: format(user),
+            recentMessages: recentMessages.map(format),
+            environment: { location: "上海", solarTerm: "春分", weather: "多云", temperature: 22 },
+            vitals: { heartRate: 72, stepsToday: 3420, bodyTemperature: 36.6 },
+            adherence: { completionRate: "85%", missedTasks: ["午间情绪冥想"] },
+            lastMedicalOrder: "保持清淡饮食，轻度步行。"
+        });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+apiRouter.post('/interventions', async (req, res) => {
+    const { userId, content, category, title } = req.body;
+    try {
+        const User = getModel('User');
+        const ChatMessage = getModel('ChatMessage');
+        let user = await User.findOne({ $or: [{ firebaseUid: userId }, { _id: mongoose.Types.ObjectId.isValid(userId) ? userId : null }] });
+        if (!user) return res.status(404).json({ error: "User not found" });
+
+        const message = await ChatMessage.create({
+            userId: user.firebaseUid,
+            role: 'model',
+            text: content,
+            type: 'intervention',
+            category: category,
+            isRead: false
+        });
+
+        const payload = {
+            notification: { title: title || "五养教练的新建议", body: content.substring(0, 50) + "..." },
+            data: { type: "intervention", messageId: message._id.toString() },
+            topic: `user_${user.firebaseUid}`
+        };
+        try { await admin.messaging().send(payload); } catch (e) {}
+        res.json({ success: true, messageId: message._id });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// --- Auth & Generic ---
 apiRouter.post('/login', async (req, res) => {
     const { email, password } = req.body;
     try {
@@ -249,83 +242,38 @@ app.use('/', apiRouter);
 
 export const api = onRequest({ region: "us-central1" }, app);
 
-const SYSTEM_INSTRUCTION = `你是一位专业的肿瘤康复AI教练。基于“五治五养”体系（饮食养、运动养、睡眠养、心理养、机能养）为患者提供支持。
-核心原则：
-1. 只提供康养建议，不代替诊断与处方。
-2. 语言通俗易懂，给出明确的可执行方案。
-3. 识别“危险信号”（高热、剧痛、大出血、呼吸困难），一旦发现立即建议线下就医并升级人工。
-4. 所有回答必须包含：[解释]、[今日行动建议]、[注意事项]。
-5. 永远带免责声明：本建议不构成医疗诊断。`;
-
 export const getAIChatResponse = onCall({ region: "us-central1", secrets: ["OPENROUTER_API_KEY"] }, async (request) => {
     const { text, profile } = request.data;
     const apiKey = process.env.OPENROUTER_API_KEY;
-
-    if (!apiKey) return { reply: "抱歉，系统尚未配置 AI 服务密钥，请联系管理员。" };
-
+    if (!apiKey) return { reply: "抱歉，系统尚未配置 AI 服务密钥。" };
     try {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
             body: JSON.stringify({
                 model: "google/gemini-2.0-flash-lite-001",
-                messages: [
-                    { role: "system", content: SYSTEM_INSTRUCTION },
-                    { 
-                      role: "user", 
-                      content: `患者信息：${profile?.cancerType || '未知'}，阶段：${profile?.stage || '未知'}。
-                      五养分数：饮食(${profile?.scores?.diet || 0})，运动(${profile?.scores?.exercise || 0})，睡眠(${profile?.scores?.sleep || 0})，心态(${profile?.scores?.mental || 0})，机能(${profile?.scores?.function || 0})。
-                      用户问题：${text}` 
-                    }
-                ]
+                messages: [{ role: "system", content: "你是一位专业的肿瘤康复AI教练。" }, { role: "user", content: text }]
             })
         });
-
-        if (!response.ok) return { reply: "抱歉，AI 接口目前不可用，请稍后再试。" };
-
         const data = await response.json();
-        const reply = data.choices?.[0]?.message?.content || "抱歉，我目前无法生成回复。";
-        return { reply };
-    } catch (e: any) {
-        console.error("AIChat Function Error:", e);
-        return { reply: "抱歉，由于网络问题，我现在无法回答。请检查您的连接或稍后再试。" };
-    }
+        return { reply: data.choices?.[0]?.message?.content || "抱歉，我目前无法生成回复。" };
+    } catch (e: any) { return { reply: "网络错误，请稍后再试。" }; }
 });
 
 export const generateHealthReport = onCall({ region: "us-central1", secrets: ["OPENROUTER_API_KEY"] }, async (request) => {
     const { profile } = request.data;
     const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey) return { report: "抱歉，系统尚未配置 AI 服务密钥，请联系管理员。" };
-
-    const reportInstruction = `你是一位专业的肿瘤康复专家。请根据患者的个人健康档案（病种、阶段、五养评分）生成一份今日康复简报。
-    要求：
-    1. 语气亲切、积极、充满鼓励。
-    2. 内容精炼，不超过 300 字。
-    3. 结构清晰：[今日总结]、[核心建议]、[正能量寄语]。
-    4. 禁止使用 Markdown 列表符号（如 - 或 *），直接分段陈述。
-    5. 必须声明：本简报仅供康养参考。`;
-
+    if (!apiKey) return { report: "系统未配置密钥。" };
     try {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
             body: JSON.stringify({
                 model: "google/gemini-2.0-flash-lite-001",
-                messages: [
-                    { role: "system", content: reportInstruction },
-                    { 
-                      role: "user", 
-                      content: `患者健康档案：
-                      病种：${profile?.cancerType || '未填写'}
-                      阶段：${profile?.stage || '未填写'}
-                      五养评分：饮食(${profile?.scores?.diet || 0})，运动(${profile?.scores?.exercise || 0})，睡眠(${profile?.scores?.sleep || 0})，心态(${profile?.scores?.mental || 0})，机能(${profile?.scores?.function || 0})。` 
-                    }
-                ]
+                messages: [{ role: "system", content: "生成今日康复简报。" }, { role: "user", content: `档案：${JSON.stringify(profile)}` }]
             })
         });
-        if (!response.ok) return { report: "抱歉，AI 简报服务暂时不可用，请稍后再试。" };
         const data = await response.json();
-        const report = data.choices?.[0]?.message?.content || "抱歉，无法生成今日简报。";
-        return { report };
-    } catch (e: any) { return { report: "抱歉，生成简报时遇到错误。" }; }
+        return { report: data.choices?.[0]?.message?.content || "无法生成简报。" };
+    } catch (e: any) { return { report: "生成失败。" }; }
 });

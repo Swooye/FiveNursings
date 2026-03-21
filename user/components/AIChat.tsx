@@ -96,7 +96,7 @@ interface AIChatProps {
   onStartVoice: () => void;
   onBack: () => void;
   onStartAssessment: () => void;
-  onReadMessages: () => void; // 新增：通知父组件清除红点
+  onReadMessages: () => void;
 }
 
 const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartAssessment, onReadMessages }) => {
@@ -110,14 +110,16 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
   const scrollRef = useRef<HTMLDivElement>(null);
   const streamIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // --- 拉取消息与分页 ---
+  // --- 拉取消息与分页 (修复 URL 拼接) ---
   const fetchMessages = useCallback(async (before?: string) => {
     if (!auth.currentUser) return;
     try {
-        const url = new URL(`${API_URL}/api/messages/${auth.currentUser.uid}`);
-        if (before) url.searchParams.append('before', before);
+        let endpoint = `${API_URL}/api/messages/${auth.currentUser.uid}`;
+        if (before) {
+            endpoint += `?before=${encodeURIComponent(before)}`;
+        }
         
-        const res = await fetch(url.toString());
+        const res = await fetch(endpoint);
         if (res.ok) {
             const data = await res.json();
             if (data.length < 20) setHasMore(false);
@@ -130,16 +132,15 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
                    setMessages([{ role: 'model', text: WELCOME_TEXT(profile.name), timestamp: new Date().toISOString() }]);
                 }
                 
-                // 关键点：首屏加载完成后标记已读
                 setTimeout(async () => {
                     try {
                         await fetch(`${API_URL}/api/messages/read-all/${auth.currentUser?.uid}`, { method: 'PATCH' });
-                        onReadMessages(); // 通知父组件清除红点
+                        onReadMessages();
                     } catch (e) {}
-                }, 800); // 给 800ms 让用户看到新消息，然后再消红点
+                }, 800);
             }
         }
-    } catch (e) { console.error(e); }
+    } catch (e) { console.error("Fetch failed", e); }
     finally {
         setIsInitialLoading(false);
         setIsHistoryLoading(false);
@@ -167,7 +168,6 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
     }
   }, [messages, isHistoryLoading]);
 
-  // --- 保存消息到后端 ---
   const persistMessage = async (msg: ChatMessage) => {
     if (!auth.currentUser) return;
     try {
