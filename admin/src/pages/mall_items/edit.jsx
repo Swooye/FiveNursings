@@ -2,24 +2,24 @@ import React, { useState, useEffect } from "react";
 import { Edit, useForm } from "@refinedev/antd";
 import { Form, Input, InputNumber, Select, Radio, Upload, Space, Button, message } from "antd";
 import { PlusOutlined, MinusCircleOutlined } from "@ant-design/icons";
+import { useParams } from "react-router-dom";
 
 export const MallItemEdit = () => {
-    // 使用 AntD 官方推荐的 useForm 获取实例，以确保 setFieldsValue 可控
+    const { id: urlId } = useParams(); // 从路径中精准获取 ID
     const [form] = Form.useForm();
     const { formProps, saveButtonProps, queryResult } = useForm({
         form: form,
+        id: urlId, // 显式传递 ID 避免 [object Object]
         redirect: "list"
     });
 
     const [fileList, setFileList] = useState([]);
 
-    // 深度监听数据返回，一旦 queryResult 有值，立即注入 Form
     useEffect(() => {
         const item = queryResult?.data?.data;
         if (item) {
-            console.log("Echoing item data:", item);
+            console.log("Loading item data for ID:", urlId, item);
             
-            // 1. 处理图片回显
             const url = item.imageUrl || item.image;
             if (url) {
                 setFileList([{
@@ -30,16 +30,14 @@ export const MallItemEdit = () => {
                 }]);
             }
             
-            // 2. 强制设置所有字段值
             form.setFieldsValue({
                 ...item,
                 imageUrl: url,
-                // 确保数组字段即使在后端缺失时也初始化为空数组，防止 Form.List 崩溃
                 tags: item.tags || [],
                 highlights: item.highlights || []
             });
         }
-    }, [queryResult?.data?.data, form]);
+    }, [queryResult?.data?.data, form, urlId]);
 
     const handleUpload = async (options) => {
         const { file, onSuccess, onError } = options;
@@ -129,15 +127,14 @@ export const MallItemEdit = () => {
                     <Input.TextArea rows={2} placeholder="用于详情页 AI Insight 模块展示" />
                 </Form.Item>
 
-                {/* 1. 产品标签配置 */}
                 <Form.List name="tags">
                     {(fields, { add, remove }) => (
                         <div style={{ marginBottom: 24 }}>
-                            <label style={{ display: 'block', marginBottom: 8, fontWeight: 'bold' }}>产品标签 (如: 非药物, 草本安神)</label>
+                            <label style={{ display: 'block', marginBottom: 8, fontWeight: 'bold' }}>产品标签</label>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                                 {fields.map(({ key, name, ...restField }) => (
                                     <Space key={key} align="baseline">
-                                        <Form.Item {...restField} name={name} rules={[{ required: true, message: '必填' }]} noStyle>
+                                        <Form.Item {...restField} name={name} rules={[{ required: true }]} noStyle>
                                             <Input placeholder="标签" style={{ width: '100px' }} />
                                         </Form.Item>
                                         <MinusCircleOutlined onClick={() => remove(name)} />
@@ -149,14 +146,13 @@ export const MallItemEdit = () => {
                     )}
                 </Form.List>
 
-                {/* 2. 产品核心亮点配置 */}
                 <Form.List name="highlights">
                     {(fields, { add, remove }) => (
                         <div style={{ marginBottom: 24 }}>
-                            <label style={{ display: 'block', marginBottom: 8, fontWeight: 'bold' }}>产品核心亮点 (逐条展示)</label>
+                            <label style={{ display: 'block', marginBottom: 8, fontWeight: 'bold' }}>产品核心亮点</label>
                             {fields.map(({ key, name, ...restField }) => (
                                 <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                                    <Form.Item {...restField} name={name} rules={[{ required: true, message: '必填' }]} noStyle>
+                                    <Form.Item {...restField} name={name} rules={[{ required: true }]} noStyle>
                                         <Input placeholder="输入亮点内容" style={{ width: '400px' }} />
                                     </Form.Item>
                                     <MinusCircleOutlined onClick={() => remove(name)} />
@@ -168,7 +164,7 @@ export const MallItemEdit = () => {
                 </Form.List>
 
                 <Form.Item label="建议用法" name="usage" rules={[{ required: true }]}>
-                    <Input placeholder="如: 睡前 30 分钟使用或熏香" />
+                    <Input />
                 </Form.Item>
 
                 <Form.Item label="上架状态" name="status">

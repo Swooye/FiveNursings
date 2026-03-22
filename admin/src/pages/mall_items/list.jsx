@@ -1,10 +1,12 @@
 import React from "react";
 import { List, useTable, EditButton, ShowButton, DeleteButton, TextField } from "@refinedev/antd";
-import { Table, Space, Image, Switch, message } from "antd";
+import { Table, Space, Image, Switch } from "antd";
 import { useUpdate } from "@refinedev/core";
 
 export const MallItemList = () => {
-    const { tableProps } = useTable();
+    const { tableProps } = useTable({
+        syncWithLocation: true,
+    });
     const { mutate } = useUpdate();
 
     const handleStatusChange = (id, checked) => {
@@ -54,13 +56,17 @@ export const MallItemList = () => {
                 />
                 <Table.Column 
                     title="操作"
-                    render={(_, record) => (
-                        <Space>
-                            <EditButton hideText size="small" recordItemId={record.id} />
-                            <ShowButton hideText size="small" recordItemId={record.id} />
-                            <DeleteButton hideText size="small" recordItemId={record.id} />
-                        </Space>
-                    )}
+                    render={(_, record) => {
+                        // 强制获取字符串 ID
+                        const stringId = record.id?.toString() || record._id?.toString();
+                        return (
+                            <Space>
+                                <EditButton hideText size="small" recordItemId={stringId} />
+                                <ShowButton hideText size="small" recordItemId={stringId} />
+                                <DeleteButton hideText size="small" recordItemId={stringId} />
+                            </Space>
+                        );
+                    }}
                 />
             </Table>
         </List>
