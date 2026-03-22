@@ -2,14 +2,9 @@ import React, { useState, useEffect } from "react";
 import { Edit, useForm } from "@refinedev/antd";
 import { Form, Input, InputNumber, Select, Radio, Upload, Space, Button, message } from "antd";
 import { PlusOutlined, MinusCircleOutlined } from "@ant-design/icons";
-import { useParams } from "react-router-dom";
 
 export const MallItemEdit = () => {
-    const { id: urlId } = useParams(); // 从路径中精准获取 ID
-    const [form] = Form.useForm();
     const { formProps, saveButtonProps, queryResult } = useForm({
-        form: form,
-        id: urlId, // 显式传递 ID 避免 [object Object]
         redirect: "list"
     });
 
@@ -18,8 +13,6 @@ export const MallItemEdit = () => {
     useEffect(() => {
         const item = queryResult?.data?.data;
         if (item) {
-            console.log("Loading item data for ID:", urlId, item);
-            
             const url = item.imageUrl || item.image;
             if (url) {
                 setFileList([{
@@ -29,15 +22,11 @@ export const MallItemEdit = () => {
                     url: url,
                 }]);
             }
-            
-            form.setFieldsValue({
-                ...item,
-                imageUrl: url,
-                tags: item.tags || [],
-                highlights: item.highlights || []
-            });
+            // 只要数据加载成功，Refine 会自动将数据填充到 formProps.form 中。
+            // 但我们需要手动处理图片字段
+            formProps.form?.setFieldsValue({ imageUrl: url });
         }
-    }, [queryResult?.data?.data, form, urlId]);
+    }, [queryResult?.data?.data, formProps.form]);
 
     const handleUpload = async (options) => {
         const { file, onSuccess, onError } = options;
@@ -51,7 +40,7 @@ export const MallItemEdit = () => {
             });
             const data = await res.json();
             onSuccess(data);
-            form.setFieldsValue({ imageUrl: data.url });
+            formProps.form.setFieldsValue({ imageUrl: data.url });
             setFileList([{ uid: '-1', name: file.name, status: 'done', url: data.url }]);
             message.success("上传成功");
         } catch (err) {
@@ -62,7 +51,7 @@ export const MallItemEdit = () => {
 
     return (
         <Edit saveButtonProps={saveButtonProps}>
-            <Form {...formProps} form={form} layout="vertical">
+            <Form {...formProps} layout="vertical">
                 <Form.Item label="商品名称" name="name" rules={[{ required: true }]}>
                     <Input />
                 </Form.Item>
@@ -109,7 +98,7 @@ export const MallItemEdit = () => {
                         fileList={fileList}
                         maxCount={1}
                         onRemove={() => {
-                            form.setFieldsValue({ imageUrl: "" });
+                            formProps.form.setFieldsValue({ imageUrl: "" });
                             setFileList([]);
                         }}
                     >

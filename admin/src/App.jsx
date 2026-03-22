@@ -28,12 +28,7 @@ import { AdminList } from "./pages/admins/list";
 
 import "@refinedev/antd/dist/reset.css";
 
-// 动态识别环境：开发环境用代理，生产环境用 Firebase URL
-// 注意：在 refine 中，dataProvider 的 URL 不需要手动加 /api 前缀，如果配置了 proxy
-// refine 的 simple-rest dataProvider 会自动处理请求。
-// 如果是本地开发，且 vite 配置了 proxy /api -> http://localhost:3002
-// 那么 API_URL 应该设置为 "/api" 
-const API_URL = import.meta.env.DEV ? "/api" : "https://api-u46fik5vcq-uc.a.run.app";
+const API_URL = import.meta.env.DEV ? "/api" : "https://api-u46fik5vcq-uc.a.run.app/api";
 
 const authProvider = {
   login: async ({ email, password }) => {
@@ -66,19 +61,8 @@ const authProvider = {
   onError: async (error) => { console.error(error); return { error }; },
 };
 
-// 自定义标题组件
 const CustomTitle = ({ collapsed }) => (
-  <div style={{ 
-    height: "64px", 
-    display: "flex", 
-    alignItems: "center", 
-    justifyContent: "center",
-    fontWeight: "bold",
-    fontSize: collapsed ? "14px" : "18px",
-    color: "#1890ff",
-    overflow: "hidden",
-    whiteSpace: "nowrap"
-  }}>
+  <div style={{ height: "64px", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold", fontSize: collapsed ? "14px" : "18px", color: "#1890ff", overflow: "hidden", whiteSpace: "nowrap" }}>
     {collapsed ? "康养家" : "康养家管理后台"}
   </div>
 );
