@@ -1,11 +1,19 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { SKU, PatientProfile } from '../types';
-import { ShoppingCart, Star, Crown, ChevronRight, Heart } from 'lucide-react';
+import { ShoppingCart, Star, Crown, Search, Plus, Heart, X, Flame } from 'lucide-react';
 import ProductDetail from './ProductDetail';
 
-// 动态识别环境
 const API_URL = import.meta.env.DEV ? "" : "https://api-u46fik5vcq-uc.a.run.app";
+
+const CATEGORIES = [
+  { id: 'all', label: '全部' },
+  { id: 'diet', label: '饮食调理' },
+  { id: 'exercise', label: '康复运动' },
+  { id: 'sleep', label: '助眠修复' },
+  { id: 'mental', label: '心理舒缓' },
+  { id: 'function', label: '机能增强' },
+];
 
 interface MarketplaceProps {
   cartCount: number;
@@ -17,10 +25,12 @@ interface MarketplaceProps {
 }
 
 const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddToCart, profile, favorites = [], onToggleFavorite }) => {
-  const [selectedSKU, setSelectedSKU] = useState<SKU | null>(null);
   const [viewingProduct, setViewingProduct] = useState<SKU | null>(null);
   const [skus, setSkus] = useState<SKU[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState('all');
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -56,12 +66,14 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
     fetchProducts();
   }, []);
 
-  const handleOpenDetail = (sku: SKU) => setViewingProduct(sku);
-  
-  const handleStartPurchase = (sku: SKU) => {
-    setSelectedSKU(sku);
-    setViewingProduct(null);
-  };
+  const filteredSkus = useMemo(() => {
+    return skus.filter(sku => {
+        const matchesSearch = sku.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                             sku.reason.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesCategory = activeCategory === 'all' || sku.nursingType === activeCategory;
+        return matchesSearch && matchesCategory;
+    });
+  }, [skus, searchQuery, activeCategory]);
 
   const isFavorited = (skuId: string) => favorites.some(f => f.id === skuId);
 
@@ -74,14 +86,15 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
   }
 
   return (
-    <div className="p-5 space-y-8 pb-32 animate-in fade-in duration-500 relative transition-colors duration-300">
+    <div className="p-5 space-y-6 pb-32 animate-in fade-in duration-500 relative transition-colors duration-300">
+      {/* Fixed Cart Button */}
       <button 
         onClick={onOpenCart}
-        className="fixed bottom-24 right-6 w-16 h-16 bg-slate-800 dark:bg-emerald-600 text-white rounded-full shadow-2xl flex items-center justify-center z-[55] active:scale-90 transition-transform hover:bg-slate-700 dark:hover:bg-emerald-500 border border-slate-700 dark:border-transparent"
+        className="fixed bottom-24 right-6 w-14 h-14 bg-slate-900 dark:bg-emerald-600 text-white rounded-full shadow-2xl flex items-center justify-center z-[55] active:scale-90 transition-transform border border-white/10"
       >
-        <ShoppingCart size={24} />
+        <ShoppingCart size={22} />
         {cartCount > 0 && (
-          <div className="absolute -top-1 -right-1 bg-emerald-500 dark:bg-slate-900 text-white text-[10px] font-black min-w-[20px] h-5 rounded-full px-1.5 flex items-center justify-center border-2 border-white dark:border-emerald-600">
+          <div className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-black min-w-[18px] h-4.5 rounded-full px-1 flex items-center justify-center border-2 border-white dark:border-slate-900">
             {cartCount}
           </div>
         )}
@@ -94,109 +107,124 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
           isFavorited={isFavorited(viewingProduct.id)}
           onToggleFavorite={onToggleFavorite}
           onBack={() => setViewingProduct(null)} 
-          onPurchase={handleStartPurchase} 
+          onPurchase={(s) => { onAddToCart(s, 1); setViewingProduct(null); }} 
           onAddToCart={onAddToCart}
         />
       )}
 
-      <div className={`rounded-[36px] p-8 text-white relative overflow-hidden shadow-xl border group active:scale-[0.98] transition-all ${profile.isVIP ? 'bg-gradient-to-br from-amber-500 to-amber-700 border-amber-400' : 'bg-slate-800 dark:bg-slate-900 border-slate-700'}`}>
-        <div className="relative z-10">
-          <div className="flex items-center space-x-2 mb-4">
-             <div className={`w-2 h-2 rounded-full animate-pulse ${profile.isVIP ? 'bg-white' : 'bg-emerald-400'}`}></div>
-             <div className="text-[10px] font-black uppercase tracking-[0.2em]">{profile.isVIP ? 'VIP Member Privilege' : 'Limited Benefit'}</div>
-          </div>
-          <h2 className="text-3xl font-black mb-2 tracking-tight">{profile.isVIP ? '您的专属 7 折优惠' : '康养好物 7 折起'}</h2>
-          <p className={`${profile.isVIP ? 'text-amber-100' : 'text-slate-400'} text-sm mb-7 font-bold leading-relaxed max-w-[80%]`}>由林主任专业团队严选，降低您的信息与选择成本。</p>
-          {!profile.isVIP && (
-             <button className="bg-white text-slate-900 px-8 py-3.5 rounded-2xl font-black text-sm hover:bg-slate-100 active:scale-95 transition-all shadow-lg flex items-center space-x-2">
-                <span>开通会员立享折扣</span>
-                <ChevronRight size={16} />
-             </button>
-          )}
+      {/* 1. Search Bar */}
+      <div className="relative group">
+        <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-emerald-500 transition-colors">
+            <Search size={18} />
         </div>
-        <div className="absolute top-0 right-0 w-48 h-48 bg-white/10 rounded-full blur-[60px] -mr-16 -mt-16"></div>
-        {profile.isVIP && <Crown className="absolute right-8 top-12 text-white/10 w-24 h-24" />}
+        <input 
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="搜索康复好物、营养包..."
+            className="w-full bg-white dark:bg-slate-900 border-none rounded-2xl py-4 pl-12 pr-12 shadow-sm focus:ring-2 focus:ring-emerald-500/20 text-sm font-bold text-slate-700 dark:text-white placeholder:text-slate-400"
+        />
+        {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-4 flex items-center text-slate-300 hover:text-slate-500">
+                <X size={16} />
+            </button>
+        )}
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
-        <div className="flex justify-between items-end px-2">
-          <div>
-            <h3 className="text-lg font-black text-slate-800 dark:text-slate-100 tracking-tight">智能推荐方案</h3>
-            <p className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mt-0.5">Endorsed By Expert Team</p>
+      {/* 2. Category Filter */}
+      <div className="flex space-x-3 overflow-x-auto no-scrollbar py-2 -mx-5 px-5">
+        {CATEGORIES.map(cat => (
+            <button
+                key={cat.id}
+                onClick={() => setActiveCategory(cat.id)}
+                className={`whitespace-nowrap px-6 py-3 rounded-xl text-xs font-black transition-all ${
+                    activeCategory === cat.id 
+                    ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-500/20' 
+                    : 'bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-100 dark:border-slate-800'
+                }`}
+            >
+                {cat.label}
+            </button>
+        ))}
+      </div>
+
+      {/* 3. Promo Banner */}
+      <div className="bg-slate-800 dark:bg-slate-900 rounded-[32px] p-7 text-white relative overflow-hidden shadow-xl border border-slate-700">
+        <div className="relative z-10">
+          <div className="flex items-center space-x-2 mb-3">
+             <Flame size={14} className="text-amber-400 fill-amber-400" />
+             <span className="text-[10px] font-black uppercase tracking-widest text-slate-300">新人专享福利</span>
           </div>
+          <h2 className="text-3xl font-black mb-2 tracking-tighter">首单立减 ¥50</h2>
+          <p className="text-slate-400 text-xs font-bold leading-relaxed max-w-[65%]">由林主任专家团队背书，严选专业康复级产品</p>
         </div>
-        
-        {skus.map(sku => (
+        <div className="absolute right-6 bottom-6 w-14 h-14 bg-white/10 rounded-2xl flex items-center justify-center backdrop-blur-md border border-white/10 active:scale-95 transition-transform">
+            <Plus size={24} className="text-white" />
+        </div>
+        <div className="absolute top-0 right-0 w-40 h-40 bg-emerald-500/10 rounded-full blur-[50px] -mr-16 -mt-16"></div>
+      </div>
+
+      {/* 4. Product Grid (2 columns) */}
+      <div className="grid grid-cols-2 gap-4">
+        {filteredSkus.map(sku => (
           <div 
             key={sku.id} 
             onClick={() => handleOpenDetail(sku)}
-            className="bg-white dark:bg-slate-900 rounded-[40px] overflow-hidden shadow-sm border border-slate-100 dark:border-slate-800 group transition-all duration-500 hover:shadow-xl cursor-pointer"
+            className="bg-white dark:bg-slate-900 rounded-[32px] overflow-hidden shadow-sm border border-slate-50 dark:border-slate-800 flex flex-col active:scale-[0.98] transition-all group"
           >
-            <div className="relative h-64 overflow-hidden">
-              <img src={sku.image} alt={sku.name} className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" />
+            {/* Image Area */}
+            <div className="relative aspect-square overflow-hidden">
+              <img src={sku.image} alt={sku.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+              <div className="absolute top-3 left-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-2 py-1 rounded-lg border border-white/20 shadow-sm flex items-center space-x-1">
+                <Star size={10} className="text-amber-500 fill-amber-500" />
+                <span className="text-[10px] font-black text-slate-800 dark:text-white">4.9</span>
+              </div>
               {sku.isMemberOnly && (
-                <div className="absolute top-5 left-5 bg-amber-500 text-slate-900 px-3 py-1 rounded-xl text-[9px] font-black flex items-center space-x-1 uppercase tracking-widest shadow-lg">
-                  <Crown size={12} />
-                  <span>会员专供</span>
-                </div>
+                 <div className="absolute top-3 right-3 bg-amber-500 text-slate-900 p-1.5 rounded-lg shadow-lg">
+                    <Crown size={12} fill="currentColor" />
+                 </div>
               )}
-              <div className="absolute top-5 right-5 z-20">
+            </div>
+            
+            {/* Info Area */}
+            <div className="p-4 flex-1 flex flex-col">
+              <h3 className="font-black text-sm text-slate-800 dark:text-slate-100 leading-tight mb-2 line-clamp-2 min-h-[2.5rem]">
+                {sku.name}
+              </h3>
+              <p className="text-[10px] text-slate-400 font-bold line-clamp-1 italic mb-4 opacity-70">
+                “{sku.reason}”
+              </p>
+              
+              <div className="mt-auto flex items-end justify-between">
+                <div>
+                  <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tracking-tighter">
+                    ¥{sku.price}
+                  </div>
+                  <div className="text-[9px] text-slate-400 font-bold mt-0.5">包邮免运费</div>
+                </div>
                 <button 
                   onClick={(e) => {
                     e.stopPropagation();
-                    onToggleFavorite?.(sku);
+                    onAddToCart(sku, 1);
                   }}
-                  className={`p-2.5 rounded-2xl backdrop-blur-md transition-all active:scale-90 ${isFavorited(sku.id) ? 'bg-rose-500 text-white shadow-lg' : 'bg-white/90 dark:bg-slate-900/90 text-rose-500 shadow-lg'}`}
+                  className="w-10 h-10 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400 hover:bg-emerald-500 hover:text-white active:scale-90 transition-all border border-slate-100 dark:border-slate-700"
                 >
-                  <Heart size={20} fill={isFavorited(sku.id) ? "currentColor" : "none"} />
+                  <Plus size={20} />
                 </button>
-              </div>
-            </div>
-            
-            <div className="p-7">
-              <div className="flex justify-between items-start mb-3">
-                <h3 className="font-black text-xl text-slate-800 dark:text-slate-100 tracking-tight">{sku.name}</h3>
-                <div className="flex items-center text-amber-500 text-xs font-black bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1.5 rounded-xl border border-amber-100 dark:border-amber-800/50">
-                  <Star size={14} fill="currentColor" className="mr-1" />
-                  <span>4.9</span>
-                </div>
-              </div>
-              <p className="text-slate-500 dark:text-slate-400 text-[13px] leading-relaxed mb-6 font-bold italic line-clamp-2">
-                “{sku.reason}”
-              </p>
-              <div className="flex justify-between items-center pt-6 border-t border-slate-50 dark:border-slate-800">
-                <div className="flex flex-col">
-                  <div className="flex items-center space-x-1.5 mb-1">
-                    <div className="bg-amber-500 text-slate-900 p-0.5 rounded-md">
-                       <Crown size={10} fill="currentColor" />
-                    </div>
-                    <span className="text-base font-black text-amber-600 dark:text-amber-500 tracking-tighter">
-                      ¥{sku.memberPrice}
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center space-x-2">
-                    <span className="text-3xl font-black text-slate-800 dark:text-slate-100 tracking-tighter">
-                      ¥{sku.price}
-                    </span>
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">标准售价</span>
-                  </div>
-                </div>
-                <div className={`px-9 py-4 rounded-[22px] font-black text-sm shadow-xl transition-all flex items-center space-x-2 active:scale-95 ${profile.isVIP ? 'bg-amber-500 text-slate-950 shadow-amber-500/20' : 'bg-emerald-600 text-white shadow-emerald-500/20'} `}>
-                  <ShoppingCart size={18} />
-                  <span>了解详情</span>
-                </div>
               </div>
             </div>
           </div>
         ))}
-        
-        {skus.length === 0 && (
-          <div className="text-center py-20 text-slate-400 font-bold">
-            暂无上架商品，敬请期待...
-          </div>
-        )}
       </div>
+      
+      {filteredSkus.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+          <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-300">
+             <Search size={32} />
+          </div>
+          <p className="text-slate-400 font-bold text-sm">未能找到相关商品</p>
+        </div>
+      )}
     </div>
   );
 };
