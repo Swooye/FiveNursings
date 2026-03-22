@@ -4,6 +4,9 @@ import { SKU, PatientProfile } from '../types';
 import { ShoppingCart, Star, Crown, ChevronRight, Heart } from 'lucide-react';
 import ProductDetail from './ProductDetail';
 
+// 动态识别环境
+const API_URL = import.meta.env.DEV ? "" : "https://api-u46fik5vcq-uc.a.run.app";
+
 interface MarketplaceProps {
   cartCount: number;
   onOpenCart: () => void;
@@ -22,17 +25,17 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const response = await fetch('/api/mall_items');
+        const response = await fetch(`${API_URL}/api/mall_items`);
         const data = await response.json();
         
         const onSaleProducts = data
           .filter((item: any) => item.status === 'on_sale')
           .map((item: any) => ({
-            id: item.id,
+            id: item.id || item._id,
             name: item.name,
             price: item.price,
             memberPrice: item.memberPrice || Math.round(item.price * 0.7),
-            image: item.imageUrl || 'https://via.placeholder.com/400?text=康养好物',
+            image: item.imageUrl || item.image || 'https://via.placeholder.com/400?text=康养好物',
             reason: item.reason || '专家推荐，康复必备',
             nursingType: item.nursingType || 'diet',
             isMemberOnly: item.isMemberOnly || false,
@@ -179,7 +182,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
                     <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">标准售价</span>
                   </div>
                 </div>
-                <div className={`px-9 py-4 rounded-[22px] font-black text-sm shadow-xl transition-all flex items-center space-x-2 active:scale-95 ${profile.isVIP ? 'bg-amber-500 text-slate-950 shadow-amber-500/20' : 'bg-emerald-600 text-white shadow-emerald-500/20'}`}>
+                <div className={`px-9 py-4 rounded-[22px] font-black text-sm shadow-xl transition-all flex items-center space-x-2 active:scale-95 ${profile.isVIP ? 'bg-amber-500 text-slate-950 shadow-amber-500/20' : 'bg-emerald-600 text-white shadow-emerald-500/20'} `}>
                   <ShoppingCart size={18} />
                   <span>了解详情</span>
                 </div>
