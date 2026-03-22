@@ -3,12 +3,18 @@ import { List, useTable, EditButton, ShowButton, DeleteButton } from "@refinedev
 import { Table, Space, Tag } from "antd";
 
 export const AdminList = () => {
-    const { tableProps } = useTable();
+    const { tableProps } = useTable({
+        syncWithLocation: true,
+    });
 
     return (
         <List>
             <Table {...tableProps} rowKey="id">
-                <Table.Column dataIndex="id" title="ID" />
+                <Table.Column 
+                    dataIndex="id" 
+                    title="ID" 
+                    render={(value) => <span>{value?.toString()}</span>}
+                />
                 <Table.Column dataIndex="username" title="用户名" />
                 <Table.Column dataIndex="email" title="邮箱" />
                 <Table.Column 

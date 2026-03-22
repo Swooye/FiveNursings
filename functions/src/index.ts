@@ -11,108 +11,85 @@ const BASE_URI = "mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net
 const AUTH_PARAMS = "?retryWrites=true&w=majority";
 const PROD_PROJECT_ID = "fivenursings-73917017-a0dfd";
 
-// --- 显式模型定义 ---
-const userSchema = new mongoose.Schema({
-    firebaseUid: { type: String, index: true },
-    phoneNumber: String,
-    nickname: String,
-    name: String,
-    height: Number,
-    weight: Number,
-    isProfileComplete: Boolean,
-    scores: {
-        diet: { type: Number, default: 0 },
-        exercise: { type: Number, default: 0 },
-        sleep: { type: Number, default: 0 },
-        mental: { type: Number, default: 0 },
-        function: { type: Number, default: 0 }
-    }
-}, { strict: false, collection: 'users', timestamps: true });
-
-const chatSchema = new mongoose.Schema({
-    userId: { type: String, required: true, index: true },
-    role: { type: String, required: true },
-    text: { type: String, required: true },
-    timestamp: { type: Date, default: Date.now },
-    isRead: { type: Boolean, default: true },
-    type: { type: String, default: 'chat' }
-}, { strict: false, collection: 'chatmessages' });
-
-const adminSchema = new mongoose.Schema({
-    email: { type: String, required: true, unique: true },
-    password: { type: String, required: true }
-}, { strict: false, collection: 'admins' });
-
-const User = mongoose.models.User || mongoose.model('User', userSchema);
-const ChatMessage = mongoose.models.ChatMessage || mongoose.model('ChatMessage', chatSchema);
-const Admin = mongoose.models.Admin || mongoose.model('Admin', adminSchema);
-const Protocol = mongoose.models.Protocol || mongoose.model('Protocol', new mongoose.Schema({}, { strict: false }), 'protocols');
-const MallItem = mongoose.models.MallItem || mongoose.model('MallItem', new mongoose.Schema({}, { strict: false }), 'mall_items');
+// --- 模型定义 ---
+const User = mongoose.models.User || mongoose.model('User', new mongoose.Schema({}, { strict: false, collection: 'users' }));
+const ChatMessage = mongoose.models.ChatMessage || mongoose.model('ChatMessage', new mongoose.Schema({}, { strict: false, collection: 'chatmessages' }));
+const Admin = mongoose.models.Admin || mongoose.model('Admin', new mongoose.Schema({}, { strict: false, collection: 'admins' }));
+const Protocol = mongoose.models.Protocol || mongoose.model('Protocol', new mongoose.Schema({}, { strict: false, collection: 'protocols' }));
+const MallItem = mongoose.models.MallItem || mongoose.model('MallItem', new mongoose.Schema({}, { strict: false, collection: 'mall_items' }));
 
 let isConnected = false;
-let dbNameGlobal = "";
+let dbName = "";
 
 const connectDb = async () => {
     if (isConnected && mongoose.connection.readyState === 1) return;
     try {
-        const projectId = admin.app().options.projectId || "";
-        dbNameGlobal = (projectId === PROD_PROJECT_ID) ? "fivenursing_pro" : "fivenursing_dev";
-        await mongoose.connect(`${BASE_URI}${dbNameGlobal}${AUTH_PARAMS}`);
+        const config = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : {};
+        const projectId = config.projectId || admin.app().options.projectId || "";
+        dbName = (projectId === PROD_PROJECT_ID) ? "fivenursing_pro" : "fivenursing_dev";
+        await mongoose.connect(`${BASE_URI}${dbName}${AUTH_PARAMS}`);
         isConnected = true;
-    } catch (err) { console.error(err); throw err; }
+    } catch (err) { throw err; }
 };
 
 const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json());
 
+// --- 终极格式化：解决 ID [object Object] ---
 const format = (doc: any) => { 
     if (!doc) return null; 
-    let obj = doc.toObject ? doc.toObject({ getters: true }) : doc; 
-    const sanitize = (v: any): any => {
+    // 1. 先转换为普通对象
+    const obj = doc.toObject ? doc.toObject({ getters: true, versionKey: false }) : doc; 
+    
+    // 2. 强制处理 ID
+    const idStr = obj._id ? obj._id.toString() : (obj.id ? obj.id.toString() : null);
+    
+    // 3. 定义内部清洗逻辑
+    const sanitizeValue = (v: any): any => {
         if (typeof v === 'string') return v.replace(/[, ]+$/, '').trim();
-        if (v && typeof v === 'object' && !Array.isArray(v)) {
-            const c: any = {};
-            for (const k in v) c[k] = sanitize(v[k]);
-            return c;
+        if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)) {
+            const cleaned: any = {};
+            for (const key in v) cleaned[key] = sanitizeValue(v[key]);
+            return cleaned;
         }
         return v;
     };
-    const cleaned = sanitize(obj);
-    return { ...cleaned, id: cleaned._id ? cleaned._id.toString() : null }; 
+
+    const result = sanitizeValue(obj);
+    result.id = idStr;
+    result._id = idStr;
+    return result; 
 };
 
 app.use(async (req, res, next) => {
-    try { await connectDb(); next(); } catch (err: any) { res.status(500).json({ error: "DB Connect Failed" }); }
+    try { await connectDb(); next(); } catch (e) { res.status(500).json({ error: "DB Connect Failed" }); }
 });
 
 const apiRouter = express.Router();
 
-// 1. Admin Login
-apiRouter.post('/login', async (req, res) => {
+// 管理后台登录
+apiRouter.post('/login', async (req: any, res: any) => {
     const { email, password } = req.body;
     try {
         const adminUser = await Admin.findOne({ $or: [{ email }, { username: email }] } as any);
         if (adminUser && (await bcrypt.compare(password, (adminUser as any).password))) {
             res.json({ user: format(adminUser) });
-        } else {
-            res.status(401).json({ message: 'Invalid credentials' });
-        }
+        } else { res.status(401).json({ message: 'Invalid credentials' }); }
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// 2. User Sync
-apiRouter.post('/users/sync', async (req, res) => {
+// 用户同步
+apiRouter.post('/users/sync', async (req: any, res: any) => {
     const { firebaseUid, phoneNumber } = req.body;
-    if (!firebaseUid) return res.status(400).json({ error: "No UID" });
     try {
         const uid = firebaseUid.trim();
-        const phoneSuffix = phoneNumber ? phoneNumber.replace(/\D/g, '').slice(-11) : "";
+        const suffix = phoneNumber ? phoneNumber.replace(/\D/g, '').slice(-11) : "";
         let user = await User.findOne({ 
             $or: [
                 { firebaseUid: uid },
                 { firebaseUid: new RegExp('^' + uid) },
-                { phoneNumber: new RegExp(phoneSuffix + '([, ]*|$)') }
+                { phoneNumber: new RegExp(suffix + '$') }
             ]
         } as any);
 
@@ -122,57 +99,69 @@ apiRouter.post('/users/sync', async (req, res) => {
             return res.json(format(user));
         }
         user = await User.create({ firebaseUid: uid, phoneNumber, nickname: '新用户', isProfileComplete: false });
-        return res.json(format(user));
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+        res.json(format(user));
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// 3. REST Resources
-const resources = ['users', 'admins', 'mall_items', 'protocols'];
-resources.forEach(r => {
-    const M: any = r === 'users' ? User : (r === 'admins' ? Admin : (r === 'mall_items' ? MallItem : Protocol));
+// 通用资源管理
+const MODEL_MAP: Record<string, any> = {
+    users: User,
+    admins: Admin,
+    mall_items: MallItem,
+    protocols: Protocol
+};
+
+Object.keys(MODEL_MAP).forEach(resourceName => {
+    const Model = MODEL_MAP[resourceName];
     
-    apiRouter.get(`/${r}`, async (req, res) => {
+    apiRouter.get(`/${resourceName}`, async (req: any, res: any) => {
         try {
-            const data = await M.find().sort({ createdAt: -1 });
+            const data = await Model.find().sort({ createdAt: -1 });
             res.setHeader('X-Total-Count', data.length);
             res.setHeader('Access-Control-Expose-Headers', 'X-Total-Count');
             res.json(data.map(format));
         } catch (e: any) { res.status(500).json({ error: e.message }); }
     });
 
-    apiRouter.get(`/${r}/:id`, async (req, res) => {
+    apiRouter.get(`/${resourceName}/:id`, async (req: any, res: any) => {
         try {
-            const data = await M.findById(req.params.id);
+            const data = await Model.findById(req.params.id);
+            res.json(format(data));
+        } catch (e: any) { res.status(500).json({ error: "Record not found" }); }
+    });
+
+    apiRouter.patch(`/${resourceName}/:id`, async (req: any, res: any) => {
+        try {
+            const data = await Model.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true });
             res.json(format(data));
         } catch (e: any) { res.status(500).json({ error: e.message }); }
     });
 
-    apiRouter.patch(`/${r}/:id`, async (req, res) => {
+    apiRouter.delete(`/${resourceName}/:id`, async (req: any, res: any) => {
         try {
-            const data = await M.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true });
-            res.json(format(data));
+            await Model.findByIdAndDelete(req.params.id);
+            res.json({ success: true });
         } catch (e: any) { res.status(500).json({ error: e.message }); }
     });
 });
 
-// 4. Messages
-apiRouter.get('/messages/:userId', async (req, res) => {
+// 消息接口
+apiRouter.get('/messages/:userId', async (req: any, res: any) => {
     try {
-        const data = await ChatMessage.find({ userId: new RegExp('^' + req.params.userId.trim()) } as any).sort({ timestamp: 1 });
+        const data = await ChatMessage.find({ userId: req.params.userId } as any).sort({ timestamp: 1 });
         res.json(data.map(format));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-apiRouter.post('/messages', async (req, res) => {
+apiRouter.post('/messages', async (req: any, res: any) => {
     try {
         const msg = await ChatMessage.create({ ...req.body, timestamp: new Date() });
         res.json(format(msg));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-apiRouter.get('/debug-info', async (req, res) => {
-    const count = await User.countDocuments({});
-    res.json({ status: "PRO_ALL_RESTORED_V7", db: dbNameGlobal, count });
+apiRouter.get('/debug-info', async (req: any, res: any) => {
+    res.json({ status: "FINAL_STABLE_V8", db: dbName });
 });
 
 app.use('/api', apiRouter);
@@ -180,5 +169,5 @@ app.use('/', apiRouter);
 
 export const api = onRequest({ region: "us-central1" }, app);
 
-export const getAIChatResponse = onCall({ region: "us-central1", secrets: ["OPENROUTER_API_KEY"] }, async () => { return { data: { reply: "OK" } }; });
+export const getAIChatResponse = onCall({ region: "us-central1", secrets: ["OPENROUTER_API_KEY"] }, async (request) => { return { data: { reply: "OK" } }; });
 export const generateHealthReport = onCall({ region: "us-central1", secrets: ["OPENROUTER_API_KEY"] }, async (request) => { return { data: { report: "OK" } }; });
