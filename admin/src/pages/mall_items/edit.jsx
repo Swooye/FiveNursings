@@ -4,14 +4,22 @@ import { Form, Input, InputNumber, Select, Radio, Upload, Space, Button, message
 import { PlusOutlined, MinusCircleOutlined } from "@ant-design/icons";
 
 export const MallItemEdit = () => {
-    const { formProps, saveButtonProps, queryResult } = useForm();
+    // 使用 AntD 官方推荐的 useForm 获取实例，以确保 setFieldsValue 可控
+    const [form] = Form.useForm();
+    const { formProps, saveButtonProps, queryResult } = useForm({
+        form: form,
+        redirect: "list"
+    });
+
     const [fileList, setFileList] = useState([]);
 
-    // 修复回显逻辑：确保 queryResult 里的数据正确注入表单
+    // 深度监听数据返回，一旦 queryResult 有值，立即注入 Form
     useEffect(() => {
         const item = queryResult?.data?.data;
         if (item) {
-            // 1. 设置文件列表（图片回显）
+            console.log("Echoing item data:", item);
+            
+            // 1. 处理图片回显
             const url = item.imageUrl || item.image;
             if (url) {
                 setFileList([{
@@ -22,13 +30,16 @@ export const MallItemEdit = () => {
                 }]);
             }
             
-            // 2. 强制同步表单数据 (处理嵌套和特殊字段)
-            formProps.form?.setFieldsValue({
+            // 2. 强制设置所有字段值
+            form.setFieldsValue({
                 ...item,
-                imageUrl: url
+                imageUrl: url,
+                // 确保数组字段即使在后端缺失时也初始化为空数组，防止 Form.List 崩溃
+                tags: item.tags || [],
+                highlights: item.highlights || []
             });
         }
-    }, [queryResult?.data?.data, formProps.form]);
+    }, [queryResult?.data?.data, form]);
 
     const handleUpload = async (options) => {
         const { file, onSuccess, onError } = options;
@@ -42,7 +53,7 @@ export const MallItemEdit = () => {
             });
             const data = await res.json();
             onSuccess(data);
-            formProps.form.setFieldsValue({ imageUrl: data.url });
+            form.setFieldsValue({ imageUrl: data.url });
             setFileList([{ uid: '-1', name: file.name, status: 'done', url: data.url }]);
             message.success("上传成功");
         } catch (err) {
@@ -53,7 +64,7 @@ export const MallItemEdit = () => {
 
     return (
         <Edit saveButtonProps={saveButtonProps}>
-            <Form {...formProps} layout="vertical">
+            <Form {...formProps} form={form} layout="vertical">
                 <Form.Item label="商品名称" name="name" rules={[{ required: true }]}>
                     <Input />
                 </Form.Item>
@@ -100,7 +111,7 @@ export const MallItemEdit = () => {
                         fileList={fileList}
                         maxCount={1}
                         onRemove={() => {
-                            formProps.form.setFieldsValue({ imageUrl: "" });
+                            form.setFieldsValue({ imageUrl: "" });
                             setFileList([]);
                         }}
                     >
