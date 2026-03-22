@@ -1,0 +1,64 @@
+import { onRequest } from "firebase-functions/v2/https";
+import * as admin from "firebase-admin";
+import mongoose from "mongoose";
+import express from 'express';
+import cors from 'cors';
+
+admin.initializeApp();
+
+const BASE_URI = "mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net/";
+const AUTH_PARAMS = "?retryWrites=true&w=majority";
+
+const userSchema = new mongoose.Schema({
+    firebaseUid: { type: String, index: true },
+    nickname: String
+}, { strict: false, collection: 'users' });
+
+const User = mongoose.models.User || mongoose.model('User', userSchema);
+
+const app = express();
+app.use(cors({ origin: true }));
+app.use(express.json());
+
+const connectDb = async () => {
+    try {
+        const projectId = admin.app().options.projectId || "";
+        const dbName = (projectId === "fivenursings-73917017-a0dfd") ? "fivenursing_pro" : "fivenursing_dev";
+        await mongoose.connect(`${BASE_URI}${dbName}${AUTH_PARAMS}`);
+        console.log("DB_OK_" + dbName);
+    } catch (err) { console.error(err); }
+};
+
+app.use(async (req, res, next) => {
+    await connectDb();
+    next();
+});
+
+app.get('/debug-info', async (req, res) => {
+    const count = await User.countDocuments({});
+    res.json({ status: "ok", count });
+});
+
+app.post('/users/sync', async (req, res) => {
+    const { firebaseUid, phoneNumber } = req.body;
+    try {
+        const uid = firebaseUid.trim();
+        const phone = phoneNumber ? phoneNumber.replace(/\D/g, '').slice(-11) : "";
+        let user = await User.findOne({ 
+            $or: [
+                { firebaseUid: uid },
+                { firebaseUid: new RegExp('^' + uid) },
+                { phoneNumber: new RegExp(phone + '$') }
+            ]
+        });
+        if (user) {
+            user.firebaseUid = uid;
+            await user.save();
+            return res.json(user);
+        }
+        user = await User.create({ firebaseUid: uid, phoneNumber, nickname: '新用户' });
+        res.json(user);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+export const api = onRequest({ region: "us-central1" }, app);
