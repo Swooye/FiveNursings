@@ -108,6 +108,7 @@ const App = () => {
               {
                 name: "admins",
                 list: "/admins",
+                edit: "/admins/edit/:id", // 补全管理员编辑路由
                 meta: { label: "管理员管理" },
               },
             ]}
@@ -143,6 +144,8 @@ const App = () => {
                 </Route>
                 <Route path="/admins">
                   <Route index element={<AdminList />} />
+                  {/* 显式映射 Edit 页面，由于暂无专用页面，复用基础逻辑 */}
+                  <Route path="edit/:id" element={<ErrorComponent />} /> 
                 </Route>
               </Route>
               <Route
