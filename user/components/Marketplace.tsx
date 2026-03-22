@@ -86,7 +86,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
   }
 
   return (
-    <div className="p-5 space-y-6 pb-32 animate-in fade-in duration-500 relative transition-colors duration-300">
+    <div className="p-5 space-y-6 pb-32 animate-in fade-in duration-500 relative transition-colors duration-300 overflow-x-hidden">
       {/* Fixed Cart Button */}
       <button 
         onClick={onOpenCart}
@@ -215,6 +215,22 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
             </div>
           </div>
         ))}
+      </div>
+
+      {/* 5. Endorsement Section (New) */}
+      <div className="pt-8 pb-12 px-2">
+        <div className="bg-slate-50 dark:bg-white/5 rounded-[32px] p-8 border border-slate-100 dark:border-white/5 text-center relative overflow-hidden group">
+            <div className="flex items-center justify-center space-x-4 mb-4">
+                <div className="h-[1px] w-8 bg-slate-200 dark:bg-white/10" />
+                <span className="text-[10px] font-black text-slate-300 dark:text-slate-500 uppercase tracking-[0.3em]">
+                    Five-Nursings Premium Selection
+                </span>
+                <div className="h-[1px] w-8 bg-slate-200 dark:bg-white/10" />
+            </div>
+            <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-bold italic group-hover:text-emerald-500/70 transition-colors">
+                所有商品均由林主任专家团队严格筛选，确保符合肿瘤康复安全标准。
+            </p>
+        </div>
       </div>
       
       {filteredSkus.length === 0 && (

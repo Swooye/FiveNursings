@@ -7,17 +7,28 @@ export const MallItemEdit = () => {
     const { formProps, saveButtonProps, queryResult } = useForm();
     const [fileList, setFileList] = useState([]);
 
+    // 修复回显逻辑：确保 queryResult 里的数据正确注入表单
     useEffect(() => {
-        const url = queryResult?.data?.data?.imageUrl;
-        if (url) {
-            setFileList([{
-                uid: '-1',
-                name: 'image.png',
-                status: 'done',
-                url: url,
-            }]);
+        const item = queryResult?.data?.data;
+        if (item) {
+            // 1. 设置文件列表（图片回显）
+            const url = item.imageUrl || item.image;
+            if (url) {
+                setFileList([{
+                    uid: '-1',
+                    name: 'image.png',
+                    status: 'done',
+                    url: url,
+                }]);
+            }
+            
+            // 2. 强制同步表单数据 (处理嵌套和特殊字段)
+            formProps.form?.setFieldsValue({
+                ...item,
+                imageUrl: url
+            });
         }
-    }, [queryResult?.data?.data]);
+    }, [queryResult?.data?.data, formProps.form]);
 
     const handleUpload = async (options) => {
         const { file, onSuccess, onError } = options;
