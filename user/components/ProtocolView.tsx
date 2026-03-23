@@ -15,11 +15,11 @@ const ProtocolView: React.FC<ProtocolViewProps> = ({ onBack, initialTab = 'servi
   const [protocols, setProtocols] = useState({
     service: {
       title: '服务协议',
-      content: `正在加载协议内容...`
+      content: `暂未获取到协议内容。`
     },
     privacy: {
       title: '隐私政策',
-      content: `正在加载隐私条款...`
+      content: `暂未获取到隐私政策。`
     }
   });
 
@@ -27,24 +27,29 @@ const ProtocolView: React.FC<ProtocolViewProps> = ({ onBack, initialTab = 'servi
       const fetchProtocols = async () => {
           setLoading(true);
           try {
-              // 统一使用 /api 前缀以匹配后端云函数路由
-              const endpoint = `${API_URL}/api/protocols`;
-              const response = await fetch(endpoint);
+              // 尝试获取全量协议列表
+              const response = await fetch(`${API_URL}/api/protocols`);
               if (response.ok) {
-                  const data = await response.json();
-                  const list = Array.isArray(data) ? data : (data.data || []);
+                  const rawData = await response.json();
+                  const list = Array.isArray(rawData) ? rawData : (rawData.data || []);
                   
-                  // 根据 key 匹配 (service_agreement / privacy_policy)
+                  // 匹配 key
                   const service = list.find((p: any) => p.key === 'service_agreement');
                   const privacy = list.find((p: any) => p.key === 'privacy_policy');
                   
-                  setProtocols(prev => ({
-                      service: service ? { title: '服务协议', content: service.content } : prev.service,
-                      privacy: privacy ? { title: '隐私政策', content: privacy.content } : prev.privacy
-                  }));
+                  setProtocols({
+                      service: { 
+                          title: service?.title || '服务协议', 
+                          content: service?.content || '欢迎使用康养家服务协议。' 
+                      },
+                      privacy: { 
+                          title: privacy?.title || '隐私政策', 
+                          content: privacy?.content || '我们非常重视您的个人信息保护。' 
+                      }
+                  });
               }
           } catch (e) {
-              console.error("Failed to fetch protocols:", e);
+              console.error("Fetch Protocols Error:", e);
           } finally {
               setLoading(false);
           }
@@ -77,30 +82,20 @@ const ProtocolView: React.FC<ProtocolViewProps> = ({ onBack, initialTab = 'servi
                 : 'bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-800'
               }`}
             >
-              {protocols[tab].title}
+              {tab === 'service' ? '服务协议' : '隐私政策'}
             </button>
           ))}
         </div>
 
         <div className="bg-white dark:bg-slate-900 rounded-[32px] p-8 shadow-sm border border-slate-100 dark:border-slate-800 flex-1">
           <div className="flex items-center space-x-2 mb-6">
-            {activeTab === 'service' ? (
-              <FileText size={18} className="text-emerald-500" />
-            ) : (
-              <ShieldCheck size={18} className="text-emerald-500" />
-            )}
+            <FileText size={18} className="text-emerald-500" />
             <span className="text-xs font-black text-slate-800 dark:text-slate-100 uppercase tracking-widest">
-              {protocols[activeTab].title}详情
+              {activeTab === 'service' ? '服务协议' : '隐私政策'}正文
             </span>
           </div>
           <div className="space-y-6 whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
-            {loading ? "正在同步最新协议..." : protocols[activeTab].content}
-          </div>
-          
-          <div className="mt-12 pt-8 border-t border-slate-50 dark:border-slate-800 text-center">
-            <p className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.3em]">
-              Five-Nursings Protection Policy
-            </p>
+            {loading ? "正在同步云端内容..." : protocols[activeTab].content}
           </div>
         </div>
       </main>

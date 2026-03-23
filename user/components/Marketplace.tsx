@@ -87,18 +87,22 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
 
   return (
     <div className="p-5 space-y-6 pb-32 animate-in fade-in duration-500 relative transition-colors duration-300 overflow-x-hidden">
-      {/* 修正后的购物车按钮：使用 absolute 确保在 max-w-md 容器内定位 */}
-      <button 
-        onClick={onOpenCart}
-        className="absolute bottom-24 right-5 w-14 h-14 bg-slate-900 dark:bg-emerald-600 text-white rounded-full shadow-2xl flex items-center justify-center z-[55] active:scale-90 transition-transform border border-white/10"
-      >
-        <ShoppingCart size={22} />
-        {cartCount > 0 && (
-          <div className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-black min-w-[18px] h-4.5 rounded-full px-1 flex items-center justify-center border-2 border-white dark:border-slate-900">
-            {cartCount}
-          </div>
-        )}
-      </button>
+      {/* 修正后的购物车按钮：放在一个 fixed 容器中，该容器与主内容对齐 */}
+      <div className="fixed bottom-24 left-1/2 -translate-x-1/2 w-full max-w-md pointer-events-none z-[55] px-6">
+        <div className="relative w-full h-full">
+            <button 
+                onClick={onOpenCart}
+                className="absolute right-0 bottom-0 w-14 h-14 bg-slate-900 dark:bg-emerald-600 text-white rounded-full shadow-2xl flex items-center justify-center pointer-events-auto active:scale-90 transition-transform border border-white/10"
+            >
+                <ShoppingCart size={22} />
+                {cartCount > 0 && (
+                <div className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-black min-w-[18px] h-4.5 rounded-full px-1 flex items-center justify-center border-2 border-white dark:border-slate-900">
+                    {cartCount}
+                </div>
+                )}
+            </button>
+        </div>
+      </div>
 
       {viewingProduct && (
         <ProductDetail 
@@ -120,7 +124,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="搜索康复好物、营养包..."
-            className="w-full bg-white dark:bg-slate-900 border-none rounded-2xl py-4 pl-12 pr-4 shadow-sm text-sm font-bold"
+            className="w-full bg-white dark:bg-slate-900 border-none rounded-2xl py-4 pl-12 pr-4 shadow-sm text-sm font-bold text-slate-700 dark:text-white"
         />
       </div>
 
