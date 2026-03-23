@@ -86,7 +86,7 @@ const Home: React.FC<HomeProps> = ({ profile, unreadCount, onUpdateProfile, onSe
         </button>
       )}
 
-      {/* Daily Report Trigger Section */}
+      {/* [RESTORED] Daily Report Trigger Section */}
       <button 
         onClick={onStartReport}
         className="w-full bg-slate-800 dark:bg-slate-900 rounded-[36px] p-7 shadow-xl shadow-slate-200/50 dark:shadow-none relative overflow-hidden group active:scale-95 transition-all border border-slate-700 dark:border-slate-800"
@@ -107,7 +107,7 @@ const Home: React.FC<HomeProps> = ({ profile, unreadCount, onUpdateProfile, onSe
         <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-[80px] -mr-20 -mt-20"></div>
       </button>
 
-      {/* Main Stats Card - Radar Chart Section */}
+      {/* Main Stats Card - Radar Chart Section with Extra Large Fonts */}
       <div className="bg-white dark:bg-slate-900 rounded-[48px] p-8 shadow-sm border border-slate-100 dark:border-slate-800 relative overflow-hidden">
         <div className="flex justify-between items-start mb-6">
           <div className="flex flex-col">
@@ -133,16 +133,7 @@ const Home: React.FC<HomeProps> = ({ profile, unreadCount, onUpdateProfile, onSe
               data={chartData}
               margin={{ top: 20, right: 60, bottom: 20, left: 60 }}
             >
-              {/* 修改 PolarGrid：最外圈使用绿色线条，内部保持淡灰色 */}
-              <PolarGrid 
-                stroke="#f1f5f9" 
-                className="dark:opacity-10" 
-                radialLines={true}
-                polarAngles={[0, 72, 144, 216, 288]}
-              />
-              {/* 自定义最外圈的绿色参考线 */}
-              <circle cx="50%" cy="50%" r="80%" fill="none" stroke="#10b981" strokeWidth="1" strokeDasharray="4 4" opacity="0.3" />
-              
+              <PolarGrid stroke="#f1f5f9" className="dark:opacity-10" />
               <PolarAngleAxis 
                 dataKey="subject" 
                 tick={{ fill: '#334155', fontSize: 16, fontWeight: 900 }} 
@@ -153,7 +144,7 @@ const Home: React.FC<HomeProps> = ({ profile, unreadCount, onUpdateProfile, onSe
         </div>
       </div>
 
-      {/* Metric Cards Grid */}
+      {/* Metric Cards Grid - Extra Large Content */}
       <div className="grid grid-cols-2 gap-5">
         <MetricCard onClick={() => onSelectNursing('exercise')} title="运动调养" score={profile.scores.exercise} label="今日步行 4.2km" icon={NURSING_ICONS.exercise} isHighlighted={updatedCategory === 'exercise'} />
         <MetricCard onClick={() => onSelectNursing('diet')} title="饮食调养" score={profile.scores.diet} label="三餐营养均衡" icon={NURSING_ICONS.diet} isHighlighted={updatedCategory === 'diet'} />
