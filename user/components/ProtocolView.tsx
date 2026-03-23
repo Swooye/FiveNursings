@@ -27,15 +27,15 @@ const ProtocolView: React.FC<ProtocolViewProps> = ({ onBack, initialTab = 'servi
       const fetchProtocols = async () => {
           setLoading(true);
           try {
-              // 尝试获取全量协议列表
-              const response = await fetch(`${API_URL}/api/protocols`);
+              const endpoint = `${API_URL}/api/protocols`;
+              const response = await fetch(endpoint);
               if (response.ok) {
                   const rawData = await response.json();
                   const list = Array.isArray(rawData) ? rawData : (rawData.data || []);
                   
-                  // 匹配 key
-                  const service = list.find((p: any) => p.key === 'service_agreement');
-                  const privacy = list.find((p: any) => p.key === 'privacy_policy');
+                  // 精准匹配逻辑：对应数据库中的 'service' 和 'privacy'
+                  const service = list.find((p: any) => p.key === 'service' || p.key === 'service_agreement');
+                  const privacy = list.find((p: any) => p.key === 'privacy' || p.key === 'privacy_policy');
                   
                   setProtocols({
                       service: { 
@@ -89,13 +89,17 @@ const ProtocolView: React.FC<ProtocolViewProps> = ({ onBack, initialTab = 'servi
 
         <div className="bg-white dark:bg-slate-900 rounded-[32px] p-8 shadow-sm border border-slate-100 dark:border-slate-800 flex-1">
           <div className="flex items-center space-x-2 mb-6">
-            <FileText size={18} className="text-emerald-500" />
+            {activeTab === 'service' ? (
+              <FileText size={18} className="text-emerald-500" />
+            ) : (
+              <ShieldCheck size={18} className="text-emerald-500" />
+            )}
             <span className="text-xs font-black text-slate-800 dark:text-slate-100 uppercase tracking-widest">
-              {activeTab === 'service' ? '服务协议' : '隐私政策'}正文
+              {activeTab === 'service' ? '服务协议' : '隐私政策'}详情
             </span>
           </div>
           <div className="space-y-6 whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
-            {loading ? "正在同步云端内容..." : protocols[activeTab].content}
+            {loading ? "正在同步最新协议..." : protocols[activeTab].content}
           </div>
         </div>
       </main>
