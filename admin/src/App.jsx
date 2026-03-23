@@ -135,40 +135,48 @@ const App = () => {
                 }
               >
                 <Route index element={<NavigateToResource resource="users" />} />
+                
                 <Route path="/users">
                   <Route index element={<UserList />} />
                   <Route path="create" element={<UserCreate />} />
                   <Route path="edit/:id" element={<UserEdit />} />
                   <Route path="show/:id" element={<UserShow />} />
                 </Route>
+
                 <Route path="/plans">
                   <Route index element={<PlanList />} />
                 </Route>
+
                 <Route path="/mall_items">
                   <Route index element={<MallItemList />} />
                   <Route path="create" element={<MallItemCreate />} />
                   <Route path="edit/:id" element={<MallItemEdit />} />
                 </Route>
+
                 <Route path="/protocols">
                   <Route index element={<ProtocolList />} />
                   <Route path="edit/:id" element={<ProtocolEdit />} />
                 </Route>
+
                 <Route path="/admins">
                   <Route index element={<AdminList />} />
                   <Route path="edit/:id" element={<AdminEdit />} />
                 </Route>
+
                 <Route path="/roles">
                   <Route index element={<RoleList />} />
                   <Route path="create" element={<RoleCreate />} />
                   <Route path="edit/:id" element={<RoleEdit />} />
                 </Route>
+
+                <Route path="*" element={<ErrorComponent />} />
               </Route>
+
               <Route
                 element={<Authenticated key="authenticated-auth" fallback={<Outlet />}><NavigateToResource /></Authenticated>}
               >
                 <Route path="/login" element={<AuthPage type="login" title="康养家管理后台" formProps={{ initialValues: { email: "admin@fivenursings.com", password: "123789" } }} />} />
               </Route>
-              <Route path="*" element={<ErrorComponent />} />
             </Routes>
           </Refine>
         </AntdApp>
