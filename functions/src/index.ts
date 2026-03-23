@@ -5,6 +5,7 @@ import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
 
+// Force re-deploy v12
 admin.initializeApp();
 
 const BASE_URI = "mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net/";
@@ -17,6 +18,7 @@ const ChatMessage = mongoose.models.ChatMessage || mongoose.model('ChatMessage',
 const Admin = mongoose.models.Admin || mongoose.model('Admin', new mongoose.Schema({}, { strict: false, collection: 'admins' }));
 const Protocol = mongoose.models.Protocol || mongoose.model('Protocol', new mongoose.Schema({}, { strict: false, collection: 'protocols' }));
 const MallItem = mongoose.models.MallItem || mongoose.model('MallItem', new mongoose.Schema({}, { strict: false, collection: 'mall_items' }));
+const Role = mongoose.models.Role || mongoose.model('Role', new mongoose.Schema({}, { strict: false, collection: 'roles' }));
 
 let isConnected = false;
 let dbName = "";
@@ -36,16 +38,10 @@ const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json());
 
-// --- 终极格式化：解决 ID [object Object] ---
 const format = (doc: any) => { 
     if (!doc) return null; 
-    // 1. 先转换为普通对象
     const obj = doc.toObject ? doc.toObject({ getters: true, versionKey: false }) : doc; 
-    
-    // 2. 强制处理 ID
     const idStr = obj._id ? obj._id.toString() : (obj.id ? obj.id.toString() : null);
-    
-    // 3. 定义内部清洗逻辑
     const sanitizeValue = (v: any): any => {
         if (typeof v === 'string') return v.replace(/[, ]+$/, '').trim();
         if (v && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date)) {
@@ -55,7 +51,6 @@ const format = (doc: any) => {
         }
         return v;
     };
-
     const result = sanitizeValue(obj);
     result.id = idStr;
     result._id = idStr;
@@ -68,7 +63,6 @@ app.use(async (req, res, next) => {
 
 const apiRouter = express.Router();
 
-// 管理后台登录
 apiRouter.post('/login', async (req: any, res: any) => {
     const { email, password } = req.body;
     try {
@@ -79,20 +73,12 @@ apiRouter.post('/login', async (req: any, res: any) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// 用户同步
 apiRouter.post('/users/sync', async (req: any, res: any) => {
     const { firebaseUid, phoneNumber } = req.body;
     try {
         const uid = firebaseUid.trim();
         const suffix = phoneNumber ? phoneNumber.replace(/\D/g, '').slice(-11) : "";
-        let user = await User.findOne({ 
-            $or: [
-                { firebaseUid: uid },
-                { firebaseUid: new RegExp('^' + uid) },
-                { phoneNumber: new RegExp(suffix + '$') }
-            ]
-        } as any);
-
+        let user = await User.findOne({ $or: [{ firebaseUid: uid }, { firebaseUid: new RegExp('^' + uid) }, { phoneNumber: new RegExp(suffix + '$') }] } as any);
         if (user) {
             user.firebaseUid = uid;
             await user.save();
@@ -103,17 +89,24 @@ apiRouter.post('/users/sync', async (req: any, res: any) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// 通用资源管理
 const MODEL_MAP: Record<string, any> = {
     users: User,
     admins: Admin,
     mall_items: MallItem,
-    protocols: Protocol
+    protocols: Protocol,
+    roles: Role
 };
 
 Object.keys(MODEL_MAP).forEach(resourceName => {
     const Model = MODEL_MAP[resourceName];
     
+    apiRouter.post(`/${resourceName}`, async (req: any, res: any) => {
+        try {
+            const data = await Model.create({ ...req.body, createdAt: new Date() });
+            res.json(format(data));
+        } catch (e: any) { res.status(500).json({ error: e.message }); }
+    });
+
     apiRouter.get(`/${resourceName}`, async (req: any, res: any) => {
         try {
             const data = await Model.find().sort({ createdAt: -1 });
@@ -145,7 +138,21 @@ Object.keys(MODEL_MAP).forEach(resourceName => {
     });
 });
 
-// 消息接口
+// Add a new route to get a protocol by key
+apiRouter.get('/protocols/key/:key', async (req, res) => {
+  try {
+    const { key } = req.params;
+    const protocol = await Protocol.findOne({ key });
+    if (protocol) {
+      res.json(format(protocol));
+    } else {
+      res.status(404).json({ message: 'Protocol not found' });
+    }
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 apiRouter.get('/messages/:userId', async (req: any, res: any) => {
     try {
         const data = await ChatMessage.find({ userId: req.params.userId } as any).sort({ timestamp: 1 });
@@ -161,7 +168,7 @@ apiRouter.post('/messages', async (req: any, res: any) => {
 });
 
 apiRouter.get('/debug-info', async (req: any, res: any) => {
-    res.json({ status: "FINAL_STABLE_V8", db: dbName });
+    res.json({ status: "FINAL_STABLE_V12_FORCED_REDEPLOY", db: dbName });
 });
 
 app.use('/api', apiRouter);

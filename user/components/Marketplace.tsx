@@ -41,7 +41,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
         const onSaleProducts = data
           .filter((item: any) => item.status === 'on_sale')
           .map((item: any) => ({
-            id: item.id || item._id, // 确保 ID 映射正确
+            id: item.id || item._id,
             name: item.name,
             price: item.price,
             memberPrice: item.memberPrice || Math.round(item.price * 0.7),
@@ -77,12 +77,6 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
 
   const isFavorited = (skuId: string) => favorites.some(f => f.id === skuId);
 
-  // 修复点击逻辑
-  const handleItemClick = (sku: SKU) => {
-    console.log("Opening detail for:", sku.name);
-    setViewingProduct(sku);
-  };
-
   if (loading) {
     return (
       <div className="p-5 flex justify-center items-center h-64">
@@ -93,7 +87,19 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
 
   return (
     <div className="p-5 space-y-6 pb-32 animate-in fade-in duration-500 relative transition-colors duration-300 overflow-x-hidden">
-      {/* Detail Overlay */}
+      {/* 修正后的购物车按钮：使用 absolute 确保在 max-w-md 容器内定位 */}
+      <button 
+        onClick={onOpenCart}
+        className="absolute bottom-24 right-5 w-14 h-14 bg-slate-900 dark:bg-emerald-600 text-white rounded-full shadow-2xl flex items-center justify-center z-[55] active:scale-90 transition-transform border border-white/10"
+      >
+        <ShoppingCart size={22} />
+        {cartCount > 0 && (
+          <div className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-black min-w-[18px] h-4.5 rounded-full px-1 flex items-center justify-center border-2 border-white dark:border-slate-900">
+            {cartCount}
+          </div>
+        )}
+      </button>
+
       {viewingProduct && (
         <ProductDetail 
           sku={viewingProduct} 
@@ -105,19 +111,6 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
           onAddToCart={onAddToCart}
         />
       )}
-
-      {/* Cart Button */}
-      <button 
-        onClick={onOpenCart}
-        className="fixed bottom-24 right-6 w-14 h-14 bg-slate-900 dark:bg-emerald-600 text-white rounded-full shadow-2xl flex items-center justify-center z-[55] border border-white/10"
-      >
-        <ShoppingCart size={22} />
-        {cartCount > 0 && (
-          <div className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-black min-w-[18px] h-4.5 rounded-full px-1 flex items-center justify-center border-2 border-white dark:border-slate-900">
-            {cartCount}
-          </div>
-        )}
-      </button>
 
       {/* Search Bar */}
       <div className="relative">
@@ -146,30 +139,38 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
         ))}
       </div>
 
-      {/* Product Grid */}
+      {/* Product Grid (2 columns) */}
       <div className="grid grid-cols-2 gap-4">
         {filteredSkus.map(sku => (
           <div 
             key={sku.id} 
-            onClick={() => handleItemClick(sku)}
-            className="bg-white dark:bg-slate-900 rounded-[32px] overflow-hidden shadow-sm border border-slate-50 dark:border-slate-800 flex flex-col active:scale-[0.98] transition-all"
+            onClick={() => setViewingProduct(sku)}
+            className="bg-white dark:bg-slate-900 rounded-[32px] overflow-hidden shadow-sm border border-slate-50 dark:border-slate-800 flex flex-col active:scale-[0.98] transition-all group"
           >
-            <div className="relative aspect-square">
-              <img src={sku.image} alt={sku.name} className="w-full h-full object-cover" />
+            <div className="relative aspect-square overflow-hidden">
+              <img src={sku.image} alt={sku.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
               <div className="absolute top-3 left-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-2 py-1 rounded-lg border border-white/20 shadow-sm flex items-center space-x-1">
                 <Star size={10} className="text-amber-500 fill-amber-500" />
-                <span className="text-[10px] font-black">4.9</span>
+                <span className="text-[10px] font-black text-slate-800 dark:text-white">4.9</span>
               </div>
             </div>
-            <div className="p-4 flex-1 flex flex-col justify-between">
-              <h3 className="font-black text-sm text-slate-800 dark:text-slate-100 leading-tight mb-2 line-clamp-2">{sku.name}</h3>
-              <div className="flex items-end justify-between">
+            
+            <div className="p-4 flex-1 flex flex-col">
+              <h3 className="font-black text-sm text-slate-800 dark:text-slate-100 leading-tight mb-3 line-clamp-2 min-h-[2.5rem]">
+                {sku.name}
+              </h3>
+              
+              <div className="mt-auto flex items-end justify-between">
                 <div>
-                  <div className="text-lg font-black text-emerald-600 dark:text-emerald-400">¥{sku.price}</div>
-                  <div className="text-[9px] text-slate-400 font-bold">包邮免运费</div>
+                  <div className="text-lg font-black text-emerald-600 dark:text-emerald-400 tracking-tighter">
+                    ¥{sku.price}
+                  </div>
+                  <div className="text-[9px] text-slate-400 font-bold mt-0.5">包邮免运费</div>
                 </div>
-                <div className="w-9 h-9 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center border border-slate-100 dark:border-slate-700">
-                  <Plus size={18} className="text-slate-400" />
+                <div 
+                  className="w-9 h-9 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400 active:bg-emerald-500 active:text-white transition-all border border-slate-100 dark:border-slate-700"
+                >
+                  <Plus size={18} />
                 </div>
               </div>
             </div>
@@ -178,11 +179,13 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
       </div>
 
       {/* Endorsement Section */}
-      <div className="pt-8 pb-12">
+      <div className="pt-8 pb-12 px-2">
         <div className="bg-slate-50 dark:bg-white/5 rounded-[32px] p-8 border border-slate-100 dark:border-white/5 text-center">
             <div className="flex items-center justify-center space-x-4 mb-4">
                 <div className="h-[1px] w-8 bg-slate-200 dark:bg-white/10" />
-                <span className="text-[10px] font-black text-slate-300 dark:text-slate-500 uppercase tracking-[0.3em]">Five-Nursings Premium Selection</span>
+                <span className="text-[10px] font-black text-slate-300 dark:text-slate-500 uppercase tracking-[0.3em]">
+                    Five-Nursings Premium Selection
+                </span>
                 <div className="h-[1px] w-8 bg-slate-200 dark:bg-white/10" />
             </div>
             <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed font-bold italic">

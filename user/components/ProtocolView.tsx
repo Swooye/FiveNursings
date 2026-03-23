@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, FileText, ShieldCheck } from 'lucide-react';
 
+const API_URL = import.meta.env.DEV ? "" : "https://api-u46fik5vcq-uc.a.run.app";
+
 interface ProtocolViewProps {
   onBack: () => void;
   initialTab?: 'service' | 'privacy';
@@ -9,37 +11,30 @@ interface ProtocolViewProps {
 
 const ProtocolView: React.FC<ProtocolViewProps> = ({ onBack, initialTab = 'service' }) => {
   const [activeTab, setActiveTab] = useState<'service' | 'privacy'>(initialTab);
+  const [loading, setLoading] = useState(false);
   const [protocols, setProtocols] = useState({
     service: {
       title: '服务协议',
-      content: `欢迎使用康养家康复管理平台。本协议是您与平台之间关于服务使用的法律合约。\n\n1. 服务说明：康养家利用AI技术为肿瘤患者提供康复建议。所有建议仅供参考，不作为医疗诊断依据。\n2. 用户义务：用户需提供真实准确的健康数据，以便AI进行更精准的分析。\n3. 免责声明：康复方案受个体差异影响，用户在执行重大运动或饮食变更前应咨询主治医生。\n4. 账号安全：请妥善保管您的登录信息，避免泄露个人健康隐私。`
+      content: `正在加载协议内容...`
     },
     privacy: {
       title: '隐私政策',
-      content: `保护您的健康数据隐私是我们的首要任务。\n\n1. 数据收集：我们收集您的年龄、病种、阶段、穿戴设备数据及录音日志，用于生成个性化康复建议。\n2. 数据使用：数据仅用于您的康复看板展示及AI模型分析，未经许可不会向第三方泄露。\n3. 存储安全：我们采用行业标准的加密技术存储您的敏感健康档案。\n4. 用户权利：您可以随时在个人中心删除您的健康日志或注销账号。`
+      content: `正在加载隐私条款...`
     }
   });
 
-  // Dynamic API URL determination
-  const getApiUrl = () => {
-    // Check if we are in development mode
-    if (import.meta.env.DEV) {
-      return '/api/protocols';
-    }
-    // Production API URL
-    return 'https://api-u46fik5vcq-uc.a.run.app/protocols';
-  };
-
   useEffect(() => {
       const fetchProtocols = async () => {
+          setLoading(true);
           try {
-              const url = getApiUrl();
-              const response = await fetch(url);
+              // 统一使用 /api 前缀以匹配后端云函数路由
+              const endpoint = `${API_URL}/api/protocols`;
+              const response = await fetch(endpoint);
               if (response.ok) {
                   const data = await response.json();
-                  // The API might return an object with data property if wrapped, or array directly
                   const list = Array.isArray(data) ? data : (data.data || []);
                   
+                  // 根据 key 匹配 (service_agreement / privacy_policy)
                   const service = list.find((p: any) => p.key === 'service_agreement');
                   const privacy = list.find((p: any) => p.key === 'privacy_policy');
                   
@@ -49,13 +44,14 @@ const ProtocolView: React.FC<ProtocolViewProps> = ({ onBack, initialTab = 'servi
                   }));
               }
           } catch (e) {
-              console.error("Failed to fetch protocols", e);
+              console.error("Failed to fetch protocols:", e);
+          } finally {
+              setLoading(false);
           }
       };
       fetchProtocols();
   }, []);
 
-  // Sync state if initialTab changes externally
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
@@ -97,8 +93,8 @@ const ProtocolView: React.FC<ProtocolViewProps> = ({ onBack, initialTab = 'servi
               {protocols[activeTab].title}详情
             </span>
           </div>
-          <div className="space-y-6 whitespace-pre-wrap">
-            {protocols[activeTab].content}
+          <div className="space-y-6 whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-400 leading-relaxed font-medium">
+            {loading ? "正在同步最新协议..." : protocols[activeTab].content}
           </div>
           
           <div className="mt-12 pt-8 border-t border-slate-50 dark:border-slate-800 text-center">

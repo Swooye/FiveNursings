@@ -25,6 +25,10 @@ import { MallItemEdit } from "./pages/mall_items/edit";
 import { ProtocolList } from "./pages/protocols/list";
 import { ProtocolEdit } from "./pages/protocols/edit";
 import { AdminList } from "./pages/admins/list";
+import { AdminEdit } from "./pages/admins/edit";
+import { RoleList } from "./pages/roles/list";
+import { RoleCreate } from "./pages/roles/create";
+import { RoleEdit } from "./pages/roles/edit";
 
 import "@refinedev/antd/dist/reset.css";
 
@@ -108,9 +112,16 @@ const App = () => {
               {
                 name: "admins",
                 list: "/admins",
-                edit: "/admins/edit/:id", // 补全管理员编辑路由
+                edit: "/admins/edit/:id",
                 meta: { label: "管理员管理" },
               },
+              { 
+                name: "roles", 
+                list: "/roles",
+                create: "/roles/create",
+                edit: "/roles/edit/:id",
+                meta: { label: "角色管理" } 
+              }
             ]}
           >
             <Routes>
@@ -144,8 +155,12 @@ const App = () => {
                 </Route>
                 <Route path="/admins">
                   <Route index element={<AdminList />} />
-                  {/* 显式映射 Edit 页面，由于暂无专用页面，复用基础逻辑 */}
-                  <Route path="edit/:id" element={<ErrorComponent />} /> 
+                  <Route path="edit/:id" element={<AdminEdit />} />
+                </Route>
+                <Route path="/roles">
+                  <Route index element={<RoleList />} />
+                  <Route path="create" element={<RoleCreate />} />
+                  <Route path="edit/:id" element={<RoleEdit />} />
                 </Route>
               </Route>
               <Route
