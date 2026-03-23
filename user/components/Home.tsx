@@ -23,11 +23,11 @@ const Home: React.FC<HomeProps> = ({ profile, unreadCount, onUpdateProfile, onSe
   const [personalizedPlan, setPersonalizedPlan] = useState<PersonalizedPlan | null>(null);
 
   const chartData = [
-    { subject: '饮食调养', A: profile.scores.diet },
-    { subject: '运动调养', A: profile.scores.exercise },
-    { subject: '睡眠调养', A: profile.scores.sleep },
-    { subject: '心理调养', A: profile.scores.mental },
-    { subject: '功能调养', A: profile.scores.function },
+    { subject: '饮食', A: profile.scores.diet },
+    { subject: '运动', A: profile.scores.exercise },
+    { subject: '膏方', A: profile.scores.sleep },
+    { subject: '心理', A: profile.scores.mental },
+    { subject: '功能', A: profile.scores.function },
   ];
 
   const handleSync = async () => {
@@ -86,7 +86,7 @@ const Home: React.FC<HomeProps> = ({ profile, unreadCount, onUpdateProfile, onSe
         </button>
       )}
 
-      {/* [RESTORED] Daily Report Trigger Section */}
+      {/* Daily Report Trigger Section */}
       <button 
         onClick={onStartReport}
         className="w-full bg-slate-800 dark:bg-slate-900 rounded-[36px] p-7 shadow-xl shadow-slate-200/50 dark:shadow-none relative overflow-hidden group active:scale-95 transition-all border border-slate-700 dark:border-slate-800"
@@ -107,13 +107,15 @@ const Home: React.FC<HomeProps> = ({ profile, unreadCount, onUpdateProfile, onSe
         <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-[80px] -mr-20 -mt-20"></div>
       </button>
 
-      {/* Main Stats Card - Radar Chart Section with Extra Large Fonts */}
+      {/* Main Stats Card - Radar Chart Section */}
       <div className="bg-white dark:bg-slate-900 rounded-[48px] p-8 shadow-sm border border-slate-100 dark:border-slate-800 relative overflow-hidden">
         <div className="flex justify-between items-start mb-6">
           <div className="flex flex-col">
-            <span className="text-sm font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-2">综合康复状态指数</span>
+            <span className="text-sm font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-2">核心康复指数</span>
             <div className="flex items-center space-x-3">
-              <span className="text-7xl font-black text-slate-800 dark:text-slate-100 tracking-tighter leading-none">82.4</span>
+              <span className="text-7xl font-black text-slate-800 dark:text-slate-100 tracking-tighter leading-none">
+                  {Math.round((profile.scores.diet + profile.scores.exercise + profile.scores.sleep + profile.scores.mental + profile.scores.function) / 5) || 82.4}
+              </span>
               <div className="flex items-center text-emerald-600 dark:text-emerald-400 text-sm font-black bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5 rounded-full border border-emerald-100/50 dark:border-emerald-800">
                 <TrendingUp size={16} className="mr-1" />+2.1%
               </div>
@@ -136,7 +138,7 @@ const Home: React.FC<HomeProps> = ({ profile, unreadCount, onUpdateProfile, onSe
               <PolarGrid stroke="#f1f5f9" className="dark:opacity-10" />
               <PolarAngleAxis 
                 dataKey="subject" 
-                tick={{ fill: '#334155', fontSize: 16, fontWeight: 900 }} 
+                tick={{ fill: '#94a3b8', fontSize: 16, fontWeight: 700 }} 
               />
               <Radar name="Score" dataKey="A" stroke="#10b981" strokeWidth={5} fill="#10b981" fillOpacity={0.2} />
             </RadarChart>
@@ -144,12 +146,12 @@ const Home: React.FC<HomeProps> = ({ profile, unreadCount, onUpdateProfile, onSe
         </div>
       </div>
 
-      {/* Metric Cards Grid - Extra Large Content */}
+      {/* Metric Cards Grid */}
       <div className="grid grid-cols-2 gap-5">
         <MetricCard onClick={() => onSelectNursing('exercise')} title="运动调养" score={profile.scores.exercise} label="今日步行 4.2km" icon={NURSING_ICONS.exercise} isHighlighted={updatedCategory === 'exercise'} />
         <MetricCard onClick={() => onSelectNursing('diet')} title="饮食调养" score={profile.scores.diet} label="三餐营养均衡" icon={NURSING_ICONS.diet} isHighlighted={updatedCategory === 'diet'} />
         <MetricCard onClick={() => onSelectNursing('mental')} title="心理调养" score={profile.scores.mental} label="情绪波动较低" icon={NURSING_ICONS.mental} isHighlighted={updatedCategory === 'mental'} />
-        <MetricCard onClick={() => onSelectNursing('sleep')} title="睡眠调养" score={profile.scores.sleep} label="平均深度 1.2h" icon={NURSING_ICONS.sleep} isHighlighted={updatedCategory === 'sleep'} />
+        <MetricCard onClick={() => onSelectNursing('sleep')} title="膏方调养" score={profile.scores.sleep} label="中药膏方补给" icon={NURSING_ICONS.sleep} isHighlighted={updatedCategory === 'sleep'} />
         <div className="col-span-2">
             <MetricCard onClick={() => onSelectNursing('function')} title="功能调养" score={profile.scores.function} label="呼吸训练已达标" icon={NURSING_ICONS.function} isHighlighted={updatedCategory === 'function'} horizontal />
         </div>
@@ -178,7 +180,7 @@ const MetricCard: React.FC<{ title: string; score: number; label: string; icon: 
         <div className="flex flex-col flex-1 space-y-3">
             <div className="text-base text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.2em]">{title}</div>
             <div className="flex items-baseline space-x-2">
-                <span className="text-6xl font-black text-slate-800 dark:text-slate-100 tracking-tighter leading-none">{score}</span>
+                <span className="text-7xl font-black text-slate-800 dark:text-slate-100 tracking-tighter leading-none">{score}</span>
                 <ChevronRight size={24} className="text-slate-200 dark:text-slate-700 group-hover:text-emerald-500 group-hover:translate-x-1 transition-all" />
             </div>
             <div className="text-sm text-slate-400 dark:text-slate-500 font-black truncate tracking-tight opacity-90 mt-2">{label}</div>
