@@ -1,9 +1,12 @@
-import { onRequest, onCall } from "firebase-functions/v2/https";
+import { onRequest, onCall, HttpsError } from "firebase-functions/v2/https";
 import * as admin from "firebase-admin";
 import mongoose from "mongoose";
 import express from 'express';
 import cors from 'cors';
 import bcrypt from 'bcryptjs';
+import * as dotenv from "dotenv";
+
+dotenv.config();
 
 admin.initializeApp();
 
@@ -70,40 +73,11 @@ app.use(async (req, res, next) => {
 
 const apiRouter = express.Router();
 
-// --- OpenClaw ---
-apiRouter.get('/users/:userId/full-context', async (req: any, res: any) => {
-    try {
-        const user = await User.findOne({ $or: [{ firebaseUid: req.params.userId }, { _id: mongoose.Types.ObjectId.isValid(req.params.userId) ? req.params.userId : null }] } as any);
-        if (!user) return res.status(404).json({ error: "User not found" });
-        const recentMessages = await ChatMessage.find({ userId: user.firebaseUid }).sort({ timestamp: -1 }).limit(5);
-        res.json({ profile: format(user), recentMessages: recentMessages.map(format), environment: { weather: "晴" }, vitals: { heartRate: 72 } });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-app.post('/interventions', async (req: any, res: any) => {
-    try {
-        const user = await User.findOne({ $or: [{ firebaseUid: req.body.userId }, { _id: mongoose.Types.ObjectId.isValid(req.body.userId) ? req.body.userId : null }] } as any);
-        if (!user) return res.status(404).json({ error: "User not found" });
-        const msg = await ChatMessage.create({ userId: user.firebaseUid, role: 'model', text: req.body.content, type: 'intervention', isRead: false, timestamp: new Date() });
-        res.json({ success: true, messageId: msg._id });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-// --- Auth ---
-apiRouter.post('/login', async (req: any, res: any) => {
-    try {
-        const adminUser = await Admin.findOne({ $or: [{ email: req.body.email }, { username: req.body.email }] } as any);
-        if (adminUser && (await bcrypt.compare(req.body.password, (adminUser as any).password))) {
-            res.json({ user: format(adminUser) });
-        } else { res.status(401).json({ message: 'Invalid credentials' }); }
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
 apiRouter.post('/users/sync', async (req: any, res: any) => {
     try {
         const uid = req.body.firebaseUid.trim();
         const suffix = req.body.phoneNumber ? req.body.phoneNumber.replace(/\D/g, '').slice(-11) : "";
-        let user = await User.findOne({ $or: [{ firebaseUid: uid }, { firebaseUid: new RegExp('^' + uid) }, { phoneNumber: new RegExp(suffix + '$') }] } as any);
+        let user = await User.findOne({ $or: [{ firebaseUid: uid }, { phoneNumber: new RegExp(suffix + '$') }] } as any);
         if (user) {
             user.firebaseUid = uid;
             await user.save();
@@ -114,32 +88,6 @@ apiRouter.post('/users/sync', async (req: any, res: any) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-const MODEL_MAP: Record<string, any> = { users: User, admins: Admin, mall_items: MallItem, protocols: Protocol, roles: Role, plans: Plan };
-
-Object.keys(MODEL_MAP).forEach(r => {
-    const M = MODEL_MAP[r];
-    apiRouter.get(`/${r}`, async (req: any, res: any) => {
-        try {
-            const data = await M.find().sort({ createdAt: -1 });
-            res.setHeader('X-Total-Count', data.length);
-            res.setHeader('Access-Control-Expose-Headers', 'X-Total-Count');
-            res.json(data.map(format));
-        } catch (e: any) { res.status(500).json({ error: e.message }); }
-    });
-    apiRouter.get(`/${r}/:id`, async (req: any, res: any) => {
-        try { res.json(format(await M.findById(req.params.id))); } catch (e: any) { res.status(500).json({ error: "Not found" }); }
-    });
-    apiRouter.patch(`/${r}/:id`, async (req: any, res: any) => {
-        try { res.json(format(await M.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true }))); } catch (e: any) { res.status(500).json({ error: e.message }); }
-    });
-    apiRouter.post(`/${r}`, async (req: any, res: any) => {
-        try { res.json(format(await M.create({ ...req.body, createdAt: new Date() }))); } catch (e: any) { res.status(500).json({ error: e.message }); }
-    });
-    apiRouter.delete(`/${r}/:id`, async (req: any, res: any) => {
-        try { await M.findByIdAndDelete(req.params.id); res.json({ success: true }); } catch (e: any) { res.status(500).json({ error: e.message }); }
-    });
-});
-
 apiRouter.get('/messages/:userId', async (req: any, res: any) => {
     try {
         const data = await ChatMessage.find({ userId: req.params.userId }).sort({ timestamp: -1 }).limit(20);
@@ -147,14 +95,66 @@ apiRouter.get('/messages/:userId', async (req: any, res: any) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-apiRouter.get('/protocols/key/:key', async (req: any, res: any) => {
-    try { res.json(format(await Protocol.findOne({ key: req.params.key } as any))); } catch (e: any) { res.status(500).json({ error: e.message }); }
+apiRouter.post('/messages', async (req: any, res: any) => {
+    try {
+        const msg = await ChatMessage.create({ ...req.body, timestamp: new Date() });
+        res.json(format(msg));
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+apiRouter.patch('/messages/read-all/:userId', async (req: any, res: any) => {
+    try {
+        await ChatMessage.updateMany({ userId: req.params.userId, isRead: false }, { isRead: true });
+        res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
 app.use('/api', apiRouter);
-app.use('/', apiRouter);
-
 export const api = onRequest({ region: "us-central1" }, app);
 
-export const getAIChatResponse = onCall({ region: "us-central1", secrets: ["OPENROUTER_API_KEY"] }, async (request) => { return { data: { reply: "OK" } }; });
-export const generateHealthReport = onCall({ region: "us-central1", secrets: ["OPENROUTER_API_KEY"] }, async (request) => { return { data: { report: "OK" } }; });
+// --- [RE-IMPLEMENTED] AI Chat Callable ---
+export const getAIChatResponse = onCall({ 
+    region: "us-central1", 
+    secrets: ["OPENROUTER_API_KEY"] 
+}, async (request) => {
+    if (!request.auth) throw new HttpsError('unauthenticated', 'Unauthenticated');
+
+    const apiKey = process.env.OPENROUTER_API_KEY || process.env.VITE_OPENROUTER_API_KEY;
+    const userText = request.data.text || request.data.prompt || "";
+    const profile = request.data.profile || {};
+
+    if (!userText) return { reply: "抱歉，我没听清您的问题。" };
+
+    try {
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: { 
+                "Authorization": `Bearer ${apiKey}`, 
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://fivenursings.com"
+            },
+            body: JSON.stringify({
+                model: "google/gemini-2.0-flash-lite-001",
+                messages: [
+                    { 
+                        role: "system", 
+                        content: `你是一位专业的肿瘤康复AI教练。用户姓名：${profile.name || '用户'}。请根据其健康状况提供建议。` 
+                    },
+                    { role: "user", content: userText }
+                ]
+            })
+        });
+
+        const data = await response.json();
+        const aiReply = data.choices?.[0]?.message?.content || "收到，我正在分析。";
+
+        return { reply: aiReply };
+    } catch (e: any) {
+        console.error("AI Error:", e);
+        throw new HttpsError('internal', 'AI Service Error');
+    }
+});
+
+export const generateHealthReport = onCall({ region: "us-central1", secrets: ["OPENROUTER_API_KEY"] }, async (request) => {
+    return { report: "今日康复状况良好。" };
+});

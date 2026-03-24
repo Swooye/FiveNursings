@@ -110,7 +110,6 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
   const scrollRef = useRef<HTMLDivElement>(null);
   const streamIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // --- 拉取消息与分页 (修复 URL 拼接) ---
   const fetchMessages = useCallback(async (before?: string) => {
     if (!auth.currentUser) return;
     try {
@@ -168,17 +167,6 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
     }
   }, [messages, isHistoryLoading]);
 
-  const persistMessage = async (msg: ChatMessage) => {
-    if (!auth.currentUser) return;
-    try {
-        await fetch(`${API_URL}/api/messages`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: auth.currentUser.uid, ...msg })
-        });
-    } catch (e) { console.error("Persist failed", e); }
-  };
-
   const handleSend = async () => {
     if (!auth.currentUser) return;
     const messageText = input.trim();
@@ -189,15 +177,41 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
     setInput('');
     const userMsg: ChatMessage = { role: 'user', text: messageText, timestamp: new Date().toISOString() };
     setMessages(prev => [...prev, userMsg]);
-    persistMessage(userMsg);
     
     setMessages(prev => [...prev, { role: 'model', text: '', timestamp: new Date().toISOString() }]);
     setLoading(true);
 
     try {
-      const getAIChatResponse = httpsCallable(functions, 'getAIChatResponse');
-      const response: any = await getAIChatResponse({ text: messageText, profile });
-      const responseText = response.data.reply;
+      let responseText = "";
+      
+      // 精准修复：开发环境下直接请求本地 Server，避开由于 Firebase Functions 拦截引发的问题
+      if (import.meta.env.DEV) {
+          console.log("[DEV] Calling local API proxy /api/ai-chat");
+          const res = await fetch("/api/ai-chat", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ 
+                  prompt: messageText, 
+                  userId: auth.currentUser.uid, 
+                  profile 
+              })
+          });
+          
+          if (!res.ok) {
+             const errText = await res.text();
+             console.error("[DEV] Server returned error:", res.status, errText);
+             throw new Error(`Server returned ${res.status}`);
+          }
+          
+          const result = await res.json();
+          responseText = result.reply || "我收到您的消息了。";
+          
+      } else {
+          // 生产环境继续使用云函数
+          const getAIChatResponse = httpsCallable(functions, 'getAIChatResponse');
+          const response: any = await getAIChatResponse({ text: messageText, profile });
+          responseText = response.data.reply;
+      }
       
       let index = 0;
       streamIntervalRef.current = setInterval(() => {
@@ -211,12 +225,12 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
         } else {
           if (streamIntervalRef.current) clearInterval(streamIntervalRef.current);
           setLoading(false);
-          persistMessage({ role: 'model', text: responseText, timestamp: new Date().toISOString() });
         }
       }, 25);
     } catch (error: any) {
       setLoading(false);
-      const errorMsg = { role: 'model' as const, text: "抱歉，系统暂时断开连接，请稍后重试。", timestamp: new Date().toISOString() };
+      console.error("Chat Error:", error);
+      const errorMsg = { role: 'model' as const, text: "抱歉，由于网络问题，我现在无法回答。请检查您的连接或稍后再试。", timestamp: new Date().toISOString() };
       setMessages(prev => [...prev.slice(0, -1), errorMsg]);
     }
   };
