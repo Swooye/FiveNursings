@@ -80,7 +80,13 @@ The root directory contains several [.cjs](file:///Users/wayne/Documents/FiveNur
     *   **User**: `npm run user` (from root)
     *   **Admin**: `npm run admin` (from root)
 
-## 6. Architectural Observations
+## 6. Environment Configuration (.env)
+*   **Consolidation**: The project uses a single source of truth at the root [.env](file:///Users/wayne/FiveNursings/.env).
+*   **Symlinks**: `admin/.env` and `user/.env` are symbolic links pointing to the root `.env`.
+*   **Templates**: [.env.example](file:///Users/wayne/FiveNursings/.env.example) is provided for setting up new environments.
+*   **Rule**: Never commit `.env` to Git; it is ignored by [.gitignore](file:///Users/wayne/FiveNursings/.gitignore).
+
+## 7. Architectural Observations
 *   **"God Component" Pattern**: The [user/App.tsx](file:///Users/wayne/Documents/FiveNursings_Forge/user/App.tsx) is a large (25k+) file managing nearly all application states and "routing". while compact, it would benefit from refactoring.
 *   **Refine Framework**: The Admin panel is highly efficient due to its use of the `refinedev` ecosystem.
 *   **Firebase Integration**: Leverages Firebase Auth and Functions while maintaining data in MongoDB Atlas.
