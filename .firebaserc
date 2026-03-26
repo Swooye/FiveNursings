@@ -1,12 +1,12 @@
 {
   "projects": {
-    "default": "fivenursings-22409331-97a3d"
+    "default": "fivenursings-73917017-a0dfd"
   },
   "targets": {
-    "fivenursings-22409331-97a3d": {
+    "fivenursings-73917017-a0dfd": {
       "hosting": {
         "user": [
-          "fivenursings-22409331-97a3d"
+          "fivenursings-73917017-a0dfd"
         ],
         "admin": [
           "fivenursings-admin"
