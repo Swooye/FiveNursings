@@ -19,6 +19,8 @@ const chatSchema = new mongoose.Schema({
     userId: { type: String, index: true },
     role: String,
     text: String,
+    type: { type: String, default: 'chat' },      // 'chat' | 'intervention'
+    category: { type: String },                     // e.g. '饮食养', '运动养'
     timestamp: { type: Date, default: Date.now },
     isRead: { type: Boolean, default: false }
 }, { strict: false, collection: 'chatmessages' });
@@ -50,6 +52,19 @@ const connectDb = async () => {
         await mongoose.connect(`${BASE_URI}${dbName}${AUTH_PARAMS}`);
         isConnected = true;
     } catch (err) { throw err; }
+};
+
+// 简易节气计算（基于月份近似）
+const getSolarTerm = (): string => {
+    const m = new Date().getMonth() + 1;
+    const d = new Date().getDate();
+    const terms: Record<number, [string, string]> = {
+        1: ['小寒', '大寒'], 2: ['立春', '雨水'], 3: ['惊蛰', '春分'],
+        4: ['清明', '谷雨'], 5: ['立夏', '小满'], 6: ['芒种', '夏至'],
+        7: ['小暑', '大暑'], 8: ['立秋', '处暑'], 9: ['白露', '秋分'],
+        10: ['寒露', '霜降'], 11: ['立冬', '小雪'], 12: ['大雪', '冬至']
+    };
+    return d < 16 ? terms[m][0] : terms[m][1];
 };
 
 const app = express();
@@ -139,6 +154,47 @@ Object.keys(MODEL_MAP).forEach(resourceName => {
     });
 });
 
+// 特殊处理单数形式的 /user 及其 ID 兼容性 (支持 MongoDB _id 或 Firebase UID)
+apiRouter.get('/user/:id', async (req: any, res: any) => {
+    try {
+        console.log(`[GET] User lookup for ID/UID: ${req.params.id}`);
+        let user = await (User as any).findById(req.params.id);
+        if (!user) {
+            console.log(`[GET] Not found by ObjectId, trying firebaseUid...`);
+            user = await (User as any).findOne({ firebaseUid: req.params.id } as any);
+        }
+        if (!user) {
+            console.warn(`[GET] User NOT found by either ID or UID: ${req.params.id}`);
+            return res.status(404).json({ error: "User not found" });
+        }
+        console.log(`[GET] User found: ${user._id}`);
+        res.json(format(user));
+    } catch (e: any) { 
+        console.error(`[GET] User lookup error: ${e.message}`);
+        res.status(500).json({ error: e.message }); 
+    }
+});
+
+apiRouter.patch('/user/:id', async (req: any, res: any) => {
+    try {
+        console.log(`[PATCH] User update for ID/UID: ${req.params.id}`);
+        let user = await (User as any).findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true });
+        if (!user) {
+            console.log(`[PATCH] Not found by ObjectId, trying firebaseUid...`);
+            user = await (User as any).findOneAndUpdate({ firebaseUid: req.params.id } as any, { ...req.body, updatedAt: new Date() }, { new: true });
+        }
+        if (!user) {
+            console.warn(`[PATCH] User NOT found for update: ${req.params.id}`);
+            return res.status(404).json({ error: "User not found" });
+        }
+        console.log(`[PATCH] User updated: ${user._id}`);
+        res.json(format(user));
+    } catch (e: any) { 
+        console.error(`[PATCH] User update error: ${e.message}`);
+        res.status(500).json({ error: e.message }); 
+    }
+});
+
 // 消息接口
 apiRouter.post('/login', async (req: any, res: any) => {
     try {
@@ -168,10 +224,128 @@ apiRouter.post('/login', async (req: any, res: any) => {
     }
 });
 
-apiRouter.get('/messages/:userId', async (req: any, res: any) => {
+// --- [核心] 为 OpenClaw 提供的全维上下文接口 ---
+apiRouter.get('/users/:userId/full-context', async (req: any, res: any) => {
+    const { userId } = req.params;
+    console.log(`[OpenClaw] full-context request for userId: ${userId}`);
     try {
-        const data = await ChatMessage.find({ userId: req.params.userId } as any).sort({ timestamp: -1 }).limit(50);
-        res.json(data.map(format).reverse());
+        // 1. 获取用户档案 (支持 firebaseUid 或 _id)
+        let user = await User.findOne({ firebaseUid: userId } as any);
+        if (!user && mongoose.Types.ObjectId.isValid(userId)) {
+            user = await (User as any).findById(userId);
+        }
+        if (!user) {
+            console.warn(`[OpenClaw] full-context: User NOT found for ID: ${userId}`);
+            return res.status(404).json({ error: `User not found in database: ${userId}` });
+        }
+
+        const userObj: any = user;
+
+        // 2. 获取最近 5 条 AI 对话记录
+        const recentMessages = await ChatMessage.find({ userId: userObj.firebaseUid || userId } as any)
+            .sort({ timestamp: -1 })
+            .limit(5);
+
+        // 3. 模拟实时环境数据 (后续接入真实 API)
+        const mockEnvironment = {
+            location: "上海市",
+            time: new Date().toISOString(),
+            solarTerm: getSolarTerm(),
+            weather: "多云转晴",
+            temperature: 22,
+            humidity: "65%",
+            airQuality: "优",
+            altitude: 15
+        };
+
+        // 4. 模拟实时体征数据 (后续接入穿戴设备)
+        const mockVitals = {
+            heartRate: 72,
+            stepsToday: 3420,
+            sleepQuality: "良好",
+            lastBloodPressure: "120/80 mmHg",
+            bodyTemperature: 36.6
+        };
+
+        // 5. 模拟干预计划依从性
+        const mockAdherence = {
+            completionRate: "85%",
+            missedTasks: ["午间情绪冥想"]
+        };
+
+        res.json({
+            profile: format(user),
+            recentMessages: recentMessages.map(format),
+            environment: mockEnvironment,
+            vitals: mockVitals,
+            adherence: mockAdherence,
+            lastMedicalOrder: "术后第二周，保持清淡饮食，轻度步行。"
+        });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// --- OpenClaw 干预推送接口 ---
+apiRouter.post('/interventions', async (req: any, res: any) => {
+    const { userId, content, category, title } = req.body;
+    console.log(`[OpenClaw] intervention request for userId: ${userId}, category: ${category}`);
+    if (!userId || !content) {
+        return res.status(400).json({ error: "userId and content are required" });
+    }
+    try {
+        // 查找用户
+        let user = await User.findOne({ firebaseUid: userId } as any);
+        if (!user && mongoose.Types.ObjectId.isValid(userId)) {
+            user = await (User as any).findById(userId);
+        }
+        if (!user) {
+            console.warn(`[OpenClaw] intervention: User NOT found for ID: ${userId}`);
+            return res.status(404).json({ error: `User not found in database: ${userId}` });
+        }
+
+        const userObj: any = user;
+        const targetUid = userObj.firebaseUid || userId;
+
+        // 写入 ChatMessage（isRead: false 触发红点）
+        const message = await ChatMessage.create({
+            userId: targetUid,
+            role: 'model',
+            text: content,
+            type: 'intervention',
+            category: category || '健康干预',
+            isRead: false,
+            timestamp: new Date()
+        });
+
+        // 尝试 FCM 推送（静默失败）
+        try {
+            await admin.messaging().send({
+                notification: {
+                    title: title || "五养教练的新建议",
+                    body: content.substring(0, 100) + (content.length > 100 ? "..." : "")
+                },
+                data: { type: "intervention", messageId: message._id.toString() },
+                topic: `user_${targetUid}`
+            } as any);
+        } catch (fcmErr) {
+            console.warn("FCM push skipped (no subscribers or topic issue):", fcmErr);
+        }
+
+        res.json({ success: true, messageId: message._id });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 消息接口 — 精确路径必须在参数路由之前
+apiRouter.get('/messages/unread-count/:userId', async (req: any, res: any) => {
+    try {
+        const count = await ChatMessage.countDocuments({ userId: req.params.userId, isRead: false } as any);
+        res.json({ count });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+apiRouter.patch('/messages/read-all/:userId', async (req: any, res: any) => {
+    try {
+        await ChatMessage.updateMany({ userId: req.params.userId, isRead: false } as any, { isRead: true });
+        res.json({ success: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
@@ -184,17 +358,10 @@ apiRouter.post('/messages', async (req: any, res: any) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-apiRouter.get('/messages/unread-count/:userId', async (req: any, res: any) => {
+apiRouter.get('/messages/:userId', async (req: any, res: any) => {
     try {
-        const count = await ChatMessage.countDocuments({ userId: req.params.userId, isRead: false } as any);
-        res.json({ count });
-    } catch (e: any) { res.status(500).json({ error: e.message }); }
-});
-
-apiRouter.patch('/messages/read-all/:userId', async (req: any, res: any) => {
-    try {
-        await ChatMessage.updateMany({ userId: req.params.userId, isRead: false } as any, { isRead: true });
-        res.json({ success: true });
+        const data = await ChatMessage.find({ userId: req.params.userId } as any).sort({ timestamp: -1 }).limit(50);
+        res.json(data.map(format).reverse());
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
@@ -222,10 +389,8 @@ export const getAIChatResponse = onCall({ region: "us-central1", secrets: ["OPEN
     if (!request.auth) throw new HttpsError('unauthenticated', 'Unauthenticated');
     const { message, text, profile, history = [] } = request.data;
     const userMessage = message || text;
-    const apiKey = process.env.OPENROUTER_API_KEY;
-
-    if (!apiKey) return { reply: "AI服务密钥未配置，请联系管理员。" };
-
+    const apiKey = "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";
+    
     try {
         const prompt = `患者情况：${profile.cancerType}, 阶段：${profile.stage}, 五养评分：饮食${profile.scores?.diet || 0}, 运动${profile.scores?.exercise || 0}, 睡眠${profile.scores?.sleep || 0}, 心理${profile.scores?.mental || 0}, 功能${profile.scores?.function || 0}。\n用户提问：${userMessage}`;
         
@@ -234,6 +399,8 @@ export const getAIChatResponse = onCall({ region: "us-central1", secrets: ["OPEN
             headers: {
                 "Authorization": `Bearer ${apiKey}`,
                 "Content-Type": "application/json",
+                "HTTP-Referer": "https://fivenursings-73917017-a0dfd.web.app/",
+                "X-Title": "FiveNursings"
             },
             body: JSON.stringify({
                 model: "google/gemini-2.0-flash-001",
@@ -246,8 +413,13 @@ export const getAIChatResponse = onCall({ region: "us-central1", secrets: ["OPEN
         });
 
         const result = await response.json();
+        if (result.error) {
+            console.error("OpenRouter Error:", result.error);
+            return { reply: `AI服务错误: ${result.error.message || JSON.stringify(result.error)}` };
+        }
         return { reply: result.choices?.[0]?.message?.content || "抱歉，生成失败。" };
     } catch (e: any) {
+        console.error("AI Catch Error:", e);
         return { reply: "AI服务连接失败: " + e.message };
     }
 });
@@ -255,9 +427,7 @@ export const getAIChatResponse = onCall({ region: "us-central1", secrets: ["OPEN
 export const generateHealthReport = onCall({ region: "us-central1", secrets: ["OPENROUTER_API_KEY"] }, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Unauthenticated');
     const { profile } = request.data;
-    const apiKey = process.env.OPENROUTER_API_KEY;
-
-    if (!apiKey) return { report: "AI服务密钥未配置，请在 Firebase 控制台设置 OPENROUTER_API_KEY。" };
+    const apiKey = "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";
 
     try {
         const prompt = `请基于患者档案生成一份【今日康复简报】。
@@ -275,6 +445,8 @@ export const generateHealthReport = onCall({ region: "us-central1", secrets: ["O
             headers: {
                 "Authorization": `Bearer ${apiKey}`,
                 "Content-Type": "application/json",
+                "HTTP-Referer": "https://fivenursings-73917017-a0dfd.web.app/",
+                "X-Title": "FiveNursings"
             },
             body: JSON.stringify({
                 model: "google/gemini-2.0-flash-001",
@@ -286,9 +458,14 @@ export const generateHealthReport = onCall({ region: "us-central1", secrets: ["O
         });
 
         const result = await response.json();
+        if (result.error) {
+            console.error("OpenRouter Health Report Error:", result.error);
+            return { report: `暂时无法生成简报: ${result.error.message || JSON.stringify(result.error)}` };
+        }
         const report = result.choices?.[0]?.message?.content || "暂时无法生成简报，请稍后再试。";
         return { report };
     } catch (e: any) {
+        console.error("Health Report Catch Error:", e);
         return { report: "生成失败: " + e.message };
     }
 });

@@ -127,7 +127,8 @@ const App: React.FC = () => {
         scores: dbUser.scores || prev.scores,
         isProfileComplete: !!dbUser.isProfileComplete,
         isQuestionnaireComplete: !!dbUser.isQuestionnaireComplete,
-        isVIP: !!dbUser.isVIP
+        isVIP: !!dbUser.isVIP,
+        voicePreference: dbUser.voicePreference || prev.voicePreference || 'default'
       }));
     }
   }, [dbUser]);
@@ -218,7 +219,8 @@ const App: React.FC = () => {
         });
         if (response.ok) {
           const updatedUserData = await response.json();
-          setDbUser(updatedUserData.user);
+          // API returns the user object directly (not wrapped in .user)
+          setDbUser(updatedUserData.user || updatedUserData);
           setShowCompleteProfile(false);
         }
       } catch (error) { console.error("Failed to update profile:", error); }

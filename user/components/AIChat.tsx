@@ -165,23 +165,40 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
         return;
       }
 
-      let selectedVoice = null;
-      const voicePref = profile?.voicePreference;
+      let selectedVoice: any = null;
+      const voicePref = profile?.voicePreference || 'default';
 
-      if (voicePref && voicePref !== 'default') {
+      if (voicePref !== 'default') {
+        // First try exact match
         selectedVoice = voices.find(v => v.name === voicePref);
+        
+        // Then try partial match (case insensitive)
+        if (!selectedVoice) {
+          const lowerPref = voicePref.toLowerCase();
+          selectedVoice = voices.find(v => v.name.toLowerCase().includes(lowerPref) || lowerPref.includes(v.name.toLowerCase()));
+        }
       }
 
-      if (!selectedVoice) {
+      // Preferred fallback to Google Mandarin (Chinese Mainland) for natural tone
+      if (!selectedVoice || voicePref === 'default') {
         selectedVoice = voices.find(v => 
           v.name.includes('Google') && 
-          (v.name.includes('普通话') || v.name.includes('Mandarin')) &&
-          (v.lang.includes('zh') || v.lang.includes('CN'))
+          v.name.includes('普通话') && 
+          v.name.includes('大陆')
         );
       }
 
+      // Next fallback to Meijia or any Google Mandarin
       if (!selectedVoice) {
-        selectedVoice = voices.find(v => v.default && v.lang.includes('zh')) || voices.find(v => v.lang.includes('zh'));
+        selectedVoice = voices.find(v => v.name.toLowerCase().includes('meijia')) ||
+                       voices.find(v => v.name.includes('Google') && (v.name.includes('普通话') || v.name.includes('Mandarin')));
+      }
+
+      // Final fallback to any zh-CN voice
+      if (!selectedVoice) {
+        selectedVoice = voices.find(v => v.lang.includes('zh-CN')) || 
+                       voices.find(v => v.lang.includes('zh')) ||
+                       voices[0];
       }
 
       if (selectedVoice) {
@@ -369,7 +386,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
 
     try {
       let responseText = '';
-      if (import.meta.env.DEV) {
+      if ((import.meta as any).env.DEV) {
           try {
               const res = await fetch('/api/get-ai-chat-reply', {
                   method: 'POST',

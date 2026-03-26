@@ -13,7 +13,7 @@ const port = 3002;
 
 // --- 基础配置 ---
 const BASE_URI = "mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net/fivenursing_dev?retryWrites=true&w=majority";
-const OPENROUTER_API_KEY = process.env.VITE_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY || "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";
+const OPENROUTER_API_KEY = "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";
 
 app.use(cors({ 
     origin: '*', 
@@ -46,7 +46,13 @@ const Admin = mongoose.model('Admin', new mongoose.Schema({
 const MallItem = mongoose.model('MallItem', new mongoose.Schema({}, { strict: false }), 'mall_items');
 const Protocol = mongoose.model('Protocol', new mongoose.Schema({}, { strict: false }), 'protocols');
 const ChatMessage = mongoose.model('ChatMessage', new mongoose.Schema({
-    isRead: { type: Boolean, default: false }
+    userId: { type: String, index: true },
+    role: String,
+    text: String,
+    type: { type: String, default: 'chat' },      // 'chat' | 'intervention'
+    category: { type: String },                     // e.g. '饮食养', '运动养'
+    isRead: { type: Boolean, default: false },
+    timestamp: { type: Date, default: Date.now }
 }, { strict: false }), 'chatmessages');
 const Role = mongoose.model('Role', new mongoose.Schema({
     name: { type: String, required: true },
@@ -110,6 +116,27 @@ const createRoutes = (path, Model) => {
   });
 };
 
+app.post('/api/users/sync', async (req, res) => {
+    try {
+        const uid = req.body.firebaseUid.trim();
+        const suffix = req.body.phoneNumber ? req.body.phoneNumber.replace(/\D/g, '').slice(-11) : "";
+        let user = await User.findOne({ $or: [{ firebaseUid: uid }, { phoneNumber: new RegExp(suffix + '$') }] });
+        if (user) {
+            user.firebaseUid = uid;
+            await user.save();
+            return res.json(format(user));
+        }
+        user = await User.create({ 
+            firebaseUid: uid, 
+            phoneNumber: req.body.phoneNumber, 
+            nickname: '新用户', 
+            isProfileComplete: false,
+            createdAt: new Date()
+        });
+        res.json(format(user));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 createRoutes('users', User);
 createRoutes('admins', Admin);
 createRoutes('mall_items', MallItem);
@@ -117,6 +144,25 @@ createRoutes('protocols', Protocol);
 createRoutes('roles', Role);
 createRoutes('chatmessages', ChatMessage);
 createRoutes('plans', Plan);
+
+// 特殊处理单数形式的 /api/user 及其 ID 兼容性 (支持 MongoDB _id 或 Firebase UID)
+app.get('/api/user/:id', async (req, res) => {
+  try {
+      let user = await User.findById(req.params.id);
+      if (!user) user = await User.findOne({ firebaseUid: req.params.id });
+      if (!user) return res.status(404).json({ error: "User not found" });
+      res.json(format(user));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/user/:id', async (req, res) => {
+  try {
+      let user = await User.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true });
+      if (!user) user = await User.findOneAndUpdate({ firebaseUid: req.params.id }, { ...req.body, updatedAt: new Date() }, { new: true });
+      if (!user) return res.status(404).json({ error: "User not found" });
+      res.json(format(user));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // --- 消息接口 ---
 app.post('/api/login', async (req, res) => {
@@ -141,15 +187,111 @@ app.post('/api/login', async (req, res) => {
         } else {
             res.status(401).json({ error: '密码错误' });
         }
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/messages/:userId', async (req, res) => {
+// --- [核心] 为 OpenClaw 提供的全维上下文接口 ---
+const getSolarTerm = () => {
+    const m = new Date().getMonth() + 1;
+    const d = new Date().getDate();
+    const terms = {
+        1: ['小寒', '大寒'], 2: ['立春', '雨水'], 3: ['惊蛰', '春分'],
+        4: ['清明', '谷雨'], 5: ['立夏', '小满'], 6: ['芒种', '夏至'],
+        7: ['小暑', '大暑'], 8: ['立秋', '处暑'], 9: ['白露', '秋分'],
+        10: ['寒露', '霜降'], 11: ['立冬', '小雪'], 12: ['大雪', '冬至']
+    };
+    return d < 16 ? terms[m][0] : terms[m][1];
+};
+
+app.get('/api/users/:userId/full-context', async (req, res) => {
+    const { userId } = req.params;
     try {
-        const data = await ChatMessage.find({ userId: req.params.userId }).sort({ timestamp: 1 });
-        res.json(data.map(format));
+        let user = await User.findOne({ firebaseUid: userId });
+        if (!user && mongoose.Types.ObjectId.isValid(userId)) {
+            user = await User.findById(userId);
+        }
+        if (!user) return res.status(404).json({ error: "User not found" });
+
+        const recentMessages = await ChatMessage.find({ userId: user.firebaseUid || userId })
+            .sort({ timestamp: -1 })
+            .limit(5);
+
+        const mockEnvironment = {
+            location: "上海市",
+            time: new Date().toISOString(),
+            solarTerm: getSolarTerm(),
+            weather: "多云转晴",
+            temperature: 22,
+            humidity: "65%",
+            airQuality: "优",
+            altitude: 15
+        };
+
+        const mockVitals = {
+            heartRate: 72,
+            stepsToday: 3420,
+            sleepQuality: "良好",
+            lastBloodPressure: "120/80 mmHg",
+            bodyTemperature: 36.6
+        };
+
+        const mockAdherence = {
+            completionRate: "85%",
+            missedTasks: ["午间情绪冥想"]
+        };
+
+        res.json({
+            profile: format(user),
+            recentMessages: recentMessages.map(format),
+            environment: mockEnvironment,
+            vitals: mockVitals,
+            adherence: mockAdherence,
+            lastMedicalOrder: "术后第二周，保持清淡饮食，轻度步行。"
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// --- OpenClaw 干预推送接口 ---
+app.post('/api/interventions', async (req, res) => {
+    const { userId, content, category, title } = req.body;
+    if (!userId || !content) {
+        return res.status(400).json({ error: "userId and content are required" });
+    }
+    try {
+        let user = await User.findOne({ firebaseUid: userId });
+        if (!user && mongoose.Types.ObjectId.isValid(userId)) {
+            user = await User.findById(userId);
+        }
+        if (!user) return res.status(404).json({ error: "User not found" });
+
+        const targetUid = user.firebaseUid || userId;
+
+        const message = await ChatMessage.create({
+            userId: targetUid,
+            role: 'model',
+            text: content,
+            type: 'intervention',
+            category: category || '健康干预',
+            isRead: false,
+            timestamp: new Date()
+        });
+
+        res.json({ success: true, messageId: message._id });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 消息接口 — 精确路径必须在参数路由之前
+app.get('/api/messages/unread-count/:userId', async (req, res) => {
+    try {
+        const count = await ChatMessage.countDocuments({ userId: req.params.userId, isRead: false });
+        res.json({ count });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/messages/read-all/:userId', async (req, res) => {
+    try {
+        await ChatMessage.updateMany({ userId: req.params.userId, isRead: false }, { isRead: true });
+        res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -162,17 +304,10 @@ app.post('/api/messages', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/messages/unread-count/:userId', async (req, res) => {
+app.get('/api/messages/:userId', async (req, res) => {
     try {
-        const count = await ChatMessage.countDocuments({ userId: req.params.userId, isRead: false });
-        res.json({ count });
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.patch('/api/messages/read-all/:userId', async (req, res) => {
-    try {
-        await ChatMessage.updateMany({ userId: req.params.userId, isRead: false }, { isRead: true });
-        res.json({ success: true });
+        const data = await ChatMessage.find({ userId: req.params.userId }).sort({ timestamp: 1 });
+        res.json(data.map(format));
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -188,7 +323,7 @@ const SYSTEM_INSTRUCTION = `你是一位专业的肿瘤康复AI教练。基于�
 app.post('/api/get-ai-chat-reply', async (req, res) => {
     const { message, text, profile, history = [] } = req.body;
     const userMessage = message || text;
-    const apiKey = process.env.VITE_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY;
+    const apiKey = OPENROUTER_API_KEY;
 
     if (!apiKey) return res.status(400).json({ error: "API Key not configured" });
 
@@ -197,7 +332,12 @@ app.post('/api/get-ai-chat-reply', async (req, res) => {
     try {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
-            headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+            headers: { 
+                "Authorization": `Bearer ${apiKey}`, 
+                "Content-Type": "application/json",
+                "HTTP-Referer": "http://localhost:3000",
+                "X-Title": "FiveNursings-Local"
+            },
             body: JSON.stringify({
                 model: "google/gemini-2.0-flash-001",
                 messages: [
@@ -209,16 +349,21 @@ app.post('/api/get-ai-chat-reply', async (req, res) => {
             }),
         });
         const data = await response.json();
+        if (data.error) {
+            console.error("Local AI Chat Error:", data.error);
+            return res.json({ reply: `AI服务错误: ${data.error.message || JSON.stringify(data.error)}` });
+        }
         const reply = data.choices?.[0]?.message?.content || "抱歉，生成失败。";
         res.json({ reply });
     } catch (e) {
+        console.error("Local AI Chat Catch:", e);
         res.status(500).json({ error: e.message });
     }
 });
 
 app.post('/api/generate-health-report', async (req, res) => {
     const { profile } = req.body;
-    const apiKey = process.env.VITE_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY;
+    const apiKey = OPENROUTER_API_KEY;
     if (!apiKey) return res.status(400).json({ error: "API Key not configured" });
 
     const prompt = `请基于以下患者档案生成一份【今日康复简报】。
@@ -234,7 +379,12 @@ app.post('/api/generate-health-report', async (req, res) => {
     try {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
-            headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json" },
+            headers: { 
+                "Authorization": `Bearer ${apiKey}`, 
+                "Content-Type": "application/json",
+                "HTTP-Referer": "http://localhost:3000",
+                "X-Title": "FiveNursings-Local"
+            },
             body: JSON.stringify({
                 model: "google/gemini-2.0-flash-001",
                 messages: [
@@ -244,9 +394,14 @@ app.post('/api/generate-health-report', async (req, res) => {
             }),
         });
         const data = await response.json();
+        if (data.error) {
+            console.error("Local health report Error:", data.error);
+            return res.json({ report: `暂时无法生成简报: ${data.error.message || JSON.stringify(data.error)}` });
+        }
         const report = data.choices?.[0]?.message?.content || "暂时无法生成简报，请稍后再试。";
         res.json({ report });
     } catch (e) {
+        console.error("Local health report Catch:", e);
         res.status(500).json({ error: e.message });
     }
 });
