@@ -119,6 +119,33 @@ createRoutes('chatmessages', ChatMessage);
 createRoutes('plans', Plan);
 
 // --- 消息接口 ---
+app.post('/api/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const adminUser = await Admin.findOne({ email });
+        if (!adminUser) return res.status(401).json({ error: '用户不存在' });
+        
+        let isMatch = false;
+        if (adminUser.password === password) {
+            isMatch = true;
+        } else if (password && adminUser.password) {
+            try {
+                isMatch = await bcrypt.compare(password, adminUser.password);
+            } catch (e) {
+                console.error("Bcrypt compare fail:", e);
+            }
+        }
+
+        if (isMatch) {
+            res.json(format(adminUser));
+        } else {
+            res.status(401).json({ error: '密码错误' });
+        }
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.get('/api/messages/:userId', async (req, res) => {
     try {
         const data = await ChatMessage.find({ userId: req.params.userId }).sort({ timestamp: 1 });

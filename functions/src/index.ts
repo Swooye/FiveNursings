@@ -3,7 +3,7 @@ import * as admin from "firebase-admin";
 import mongoose from "mongoose";
 import express from 'express';
 import cors from 'cors';
-// import bcrypt from 'bcryptjs';
+import bcrypt from 'bcryptjs';
 import * as dotenv from "dotenv";
 
 dotenv.config();
@@ -140,6 +140,34 @@ Object.keys(MODEL_MAP).forEach(resourceName => {
 });
 
 // 消息接口
+apiRouter.post('/login', async (req: any, res: any) => {
+    try {
+        const { email, password } = req.body;
+        const adminUser: any = await Admin.findOne({ email } as any);
+        if (!adminUser) return res.status(401).json({ error: '用户不存在' });
+        
+        // 支持明文或 bcrypt 校验
+        let isMatch = false;
+        if (adminUser.password === password) {
+            isMatch = true;
+        } else if (password && adminUser.password) {
+            try {
+                isMatch = await bcrypt.compare(password, adminUser.password);
+            } catch (e) {
+                console.error("Bcrypt compare fail:", e);
+            }
+        }
+
+        if (isMatch) {
+            res.json(format(adminUser));
+        } else {
+            res.status(401).json({ error: '密码错误' });
+        }
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 apiRouter.get('/messages/:userId', async (req: any, res: any) => {
     try {
         const data = await ChatMessage.find({ userId: req.params.userId } as any).sort({ timestamp: -1 }).limit(50);
