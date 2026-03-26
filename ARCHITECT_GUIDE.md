@@ -37,9 +37,12 @@
 
 **核心路由**:
 - `/users/sync` (POST): **关键接口**。用户登录后必须调用，用于同步/创建数据库档案并回显信息。
-- `/users` (GET): 用户列表（Admin 端使用）。
-- `/user/:id` (PATCH): 个人资料更新（双端共享，需注意云端兼容 `/api` 前缀）。
-- `/login` (POST): 管理后台登录（仅限 Admin 集合验证）。
+- `/users/:userId/full-context` (GET): **OpenClaw 专用**。获取用户全维数据（档案、对话、模拟体征等）。
+- `/interventions` (POST): **OpenClaw 专用**。推送干预建议，写入 ChatMessage 并触发红点。
+- `/messages/unread-count/:userId` (GET): 获取未读计数。
+- `/messages/read-all/:userId` (PATCH): 标记所有消息为已读。
+- `/user/:id` (PATCH): 个人资料更新。
+- `/login` (POST): 管理后台登录。
 - `/mall_items` (GET/POST/PATCH): 商城商品管理。
 
 ## 4. 关键开发经验与避坑指南 (必读)
@@ -51,8 +54,10 @@
   - Pro: 使用绝对路径指向云函数 URL。
 
 ### B. 路由与接口陷阱
-- **云函数 404 问题**：Firebase Functions 部署 Express App 时，如果前端请求包含 `/api` 前缀（如 `/api/users`），后端路由必须显式处理该前缀（例如 `app.use('/api', router)`），否则会报 404。
-- **PATCH 接口路径**：为兼容不同调用习惯，建议同时注册 `/user/:id` 和 `/users/:id` 两个路由。
+- **云函数 404 问题**：Firebase Functions 部署 Express App 时，如果前端请求包含 `/api` 前缀（如 `/api/users`），后端路由必须显式处理该前缀（例如 `app.use('/api', router)`）。
+- **路由匹配顺序**：在 Express 中，**精确匹配路由必须在参数路由之前**。
+    - *错误示例*：先把 `/messages/:userId` 注册了，会导致请求 `/messages/unread-count/:userId` 永远无法到达，因为 `unread-count` 会被误认为是一个 `userId`。
+    - *正确做法*：先注册 `/messages/unread-count/...`，再注册 `/messages/:userId`。
 
 ### C. 数据一致性与同步
 - **用户档案同步**：Firebase Auth 仅提供 `uid`。登录后必须立即调用后端 `sync` 接口，通过 `uid` 换取完整的业务数据（昵称、五养评分等）。
@@ -63,3 +68,12 @@
 - **依赖兼容性**：云函数（Functions）对依赖版本敏感。如遇到 TypeScript 类型报错，可在 `tsconfig.json` 中开启 `skipLibCheck: true`。
 - **冷启动**：云函数存在冷启动延迟，首次请求可能较慢，前端需做好 Loading 状态管理。
 - **管理员初始化**：生产环境部署后，数据库是空的。务必在后端代码中加入“自动检测并创建超级管理员”的逻辑，防止部署后无法登录后台。
+
+### E. 环境配置 (Env Vars)
+- **单一真理来源**：项目采用根目录 `.env` 作为唯一配置源。
+- **同步机制**：`admin/.env` 和 `user/.env` 是指向根目录的 **符号链接 (Symbolic Link)**。
+- **最佳实践**：添加新配置时仅修改根目录文件。使用 `.env.example` 维护非敏感的模板供团队参考。
+
+### F. 智能语音 (TTS) 处理
+- **异步音色加载**：不同浏览器的语音包加载是异步的。必须监听 `speechSynthesis.onvoiceschanged` 并在回调中执行音色匹配。
+- **生命周期清理**：在 React 组件销毁 (`useEffect` cleanup) 或页面刷新 (`beforeunload`) 时，务必调用 `speechSynthesis.cancel()`，防止语音在后台重叠播报。

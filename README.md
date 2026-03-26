@@ -1,73 +1,55 @@
-# React + TypeScript + Vite
+# FiveNursings (康养家) —— 肿瘤康复全维管理平台
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+FiveNursings 是一款专为肿瘤患者设计的康复管理平台，基于“五治五养”体系（饮食、运动、睡眠、心理、功能）提供全方位的健康跟踪与 AI 智能干预。
 
-Currently, two official plugins are available:
+## 🚀 快速启动 (本地开发)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### 1. 环境准备
+确保您的计算机已安装 Node.js (v18+) 和 MongoDB。
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 2. 配置环境变量
+项目使用根目录 `.env` 作为唯一真理来源，子项目通过符号链接同步。
+```bash
+cp .env.example .env
+# 编辑 .env 并填入 OpenRouter API Key
+ln -s ../.env admin/.env
+ln -s ../.env user/.env
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 3. 一键启动
+在根目录下执行以下脚本，即可同时启动后端服务器、用户端和管理端：
+```bash
+bash start-dev.sh
 ```
+- **用户端 (User)**: `http://localhost:3000`
+- **管理后台 (Admin)**: `http://localhost:5174`
+- **本地后端 (Server)**: `http://localhost:3002`
+
+## 📂 项目结构
+
+- `/user`: 患者端前端 (React + Vite)
+- `/admin`: 医护管理端前端 (React + Refine)
+- `/server`: 本地开发后端 (Express)
+- `/functions`: 生产环境后端 (Firebase Cloud Functions)
+- `/migrate_data.cjs`: 数据迁移工具脚本
+
+## 🛠 技术栈
+
+- **Frontend**: React, TypeScript, Tailwind CSS, Lucide Icons, Recharts
+- **Backend**: Node.js, Express, Firebase Functions (Node 20)
+- **Database**: MongoDB Atlas (fivenursing_dev / fivenursing_pro)
+- **AI Engine**: OpenRouter (Google Gemini 2.0 Flash)
+- **Intervention**: OpenClaw AI Interventions
+
+## ☁️ 生产部署
+
+项目后端部署在 Firebase Cloud Functions：
+```bash
+cd functions
+npm run build
+firebase deploy --only functions
+```
+
+## 📖 架构文档
+
+更多深入的技术细节、避坑指南和架构设计，请参考 [ARCHITECT_GUIDE.md](file:///Users/wayne/FiveNursings/ARCHITECT_GUIDE.md)。
