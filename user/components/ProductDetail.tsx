@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { SKU, PatientProfile } from '../types';
 import { ArrowLeft, Share2, Star, ShieldCheck, Zap, Heart, ChevronRight, CheckCircle2, ShoppingCart, Plus, Minus, Sparkles, Crown } from 'lucide-react';
+import { getAssetUrl } from '../src/utils/image';
 
 interface ProductDetailProps {
   sku: SKU;
@@ -67,7 +68,7 @@ const ProductDetail: React.FC<ProductDetailProps> = ({ sku, profile, onBack, onP
 
         <div className="px-5 mt-4">
           <div className="relative h-80 rounded-[44px] overflow-hidden shadow-2xl">
-            <img src={sku.image} alt={sku.name} className="w-full h-full object-cover" />
+            <img src={getAssetUrl(sku.image)} alt={sku.name} className="w-full h-full object-cover" />
             <div className="absolute bottom-6 left-6 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/20 shadow-lg">
               <div className="flex items-center space-x-2">
                 <Star size={14} className="text-amber-500" fill="currentColor" />

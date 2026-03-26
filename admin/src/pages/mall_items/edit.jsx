@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Edit, useForm } from "@refinedev/antd";
 import { Form, Input, InputNumber, Select, Radio, Upload, Space, Button, message } from "antd";
 import { PlusOutlined, MinusCircleOutlined } from "@ant-design/icons";
+import { getAssetUrl } from "../../utils/image";
 
 export const MallItemEdit = () => {
     const { formProps, saveButtonProps, queryResult } = useForm({
@@ -19,7 +20,7 @@ export const MallItemEdit = () => {
                     uid: '-1',
                     name: 'image.png',
                     status: 'done',
-                    url: url,
+                    url: getAssetUrl(url),
                 }]);
             }
             // 只要数据加载成功，Refine 会自动将数据填充到 formProps.form 中。

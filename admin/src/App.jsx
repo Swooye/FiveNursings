@@ -25,6 +25,7 @@ import { MallItemEdit } from "./pages/mall_items/edit";
 import { ProtocolList } from "./pages/protocols/list";
 import { ProtocolEdit } from "./pages/protocols/edit";
 import { AdminList } from "./pages/admins/list";
+import { AdminCreate } from "./pages/admins/create";
 import { AdminEdit } from "./pages/admins/edit";
 import { RoleList } from "./pages/roles/list";
 import { RoleCreate } from "./pages/roles/create";
@@ -110,17 +111,18 @@ const App = () => {
                 meta: { label: "协议管理" },
               },
               {
-                name: "admins",
-                list: "/admins",
-                edit: "/admins/edit/:id",
-                meta: { label: "管理员管理" },
-              },
-              { 
-                name: "roles", 
+                name: "roles",
                 list: "/roles",
                 create: "/roles/create",
                 edit: "/roles/edit/:id",
-                meta: { label: "角色管理" } 
+                meta: { label: "角色管理" },
+              },
+              {
+                name: "admins",
+                list: "/admins",
+                create: "/admins/create",
+                edit: "/admins/edit/:id",
+                meta: { label: "管理员管理" },
               }
             ]}
           >
@@ -160,6 +162,7 @@ const App = () => {
 
                 <Route path="/admins">
                   <Route index element={<AdminList />} />
+                  <Route path="create" element={<AdminCreate />} />
                   <Route path="edit/:id" element={<AdminEdit />} />
                 </Route>
 

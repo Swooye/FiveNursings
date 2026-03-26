@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { X, Play, Square, Loader2, Sparkles } from 'lucide-react';
 import { httpsCallable } from 'firebase/functions';
 import { auth, functions } from '../src/firebase';
@@ -20,6 +20,15 @@ const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose,
   const [speechSynthesisError, setSpeechSynthesisError] = useState<string | null>(null);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
+  const stripMarkdown = (text: string) => {
+    return text
+      .replace(/[#*`_~]/g, '') // Remove #, *, `, _, ~
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // Keep link text, remove URL
+      .replace(/>+/g, '') // Remove blockquote
+      .replace(/\n+/g, ' ') // Replace newline with space
+      .trim();
+  };
+
   useEffect(() => {
     const fetchReport = async () => {
       const today = new Date().toLocaleDateString();
@@ -35,30 +44,30 @@ const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose,
       setError(null);
       try {
         let text = "";
-
+        
+        // In development, prefer local Express backend
         if (import.meta.env.DEV) {
-          console.log("[DEV] Fetching health report from local proxy...");
-          const res = await fetch("/api/generateHealthReport", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              profile, 
-              userId: auth.currentUser?.uid || "dev_user" 
-            })
-          });
-          
-          if (!res.ok) {
-            const errText = await res.text();
-            throw new Error(`Server Error ${res.status}: ${errText}`);
+          try {
+            console.log("[DEV] Fetching health report from local proxy...");
+            const res = await fetch("/api/generate-health-report", { // Matches server/index.js
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ profile, userId: auth.currentUser?.uid || "dev_user" })
+            });
+            
+            if (res.ok) {
+              const result = await res.json();
+              text = result.report;
+            }
+          } catch (localErr) {
+            console.warn("Local AI generation failed, falling back to Firebase:", localErr);
           }
-          
-          const result = await res.json();
-          text = result.report;
-        } else {
+        }
+
+        if (!text) {
           const generateHealthReport = httpsCallable(functions, 'generateHealthReport');
           const result = await generateHealthReport({ profile });
           const data = result.data as { report: string };
-          
           if (data && data.report) {
             text = data.report;
           } else {
@@ -80,16 +89,15 @@ const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose,
     fetchReport();
   }, [profile, cache, onUpdateCache]);
 
-  // 准备语音合成器
+  // Voice synthesis effect
   useEffect(() => {
     if (reportText && 'speechSynthesis' in window) {
-      // 停止之前可能正在播放的语音
       window.speechSynthesis.cancel();
       
-      const utterance = new SpeechSynthesisUtterance(reportText);
+      const cleanText = stripMarkdown(reportText);
+      const utterance = new SpeechSynthesisUtterance(cleanText);
       utterance.lang = 'zh-CN';
       
-      // 核心修改：应用偏好音色，如果没有偏好或者设为了 default，尝试寻找 Meijia
       const setVoice = () => {
         const voices = window.speechSynthesis.getVoices();
         let targetVoiceName = profile.voicePreference;
@@ -101,9 +109,16 @@ const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose,
 
         if (targetVoiceName && targetVoiceName !== 'default') {
            const preferredVoice = voices.find(v => v.name === targetVoiceName);
-           if (preferredVoice) {
-               utterance.voice = preferredVoice;
-           }
+           if (preferredVoice) utterance.voice = preferredVoice;
+        }
+        
+        // Final fallback to Google official if still no voice and not mobile
+        if (!utterance.voice) {
+             const googleVoice = voices.find(v => 
+                v.name.includes('Google') && 
+                (v.name.includes('普通话') || v.name.includes('Mandarin'))
+             );
+             if (googleVoice) utterance.voice = googleVoice;
         }
       };
 
@@ -117,7 +132,6 @@ const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose,
       utterance.onerror = (e) => {
           console.error("SpeechSynthesis error:", e);
           setIsPlaying(false);
-          // 某些浏览器(如Chrome)不允许未经用户交互就自动播放
           if (e.error === 'not-allowed') {
               setSpeechSynthesisError("请点击播放按钮");
           } else if (e.error !== 'interrupted') {
@@ -127,7 +141,7 @@ const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose,
 
       utteranceRef.current = utterance;
 
-      // 尝试自动播放（现代浏览器极有可能会拦截，通过 onError 提示用户点击）
+      // Auto-play attempt (often blocked)
       try {
           window.speechSynthesis.speak(utterance);
       } catch (e) {
@@ -147,28 +161,17 @@ const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose,
     if (!('speechSynthesis' in window)) return;
     
     if (isPlaying) {
-      window.speechSynthesis.pause();
+      window.speechSynthesis.cancel(); // Use cancel instead of pause as it's more reliable
       setIsPlaying(false);
     } else {
-      if (window.speechSynthesis.paused) {
-          window.speechSynthesis.resume();
-      } else if (utteranceRef.current) {
-          window.speechSynthesis.cancel(); // 重新开始
+      if (utteranceRef.current) {
+          window.speechSynthesis.cancel();
           window.speechSynthesis.speak(utteranceRef.current);
+          setIsPlaying(true);
+          setSpeechSynthesisError(null);
       }
-      setIsPlaying(true);
-      setSpeechSynthesisError(null); // 清除需要用户点击的提示
     }
   };
-
-  // 组件卸载时停止播放
-  useEffect(() => {
-      return () => {
-          if ('speechSynthesis' in window) {
-              window.speechSynthesis.cancel();
-          }
-      };
-  }, []);
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
@@ -232,7 +235,6 @@ const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose,
                      </div>
                    </div>
                    
-                   {/* Audio Waveform visualization (fake) */}
                    <div className="flex items-end space-x-1 h-6">
                       {[1,2,3,4,5].map(i => (
                         <div key={i} className={`w-1 bg-emerald-400 rounded-full transition-all duration-300 ${isPlaying ? 'animate-pulse' : 'h-1'}`} style={{ height: isPlaying ? `${Math.random() * 100 + 20}%` : '4px', animationDelay: `${i * 0.1}s` }}></div>

@@ -2,6 +2,7 @@ import React from "react";
 import { List, useTable, EditButton, ShowButton, DeleteButton, TextField } from "@refinedev/antd";
 import { Table, Space, Image, Switch } from "antd";
 import { useUpdate } from "@refinedev/core";
+import { getAssetUrl } from "../../utils/image";
 
 export const MallItemList = () => {
     const { tableProps } = useTable({
@@ -26,7 +27,7 @@ export const MallItemList = () => {
                     title="预览" 
                     render={(value) => (
                         <Image 
-                            src={value} 
+                            src={getAssetUrl(value)} 
                             width={50} 
                             height={50} 
                             style={{ objectFit: 'cover', borderRadius: '8px' }} 

@@ -37,9 +37,9 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = ({ profile, onClos
     name: 'start_logging_intent',
     description: '当用户明确表示想要记录今天的健康状况、饮食、运动或想要把当前谈话内容存入日志/看板时调用。',
     parameters: {
-      type: "OBJECT",
+      type: "OBJECT" as any,
       properties: {
-        reason: { type: "STRING", description: '用户想要记录的原因或提到的关键词' }
+        reason: { type: "STRING" as any, description: '用户想要记录的原因或提到的关键词' }
       }
     }
   };
@@ -50,7 +50,7 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = ({ profile, onClos
   useEffect(() => {
     const initialize = async () => {
       const { GoogleGenerativeAI } = await import('@google/generative-ai');
-      const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+      const genAI = new GoogleGenerativeAI((import.meta as any).env.VITE_GEMINI_API_KEY);
       model.current = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
     };
     initialize();
@@ -83,7 +83,7 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = ({ profile, onClos
         return;
       }
 
-      const apiKey = import.meta.env.VITE_DEEPGRAM_API_KEY;
+      const apiKey = (import.meta as any).env.VITE_DEEPGRAM_API_KEY;
       if (!apiKey) {
         console.error("Deepgram API Key not found.");
         return;
@@ -142,20 +142,21 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = ({ profile, onClos
     setIsProcessing(true);
 
     try {
-       if (!chat.current) {
-         chat.current = model.current.startChat({
-           tools,
-           system: `
-            你是一个顶级的、富有同情心的 AI 康复教练，名叫“五养教练”。你的主要职责是与癌症康复期患者进行开放式、支持性的对话，并帮助他们记录健康日志。
-            - 你的沟通风格必须是：友好、耐心、积极、充满鼓励，像一个真实的朋友。
-            - **核心任务**：倾听用户的任何想法，无论是关于他们当天的感受、饮食、运动、睡眠、情绪，还是任何生活琐事。
-            - **日志记录**：当用户在谈话中明确表达了想要“记录”或“记一下”今天的状况时（例如“我想记录一下今天吃了什么”或“帮我记一下今天感觉不错”），你必须调用 'start_logging_intent' 函数。在调用函数时，要在 'reason' 参数中简要说明用户想要记录的原因。
-            - **禁止行为**：绝对不能提供任何医疗建议、诊断或治疗方案。如果被问到，必须委婉地拒绝并说明“我只是一个负责陪伴和记录的AI助手，任何医疗问题都需要咨询您的医生或专业康复师。”
-            - **用户信息**：你知道当前用户是 ${profile.name}，${profile.age}岁，正在进行 ${profile.cancerType} 的 ${profile.treatmentStage} 康复。请在对话中适当地、自然地体现出你了解这些背景信息，让用户感到被专属服务。
-            - **简化互动**：你的回答应该简洁明了，易于理解。
-           `
-         });
-       }
+        if (!chat.current) {
+          chat.current = model.current.startChat({
+            tools,
+            history: [],
+            systemInstruction: `
+             你是一个顶级的、富有同情心的 AI 康复教练，名叫“五养教练”。你的主要职责是与癌症康复期患者进行开放式、支持性的对话，并帮助他们记录健康日志。
+             - 你的沟通风格必须是：友好、耐心、积极、充满鼓励，像一个真实的朋友。
+             - **核心任务**：倾听用户的任何想法，无论是关于他们当天的感受、饮食、运动、睡眠、情绪，还是任何生活琐事。
+             - **日志记录**：当用户在谈话中明确表达了想要“记录”或“记一下”今天的状况时（例如“我想记录一下今天吃了什么”或“帮我记一下今天感觉不错”），你必须调用 'start_logging_intent' 函数。在调用函数时，要在 'reason' 参数中简要说明用户想要记录的原因。
+             - **禁止行为**：绝对不能提供 any 医疗建议、诊断或治疗方案。如果被问到，必须委婉地拒绝并说明“我只是一个负责陪伴和记录的AI助手，任何医疗问题都需要咨询您的医生或专业康复师。”
+             - **用户信息**：你知道当前用户是 ${profile.name}，${profile.age}岁，正在进行 ${profile.cancerType || '相关'} 的康复。请在对话中适当地、自然地体现出你了解这些背景信息，让用户感到被专属服务。
+             - **简化互动**：你的回答应该简洁明了，易于理解。
+            `
+          });
+        }
 
       const result = await chat.current.sendMessage(text);
       const response = result.response;
@@ -167,7 +168,6 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = ({ profile, onClos
             const fullLog = `${transcript} - ${aiResponse}`.trim();
             onConfirmLog(fullLog);
         }
-        // If needed, you can send function results back to the model, but here we just trigger the app logic.
       } else {
         const aiText = response.text();
         setAiResponse(aiText);
@@ -185,10 +185,39 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = ({ profile, onClos
     }
   };
 
+  const stripMarkdown = (text: string) => {
+    return text
+      .replace(/[#*`_~]/g, '')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/>+/g, '')
+      .replace(/\n+/g, ' ')
+      .trim();
+  };
+
   const speakResponse = (text: string) => {
-    const utterance = new SpeechSynthesisUtterance(text);
+    const cleanText = stripMarkdown(text);
+    const utterance = new SpeechSynthesisUtterance(cleanText);
     utterance.lang = 'zh-CN';
     utterance.rate = 1.1;
+
+    const voices = window.speechSynthesis.getVoices();
+    let selectedVoice = null;
+    const voiceName = profile.voicePreference;
+    
+    if (voiceName && voiceName !== 'default') {
+        selectedVoice = voices.find(v => v.name === voiceName);
+    }
+    
+    if (!selectedVoice) {
+        selectedVoice = voices.find(v => 
+          v.name.includes('Google') && 
+          (v.name.includes('普通话') || v.name.includes('Mandarin')) &&
+          (v.lang.includes('zh') || v.lang.includes('CN'))
+        );
+    }
+
+    if (selectedVoice) utterance.voice = selectedVoice;
+
     utterance.onend = () => {
         // Potentially restart listening after AI speaks
         startSession(); 

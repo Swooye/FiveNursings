@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { httpsCallable } from 'firebase/functions';
 import { PatientProfile, ChatMessage } from '../types';
-import { Send, Mic, X, Calendar, MessageSquare, ArrowLeft, PhoneCall, AlertTriangle, ChevronRight, Square, Sparkles, Loader2, History } from 'lucide-react';
+import { Send, Mic, X, Calendar, MessageSquare, ArrowLeft, PhoneCall, AlertTriangle, ChevronRight, Square, Sparkles, Loader2, History, StopCircle } from 'lucide-react';
 import { auth, functions } from '../src/firebase';
 import { ResponsiveContainer, LineChart, BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Line, Bar } from 'recharts';
 
@@ -107,8 +107,179 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   
+  // New state for context menu and editing
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [menuAnchor, setMenuAnchor] = useState<{ x: number, y: number } | null>(null);
+  const [isEditing, setIsEditing] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  
   const scrollRef = useRef<HTMLDivElement>(null);
   const streamIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (window.speechSynthesis && window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
+
+  // --- Handlers for Actions ---
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setActiveMenuId(null);
+  };
+
+  const handleTTS = (text: string) => {
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      setActiveMenuId(null);
+      return;
+    }
+
+    // Strip markdown formatting
+    let cleanText = text
+      .replace(/(\*\*|__)(.*?)\1/g, '$2') // bold
+      .replace(/(\*|_)(.*?)\1/g, '$2') // italic
+      .replace(/#+\s/g, '') // headers
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links
+      .replace(/[*_~`>]/g, '') // other markdown characters
+      .replace(/\n\s*-\s/g, '。') // bullet points to sentences
+      .replace(/\n\s*\d+\.\s/g, '。') // numbered lists to sentences
+      .replace(/\n/g, ' ')
+      .trim();
+
+    const speech = new SpeechSynthesisUtterance(cleanText);
+    speech.lang = 'zh-CN';
+    
+    const applyVoiceAndSpeak = () => {
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length === 0) {
+        window.speechSynthesis.onvoiceschanged = () => {
+          applyVoiceAndSpeak();
+          window.speechSynthesis.onvoiceschanged = null;
+        };
+        return;
+      }
+
+      let selectedVoice = null;
+      const voicePref = profile?.voicePreference;
+
+      if (voicePref && voicePref !== 'default') {
+        selectedVoice = voices.find(v => v.name === voicePref);
+      }
+
+      if (!selectedVoice) {
+        selectedVoice = voices.find(v => 
+          v.name.includes('Google') && 
+          (v.name.includes('普通话') || v.name.includes('Mandarin')) &&
+          (v.lang.includes('zh') || v.lang.includes('CN'))
+        );
+      }
+
+      if (!selectedVoice) {
+        selectedVoice = voices.find(v => v.default && v.lang.includes('zh')) || voices.find(v => v.lang.includes('zh'));
+      }
+
+      if (selectedVoice) {
+        speech.voice = selectedVoice;
+      }
+
+      speech.onend = () => setIsSpeaking(false);
+      speech.onerror = () => setIsSpeaking(false);
+      
+      setIsSpeaking(true);
+      window.speechSynthesis.speak(speech);
+      setActiveMenuId(null);
+    };
+
+    applyVoiceAndSpeak();
+  };
+
+  const handleDelete = async (msg: any) => {
+    if (!msg.id) {
+        setMessages(prev => prev.filter(m => m !== msg));
+        setActiveMenuId(null);
+        return;
+    }
+    try {
+        const res = await fetch(`${API_URL}/api/chatmessages/${msg.id}`, { method: 'DELETE' });
+        if (res.ok) {
+            setMessages(prev => prev.filter(m => (m as any).id !== msg.id));
+        }
+    } catch (e) { console.error("Delete failed", e); }
+    setActiveMenuId(null);
+  };
+
+  const handleShare = async (text: string) => {
+    if (navigator.share) {
+        try {
+            await navigator.share({ text });
+        } catch (e) {}
+    } else {
+        handleCopy(text);
+    }
+    setActiveMenuId(null);
+  };
+
+  const startEditing = (msg: any) => {
+    setIsEditing(msg.id);
+    setEditValue(msg.text || '');
+    setActiveMenuId(null);
+  };
+
+  const saveEdit = async () => {
+    if (!isEditing) return;
+    try {
+        const res = await fetch(`${API_URL}/api/chatmessages/${isEditing}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: editValue })
+        });
+        if (res.ok) {
+            const editIndex = messages.findIndex(m => (m as any).id === isEditing);
+            if (editIndex !== -1) {
+                const newMessages = [...messages.slice(0, editIndex), { ...messages[editIndex], text: editValue }];
+                setMessages(newMessages);
+                
+                const toDelete = messages.slice(editIndex + 1);
+                toDelete.forEach((m: any) => {
+                    if (m.id) fetch(`${API_URL}/api/chatmessages/${m.id}`, { method: 'DELETE' }).catch(()=>{});
+                });
+                
+                if (streamIntervalRef.current) clearInterval(streamIntervalRef.current);
+                generateResponse(editValue, newMessages);
+            }
+        }
+    } catch (e) { console.error("Edit failed", e); }
+    setIsEditing(null);
+  };
+
+  // --- Long Press Logic ---
+  const handlePressStart = (e: any, msg: any, immediate = false) => {
+    if (loading || !msg.id) return;
+    const isTouch = e.type === 'touchstart';
+    const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+    const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+    
+    if (immediate) {
+        setActiveMenuId((msg as any).id);
+        setMenuAnchor({ x: clientX, y: clientY });
+        return;
+    }
+
+    pressTimerRef.current = setTimeout(() => {
+        setActiveMenuId((msg as any).id);
+        setMenuAnchor({ x: clientX, y: clientY });
+    }, 600);
+  };
+
+  const handlePressEnd = () => {
+    if (pressTimerRef.current) clearTimeout(pressTimerRef.current);
+  };
 
   const fetchMessages = useCallback(async (before?: string) => {
     if (!auth.currentUser) return;
@@ -131,16 +302,25 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
                    setMessages([{ role: 'model', text: WELCOME_TEXT(profile.name), timestamp: new Date().toISOString() }]);
                 }
                 
+                const currentUid = auth.currentUser.uid;
                 setTimeout(async () => {
                     try {
-                        await fetch(`${API_URL}/api/messages/read-all/${auth.currentUser?.uid}`, { method: 'PATCH' });
+                        await fetch(`${API_URL}/api/messages/read-all/${currentUid}`, { method: 'PATCH' });
                         onReadMessages();
                     } catch (e) {}
                 }, 800);
             }
+        } else {
+            if (!before && messages.length === 0) {
+                setMessages([{ role: 'model', text: WELCOME_TEXT(profile.name), timestamp: new Date().toISOString() }]);
+            }
         }
-    } catch (e) { console.error("Fetch failed", e); }
-    finally {
+    } catch (e) { 
+        console.error("Fetch failed", e);
+        if (!before && messages.length === 0) {
+            setMessages([{ role: 'model', text: WELCOME_TEXT(profile.name), timestamp: new Date().toISOString() }]);
+        }
+    } finally {
         setIsInitialLoading(false);
         setIsHistoryLoading(false);
     }
@@ -149,7 +329,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
   useEffect(() => {
     fetchMessages();
     return () => { if (streamIntervalRef.current) clearInterval(streamIntervalRef.current); };
-  }, [fetchMessages]);
+  }, [fetchMessages]); // Fixed dependency
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     if (e.currentTarget.scrollTop === 0 && hasMore && !isHistoryLoading) {
@@ -167,49 +347,45 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
     }
   }, [messages, isHistoryLoading]);
 
-  const handleSend = async () => {
+  const persistMessage = async (msg: ChatMessage) => {
     if (!auth.currentUser) return;
-    const messageText = input.trim();
-    if (!messageText) return;
+    try {
+        const res = await fetch(`${API_URL}/api/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: auth.currentUser.uid, ...msg })
+        });
+        if (res.ok) {
+            const savedMsg = await res.json();
+            return savedMsg;
+        }
+    } catch (e) { console.error("Persist failed", e); }
+    return null;
+  };
 
-    if (streamIntervalRef.current) clearInterval(streamIntervalRef.current);
-
-    setInput('');
-    const userMsg: ChatMessage = { role: 'user', text: messageText, timestamp: new Date().toISOString() };
-    setMessages(prev => [...prev, userMsg]);
-    
-    setMessages(prev => [...prev, { role: 'model', text: '', timestamp: new Date().toISOString() }]);
+  const generateResponse = async (userText: string, currentMsgs: ChatMessage[]) => {
+    setMessages([...currentMsgs, { role: 'model', text: '', timestamp: new Date().toISOString() }]);
     setLoading(true);
 
     try {
-      let responseText = "";
-      
-      // 精准修复：开发环境下直接请求本地 Server，避开由于 Firebase Functions 拦截引发的问题
+      let responseText = '';
       if (import.meta.env.DEV) {
-          console.log("[DEV] Calling local API proxy /api/ai-chat");
-          const res = await fetch("/api/ai-chat", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ 
-                  prompt: messageText, 
-                  userId: auth.currentUser.uid, 
-                  profile 
-              })
-          });
-          
-          if (!res.ok) {
-             const errText = await res.text();
-             console.error("[DEV] Server returned error:", res.status, errText);
-             throw new Error(`Server returned ${res.status}`);
-          }
-          
-          const result = await res.json();
-          responseText = result.reply || "我收到您的消息了。";
-          
-      } else {
-          // 生产环境继续使用云函数
+          try {
+              const res = await fetch('/api/get-ai-chat-reply', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ message: userText, profile, history: currentMsgs.slice(-5) })
+              });
+              if (res.ok) {
+                  const data = await res.json();
+                  responseText = data.reply;
+              }
+          } catch (e) { console.warn("Local AI reply failed:", e); }
+      }
+
+      if (!responseText) {
           const getAIChatResponse = httpsCallable(functions, 'getAIChatResponse');
-          const response: any = await getAIChatResponse({ text: messageText, profile });
+          const response: any = await getAIChatResponse({ message: userText, profile, history: currentMsgs.slice(-5) });
           responseText = response.data.reply;
       }
       
@@ -225,6 +401,18 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
         } else {
           if (streamIntervalRef.current) clearInterval(streamIntervalRef.current);
           setLoading(false);
+          const finalModelMsg = { role: 'model' as const, text: responseText, timestamp: new Date().toISOString() };
+          persistMessage(finalModelMsg).then(savedModelMsg => {
+              if (savedModelMsg && savedModelMsg.id) {
+                  setMessages(prev => {
+                      const last = prev[prev.length - 1];
+                      if (last.role === 'model' && last.text === responseText) {
+                          return [...prev.slice(0, -1), { ...last, id: savedModelMsg.id }];
+                      }
+                      return prev;
+                  });
+              }
+          });
         }
       }, 25);
     } catch (error: any) {
@@ -233,6 +421,27 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
       const errorMsg = { role: 'model' as const, text: "抱歉，由于网络问题，我现在无法回答。请检查您的连接或稍后再试。", timestamp: new Date().toISOString() };
       setMessages(prev => [...prev.slice(0, -1), errorMsg]);
     }
+  };
+
+  const handleSend = async () => {
+    if (!auth.currentUser) return;
+    const messageText = input.trim();
+    if (!messageText) return;
+
+    if (streamIntervalRef.current) clearInterval(streamIntervalRef.current);
+
+    setInput('');
+    const userMsg: ChatMessage = { role: 'user', text: messageText, timestamp: new Date().toISOString() };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    
+    persistMessage(userMsg).then(savedUserMsg => {
+        if (savedUserMsg && savedUserMsg.id) {
+            setMessages(prev => prev.map(m => m === userMsg ? { ...m, id: savedUserMsg.id } : m));
+        }
+    });
+
+    generateResponse(messageText, newMessages);
   };
 
   return (
@@ -270,7 +479,15 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
                 {messages.map((msg, i) => (
                 <div key={i} className={`flex items-end gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     {msg.role === 'model' && <div className="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center text-lg shrink-0 border-4 border-white dark:border-slate-900 shadow-sm">🤖</div>}
-                    <div className={`max-w-[85%] inline-block px-5 py-4 rounded-t-2xl shadow-sm ${msg.role === 'user' ? 'bg-emerald-600 text-white font-bold rounded-l-2xl' : 'bg-white dark:bg-slate-800 rounded-r-2xl'}`}>
+                    <div 
+                        onMouseDown={(e) => handlePressStart(e, msg)}
+                        onMouseUp={handlePressEnd}
+                        onMouseLeave={handlePressEnd}
+                        onTouchStart={(e) => handlePressStart(e, msg)}
+                        onTouchEnd={handlePressEnd}
+                        onContextMenu={(e) => { e.preventDefault(); handlePressStart(e, msg, true); }}
+                        className={`max-w-[85%] inline-block px-5 py-4 rounded-t-2xl shadow-sm transition-transform active:scale-[0.98] cursor-pointer ${msg.role === 'user' ? 'bg-emerald-600 text-white font-bold rounded-l-2xl' : 'bg-white dark:bg-slate-800 rounded-r-2xl'}`}
+                    >
                     <div className="flex flex-col">
                         {(msg as any).type === 'intervention' && (
                             <div className="flex items-center space-x-1.5 mb-2 py-1 px-2 bg-emerald-500/10 rounded-lg w-fit">
@@ -294,6 +511,88 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
             </>
         )}
       </main>
+
+      {/* Context Menu Overlay */}
+      {activeMenuId && menuAnchor && (
+          <div className="fixed inset-0 z-[100]" onClick={() => setActiveMenuId(null)}>
+              <div 
+                className="absolute bg-white/95 dark:bg-slate-800/95 backdrop-blur-xl border border-slate-200 dark:border-slate-700 rounded-3xl shadow-2xl p-2 min-w-[140px] animate-in zoom-in-95 duration-200"
+                style={{ 
+                    top: Math.min(menuAnchor.y, window.innerHeight - 250), 
+                    left: Math.min(menuAnchor.x, window.innerWidth - 160) 
+                }}
+              >
+                  {messages.find(m => (m as any).id === activeMenuId)?.role === 'model' ? (
+                      <>
+                        <button onClick={() => handleTTS(messages.find(m => (m as any).id === activeMenuId)?.text || '')} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-2xl transition-colors">
+                            {isSpeaking ? (
+                                <>
+                                    <StopCircle size={18} className="text-red-500" />
+                                    <span className="text-sm font-bold text-red-500">停止播报</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Mic size={18} className="text-emerald-500" />
+                                    <span className="text-sm font-bold text-slate-700 dark:text-slate-200">播报</span>
+                                </>
+                            )}
+                        </button>
+                        <button onClick={() => handleCopy(messages.find(m => (m as any).id === activeMenuId)?.text || '')} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-2xl transition-colors">
+                            <MessageSquare size={18} className="text-blue-500" />
+                            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">复制</span>
+                        </button>
+                        <button onClick={() => handleShare(messages.find(m => (m as any).id === activeMenuId)?.text || '')} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-2xl transition-colors">
+                            <Send size={18} className="text-purple-500" />
+                            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">分享</span>
+                        </button>
+                        <hr className="my-1 border-slate-100 dark:border-slate-700" />
+                        <button onClick={() => handleDelete(messages.find(m => (m as any).id === activeMenuId))} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-2xl transition-colors group">
+                            <X size={18} className="text-red-500" />
+                            <span className="text-sm font-bold text-red-500">删除</span>
+                        </button>
+                      </>
+                  ) : (
+                      <>
+                        <button onClick={() => handleCopy(messages.find(m => (m as any).id === activeMenuId)?.text || '')} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-2xl transition-colors">
+                            <MessageSquare size={18} className="text-emerald-500" />
+                            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">复制</span>
+                        </button>
+                        <button onClick={() => startEditing(messages.find(m => (m as any).id === activeMenuId))} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-2xl transition-colors">
+                            <Calendar size={18} className="text-amber-500" />
+                            <span className="text-sm font-bold text-slate-700 dark:text-slate-200">编辑</span>
+                        </button>
+                        <hr className="my-1 border-slate-100 dark:border-slate-700" />
+                        <button onClick={() => handleDelete(messages.find(m => (m as any).id === activeMenuId))} className="w-full flex items-center space-x-3 px-4 py-3 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-2xl transition-colors">
+                            <X size={18} className="text-red-500" />
+                            <span className="text-sm font-bold text-red-500">删除</span>
+                        </button>
+                      </>
+                  )}
+              </div>
+          </div>
+      )}
+
+      {/* Editing Modal */}
+      {isEditing && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+              <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-[32px] p-6 shadow-2xl animate-in slide-in-from-bottom-8 duration-300">
+                  <div className="flex justify-between items-center mb-6">
+                      <h3 className="font-black text-lg text-slate-800 dark:text-slate-100">编辑消息</h3>
+                      <button onClick={() => setIsEditing(null)} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-xl"><X size={18} /></button>
+                  </div>
+                  <textarea 
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    className="w-full h-32 bg-slate-50 dark:bg-slate-900 border-none focus:ring-2 ring-emerald-500/50 rounded-2xl p-4 text-sm font-medium mb-6 resize-none"
+                    placeholder="输入修改内容..."
+                  />
+                  <div className="flex space-x-3">
+                      <button onClick={() => setIsEditing(null)} className="flex-1 py-4 font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 rounded-2xl active:scale-95 transition-all">取消</button>
+                      <button onClick={saveEdit} className="flex-2 px-8 py-4 font-bold text-white bg-emerald-600 rounded-2xl shadow-lg shadow-emerald-600/20 active:scale-95 transition-all">保存修改</button>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* Input */}
       <footer className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-slate-100/80 to-transparent dark:from-slate-950/80 dark:to-transparent z-40">

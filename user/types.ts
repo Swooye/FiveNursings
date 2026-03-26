@@ -170,6 +170,7 @@ export interface WellnessImage {
 }
 
 export interface ChatMessage {
+  id?: string;
   role: 'user' | 'model';
   text: string;
   timestamp: string;

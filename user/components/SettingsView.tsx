@@ -38,7 +38,11 @@ const VOICE_DISPLAY_MAP: Record<string, { displayName: string; gender: '男' | '
   'Xiaoyun': { displayName: '晓云', gender: '女' },
   'Yunxi': { displayName: '云溪', gender: '男' },
   'Yunxia': { displayName: '云夏', gender: '女' },
-  'Yunyang': { displayName: '云扬', gender: '男' }
+  'Yunyang': { displayName: '云扬', gender: '男' },
+  'Zhiqi': { displayName: '知琦', gender: '女' },
+  'Yunjian': { displayName: '云健', gender: '男' },
+  'Google 普通话': { displayName: 'Google 官方', gender: '女' },
+  'Google Mandarin': { displayName: 'Google 官方', gender: '女' },
 };
 
 interface SettingsViewProps {
@@ -74,7 +78,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       const voices = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith('zh'));
       setAvailableVoices(voices);
     };
-    // Voices may load asynchronously. Call it once and also set up the event listener.
     getVoices();
     window.speechSynthesis.onvoiceschanged = getVoices;
     return () => { window.speechSynthesis.onvoiceschanged = null; };
@@ -85,19 +88,41 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'zh-CN';
     
-    const allVoices = window.speechSynthesis.getVoices();
-    // 核心逻辑：如果是 default，尝试找 Meijia 作为事实上的默认
-    let targetVoiceName = voiceName;
-    if (!targetVoiceName || targetVoiceName === 'default') {
-        const meijia = allVoices.find(v => v.name.toLowerCase().includes('meijia'));
-        if (meijia) targetVoiceName = meijia.name;
-    }
+    const trySpeak = () => {
+      const allVoices = window.speechSynthesis.getVoices();
+      if (allVoices.length === 0) {
+        window.speechSynthesis.onvoiceschanged = () => {
+          trySpeak();
+          window.speechSynthesis.onvoiceschanged = null;
+        };
+        return;
+      }
+      
+      let selectedVoice = null;
+      if (voiceName && voiceName !== 'default') {
+        selectedVoice = allVoices.find(v => v.name === voiceName);
+      }
+      
+      if (!selectedVoice) {
+        // Fallback or explicit request for Meijia
+        if (!voiceName || voiceName === 'default') {
+            selectedVoice = allVoices.find(v => v.name.toLowerCase().includes('meijia'));
+        }
+      }
 
-    if (targetVoiceName && targetVoiceName !== 'default') {
-      const selectedVoice = allVoices.find(v => v.name === targetVoiceName);
+      if (!selectedVoice) {
+        selectedVoice = allVoices.find(v => 
+          v.name.includes('Google') && 
+          (v.name.includes('普通话') || v.name.includes('Mandarin')) &&
+          (v.lang.includes('zh') || v.lang.includes('CN'))
+        );
+      }
+      
       if (selectedVoice) utterance.voice = selectedVoice;
-    }
-    window.speechSynthesis.speak(utterance);
+      window.speechSynthesis.speak(utterance);
+    };
+
+    trySpeak();
   }, []);
 
   const handleVoiceSelection = (voiceName: string) => {
@@ -107,7 +132,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   };
   
   const getVoiceDisplayName = (voiceName: string) => {
-    if (voiceName === 'default') return '系统默认 (美佳)';
+    if (voiceName === 'default' || !voiceName) return '默认 (美佳/Google 官方)';
     for (const key in VOICE_DISPLAY_MAP) {
       if (voiceName.toLowerCase().includes(key.toLowerCase())) {
         return VOICE_DISPLAY_MAP[key as keyof typeof VOICE_DISPLAY_MAP].displayName;
@@ -242,24 +267,19 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   }
 
   if (currentSubPage === 'voice') {
-    // 将 'default' 直接渲染为带有美佳提示的选项
     const hasMeijia = availableVoices.some(v => v.name.toLowerCase().includes('meijia'));
-    
     const voiceOptions = [
       { 
         key: 'default', 
         label: '系统默认', 
-        desc: hasMeijia ? '已自动为您匹配专属音色：美佳' : '跟随您设备的基础设置',
+        desc: hasMeijia ? '已自动为您匹配专属音色：美佳' : '系统首选 Google 普通话（中国大陆）语音',
         rightLabel: hasMeijia ? '女' : undefined
       },
       ...availableVoices.map(v => {
         const displayNameInfo = Object.entries(VOICE_DISPLAY_MAP).find(([key, _]) => v.name.toLowerCase().includes(key.toLowerCase()));
         const label = displayNameInfo ? displayNameInfo[1].displayName : v.name.split(' ')[0];
-        
         let gender: '男' | '女' | undefined = undefined;
-        if (displayNameInfo) {
-          gender = displayNameInfo[1].gender;
-        }
+        if (displayNameInfo) gender = displayNameInfo[1].gender;
         return {
           key: v.name,
           label: label,
@@ -287,14 +307,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-950 pb-24">
-      {/* Header */}
       <header className="p-6 pb-2 pt-12 flex items-center bg-slate-50 dark:bg-slate-950 sticky top-0 z-10">
         <button onClick={onBack} className="mr-4 p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-600 dark:text-slate-300 active:scale-95 transition-transform"><ArrowLeft size={20} /></button><h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">系统设置</h2>
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 pb-20 custom-scrollbar">
-        
-        {/* Profile Card */}
         <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-[32px] p-6 text-white shadow-xl shadow-emerald-500/20 mb-8 mt-4">
            <div className="flex items-center space-x-4">
               <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center border-2 border-white/40">
@@ -379,7 +396,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
-      {/* Logout Confirm Modal */}
       {showLogoutConfirm && (
         <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
@@ -399,7 +415,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       )}
 
-      {/* Delete Confirm Modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
           <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 border border-rose-100 dark:border-rose-900/30">
@@ -423,7 +438,6 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
       )}
-
     </div>
   );
 };

@@ -3,8 +3,9 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { SKU, PatientProfile } from '../types';
 import { ShoppingCart, Star, Crown, Search, Plus, Heart, X, Flame } from 'lucide-react';
 import ProductDetail from './ProductDetail';
+import { getAssetUrl } from '../src/utils/image';
 
-const API_URL = import.meta.env.DEV ? "" : "https://api-u46fik5vcq-uc.a.run.app";
+const API_URL = (import.meta as any).env.DEV ? "" : "https://api-u46fik5vcq-uc.a.run.app";
 
 const CATEGORIES = [
   { id: 'all', label: '全部' },
@@ -45,7 +46,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
             name: item.name,
             price: item.price,
             memberPrice: item.memberPrice || Math.round(item.price * 0.7),
-            image: item.imageUrl || item.image || 'https://via.placeholder.com/400?text=康养好物',
+            image: getAssetUrl(item.imageUrl || item.image), // Already applies getAssetUrl
             reason: item.reason || '专家推荐，康复必备',
             nursingType: item.nursingType || 'diet',
             isMemberOnly: item.isMemberOnly || false,
@@ -152,7 +153,11 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
             className="bg-white dark:bg-slate-900 rounded-[32px] overflow-hidden shadow-sm border border-slate-50 dark:border-slate-800 flex flex-col active:scale-[0.98] transition-all group"
           >
             <div className="relative aspect-square overflow-hidden">
-              <img src={sku.image} alt={sku.name} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+              <img 
+                src={sku.image} 
+                alt={sku.name} 
+                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
+              />
               <div className="absolute top-3 left-3 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-2 py-1 rounded-lg border border-white/20 shadow-sm flex items-center space-x-1">
                 <Star size={10} className="text-amber-500 fill-amber-500" />
                 <span className="text-[10px] font-black text-slate-800 dark:text-white">4.9</span>

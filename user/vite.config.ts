@@ -8,16 +8,17 @@ export default defineConfig({
   server: {
     port: 3000,
     host: '0.0.0.0',
-    hmr: {
-      clientPort: 443,
-      protocol: 'wss',
-    },
+    hmr: true,
     proxy: {
       '/api': {
         target: 'http://localhost:3002',
         changeOrigin: true,
       },
       '/user': {
+        target: 'http://localhost:3002',
+        changeOrigin: true,
+      },
+      '/uploads': {
         target: 'http://localhost:3002',
         changeOrigin: true,
       }

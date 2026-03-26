@@ -1,18 +1,18 @@
 import React from "react";
-import { Edit, useForm, useSelect } from "@refinedev/antd";
+import { Create, useForm, useSelect } from "@refinedev/antd";
 import { Form, Input, Select } from "antd";
 
-export const AdminEdit = () => {
+export const AdminCreate = () => {
     const { formProps, saveButtonProps } = useForm();
 
     const { selectProps: roleSelectProps } = useSelect({
         resource: "roles",
         optionLabel: "name",
-        optionValue: "name",
+        optionValue: "name", 
     });
 
     return (
-        <Edit saveButtonProps={saveButtonProps}>
+        <Create saveButtonProps={saveButtonProps}>
             <Form {...formProps} layout="vertical">
                 <Form.Item label="用户名" name="username" rules={[{ required: true }]}>
                     <Input />
@@ -26,10 +26,10 @@ export const AdminEdit = () => {
                 <Form.Item label="角色" name="role" rules={[{ required: true }]}>
                     <Select {...roleSelectProps} />
                 </Form.Item>
-                <Form.Item label="密码 (留空表示不修改)" name="password">
-                    <Input.Password placeholder="******" />
+                <Form.Item label="密码" name="password" rules={[{ required: true }]}>
+                    <Input.Password />
                 </Form.Item>
             </Form>
-        </Edit>
+        </Create>
     );
 };
