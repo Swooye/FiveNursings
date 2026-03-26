@@ -3,7 +3,7 @@ import * as admin from "firebase-admin";
 import mongoose from "mongoose";
 import express from 'express';
 import cors from 'cors';
-import bcrypt from 'bcryptjs';
+// import bcrypt from 'bcryptjs';
 import * as dotenv from "dotenv";
 
 dotenv.config();
@@ -12,7 +12,7 @@ admin.initializeApp();
 
 const BASE_URI = "mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net/";
 const AUTH_PARAMS = "?retryWrites=true&w=majority";
-const PROD_PROJECT_ID = "fivenursings-73917017-a0dfd";
+const PROD_PROJECT_ID = "fivenursings-22409331-97a3d";
 
 const userSchema = new mongoose.Schema({}, { strict: false, collection: 'users' });
 const chatSchema = new mongoose.Schema({
@@ -142,7 +142,7 @@ Object.keys(MODEL_MAP).forEach(resourceName => {
 // 消息接口
 apiRouter.get('/messages/:userId', async (req: any, res: any) => {
     try {
-        const data = await ChatMessage.find({ userId: req.params.userId }).sort({ timestamp: -1 }).limit(50);
+        const data = await ChatMessage.find({ userId: req.params.userId } as any).sort({ timestamp: -1 }).limit(50);
         res.json(data.map(format).reverse());
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
