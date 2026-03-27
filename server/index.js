@@ -12,8 +12,8 @@ const app = express();
 const port = 3002;
 
 // --- 基础配置 ---
-const BASE_URI = "mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net/fivenursing_dev?retryWrites=true&w=majority";
-const OPENROUTER_API_KEY = "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";
+const BASE_URI = process.env.MONGODB_URI + 'fivenursing_dev?retryWrites=true&w=majority';
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 app.use(cors({ 
     origin: '*', 

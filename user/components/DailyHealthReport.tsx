@@ -26,6 +26,8 @@ const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose,
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
       .replace(/>+/g, '')
       .replace(/\n+/g, ' ')
+      .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, '')
+      .replace(/\s+/g, ' ')
       .trim();
   };
 

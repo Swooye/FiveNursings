@@ -165,6 +165,8 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
       .replace(/\n\s*-\s/g, '。') // bullet points to sentences
       .replace(/\n\s*\d+\.\s/g, '。') // numbered lists to sentences
       .replace(/\n/g, ' ')
+      .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, '')
+      .replace(/\s+/g, ' ')
       .trim();
 
     const speech = new SpeechSynthesisUtterance(cleanText);

@@ -10,7 +10,7 @@ dotenv.config();
 
 admin.initializeApp();
 
-const BASE_URI = "mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net/";
+const BASE_URI = process.env.MONGODB_URI || "mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net/";
 const AUTH_PARAMS = "?retryWrites=true&w=majority";
 const PROD_PROJECT_ID = "fivenursings-73917017-a0dfd";
 
@@ -424,7 +424,7 @@ export const getAIChatResponse = onCall({ region: "us-central1", secrets: ["OPEN
     if (!request.auth) throw new HttpsError('unauthenticated', 'Unauthenticated');
     const { message, text, profile, history = [] } = request.data;
     const userMessage = message || text;
-    const apiKey = "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";
+    const apiKey = process.env.OPENROUTER_API_KEY;
     
     try {
         const prompt = `患者情况：${profile.cancerType}, 阶段：${profile.stage}, 五养评分：饮食${profile.scores?.diet || 0}, 运动${profile.scores?.exercise || 0}, 睡眠${profile.scores?.sleep || 0}, 心理${profile.scores?.mental || 0}, 功能${profile.scores?.function || 0}。\n用户提问：${userMessage}`;
