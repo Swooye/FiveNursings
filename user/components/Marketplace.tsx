@@ -23,9 +23,10 @@ interface MarketplaceProps {
   profile: PatientProfile;
   favorites?: SKU[];
   onToggleFavorite?: (sku: SKU) => void;
+  isDark?: boolean;
 }
 
-const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddToCart, profile, favorites = [], onToggleFavorite }) => {
+const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddToCart, profile, favorites = [], onToggleFavorite, isDark }) => {
   const [viewingProduct, setViewingProduct] = useState<SKU | null>(null);
   const [skus, setSkus] = useState<SKU[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,9 +94,9 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
         <div className="relative w-full h-full">
             <button 
                 onClick={onOpenCart}
-                className="absolute right-0 bottom-0 w-14 h-14 bg-slate-900 dark:bg-emerald-600 text-white rounded-full shadow-2xl flex items-center justify-center pointer-events-auto active:scale-90 transition-transform border border-white/10"
+                className="absolute right-0 bottom-0 w-16 h-16 bg-[#111827] dark:bg-emerald-600 text-white rounded-2xl shadow-[0_15px_30px_rgba(0,0,0,0.3)] dark:shadow-[0_15px_30px_rgba(16,185,129,0.3)] flex items-center justify-center pointer-events-auto active:scale-90 transition-all border border-white/10"
             >
-                <ShoppingCart size={22} />
+                <ShoppingCart size={24} />
                 {cartCount > 0 && (
                 <div className="absolute -top-1 -right-1 bg-rose-500 text-white text-[10px] font-black min-w-[18px] h-4.5 rounded-full px-1 flex items-center justify-center border-2 border-white dark:border-slate-900">
                     {cartCount}
@@ -125,7 +126,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="搜索康复好物、营养包..."
-            className="w-full bg-white dark:bg-slate-900 border-none rounded-2xl py-4 pl-12 pr-4 shadow-sm text-sm font-bold text-slate-700 dark:text-white"
+            className="w-full bg-white dark:bg-[#111827] border border-slate-100 dark:border-white/10 rounded-2xl py-4 pl-12 pr-4 shadow-sm text-sm font-bold text-slate-700 dark:text-white transition-all focus:ring-1 ring-emerald-500/50"
         />
       </div>
 
@@ -135,8 +136,8 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
             <button
                 key={cat.id}
                 onClick={() => setActiveCategory(cat.id)}
-                className={`whitespace-nowrap px-6 py-3 rounded-xl text-xs font-black transition-all ${
-                    activeCategory === cat.id ? 'bg-emerald-600 text-white shadow-lg' : 'bg-white dark:bg-slate-900 text-slate-500 border border-slate-100 dark:border-slate-800'
+                className={`whitespace-nowrap px-6 py-3 rounded-2xl text-xs font-black transition-all ${
+                    activeCategory === cat.id ? 'bg-emerald-600 text-white shadow-[0_8px_15px_rgba(16,185,129,0.2)]' : 'bg-white dark:bg-[#111827] text-slate-500 border border-slate-100 dark:border-white/5'
                 }`}
             >
                 {cat.label}
@@ -150,7 +151,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
           <div 
             key={sku.id} 
             onClick={() => setViewingProduct(sku)}
-            className="bg-white dark:bg-slate-900 rounded-[32px] overflow-hidden shadow-sm border border-slate-50 dark:border-slate-800 flex flex-col active:scale-[0.98] transition-all group"
+            className="bg-white dark:bg-[#111827] rounded-[36px] overflow-hidden shadow-sm border border-slate-100 dark:border-white/5 flex flex-col active:scale-[0.98] transition-all group"
           >
             <div className="relative aspect-square overflow-hidden">
               <img 
@@ -177,7 +178,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
                   <div className="text-[9px] text-slate-400 font-bold mt-0.5">包邮免运费</div>
                 </div>
                 <div 
-                  className="w-9 h-9 bg-slate-50 dark:bg-slate-800 rounded-full flex items-center justify-center text-slate-400 active:bg-emerald-500 active:text-white transition-all border border-slate-100 dark:border-slate-700"
+                  className="w-9 h-9 bg-slate-50 dark:bg-[#1F2937] rounded-xl flex items-center justify-center text-slate-400 active:bg-emerald-500 active:text-white transition-all border border-slate-100 dark:border-white/5"
                 >
                   <Plus size={18} />
                 </div>

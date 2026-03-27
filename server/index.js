@@ -21,6 +21,7 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'x-total-count'] 
 }));
 app.use(bodyParser.json());
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // 响应头处理：自动暴露 X-Total-Count
 app.use((req, res, next) => {
@@ -47,6 +48,8 @@ const MallItem = mongoose.model('MallItem', new mongoose.Schema({}, { strict: fa
 const Protocol = mongoose.model('Protocol', new mongoose.Schema({}, { strict: false }), 'protocols');
 const ChatMessage = mongoose.model('ChatMessage', new mongoose.Schema({
     userId: { type: String, index: true },
+    sessionId: { type: String, index: true },       // 会话 ID
+    sessionTitle: { type: String },                 // 会话标题
     role: String,
     text: String,
     type: { type: String, default: 'chat' },      // 'chat' | 'intervention'
@@ -306,8 +309,35 @@ app.post('/api/messages', async (req, res) => {
 
 app.get('/api/messages/:userId', async (req, res) => {
     try {
-        const data = await ChatMessage.find({ userId: req.params.userId }).sort({ timestamp: 1 });
+        const { sessionId } = req.query;
+        const query = { userId: req.params.userId };
+        if (sessionId) query.sessionId = sessionId;
+        const data = await ChatMessage.find(query).sort({ timestamp: 1 });
         res.json(data.map(format));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 获取用户的会话列表
+app.get('/api/chat/sessions/:userId', async (req, res) => {
+    try {
+        const sessions = await ChatMessage.aggregate([
+            { $match: { userId: req.params.userId, sessionId: { $exists: true, $ne: null } } },
+            { $group: { 
+                _id: "$sessionId", 
+                title: { $first: "$sessionTitle" },
+                lastTimestamp: { $max: "$timestamp" }
+            }},
+            { $sort: { lastTimestamp: -1 } }
+        ]);
+        res.json(sessions.map(s => ({ id: s._id, title: s.title || '新对话', lastTimestamp: s.lastTimestamp })));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 删除整个会话
+app.delete('/api/chat/sessions/:sessionId', async (req, res) => {
+    try {
+        await ChatMessage.deleteMany({ sessionId: req.params.sessionId });
+        res.json({ success: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

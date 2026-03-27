@@ -17,6 +17,8 @@ const PROD_PROJECT_ID = "fivenursings-73917017-a0dfd";
 const userSchema = new mongoose.Schema({}, { strict: false, collection: 'users' });
 const chatSchema = new mongoose.Schema({
     userId: { type: String, index: true },
+    sessionId: { type: String, index: true },       // 会话 ID
+    sessionTitle: { type: String },                 // 会话标题
     role: String,
     text: String,
     type: { type: String, default: 'chat' },      // 'chat' | 'intervention'
@@ -360,8 +362,41 @@ apiRouter.post('/messages', async (req: any, res: any) => {
 
 apiRouter.get('/messages/:userId', async (req: any, res: any) => {
     try {
-        const data = await ChatMessage.find({ userId: req.params.userId } as any).sort({ timestamp: -1 }).limit(50);
+        const { sessionId } = req.query;
+        const query: any = { userId: req.params.userId };
+        if (sessionId) {
+            query.sessionId = sessionId;
+        } else {
+            // 如果没传 sessionId，默认返回最新的会话或全量（向下兼容）
+            // 这里为了支持“历史”，如果没有 sessionId，我们可能希望返回最后一条消息所在的会话
+            // 简单起见：没传就返回全部（或者最近50条）
+        }
+        const data = await ChatMessage.find(query).sort({ timestamp: -1 }).limit(50);
         res.json(data.map(format).reverse());
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 获取用户的会话列表
+apiRouter.get('/chat/sessions/:userId', async (req: any, res: any) => {
+    try {
+        const sessions = await ChatMessage.aggregate([
+            { $match: { userId: req.params.userId, sessionId: { $exists: true, $ne: null } } },
+            { $group: { 
+                _id: "$sessionId", 
+                title: { $first: "$sessionTitle" },
+                lastTimestamp: { $max: "$timestamp" }
+            }},
+            { $sort: { lastTimestamp: -1 } }
+        ]);
+        res.json(sessions.map(s => ({ id: s._id, title: s.title || '新对话', lastTimestamp: s.lastTimestamp })));
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 删除整个会话
+apiRouter.delete('/chat/sessions/:sessionId', async (req: any, res: any) => {
+    try {
+        await ChatMessage.deleteMany({ sessionId: req.params.sessionId } as any);
+        res.json({ success: true });
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 

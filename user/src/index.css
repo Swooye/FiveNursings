@@ -1,1 +1,44 @@
 @import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --safe-area-top: env(safe-area-inset-top, 0px);
+    --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-area-left: env(safe-area-inset-left, 0px);
+    --safe-area-right: env(safe-area-inset-right, 0px);
+    
+    /* Premium Dark Theme Base (Match Prototypes) */
+    --app-bg-dark: #050912;
+    --card-bg-dark: #111827;
+    --emerald-primary: #10B981;
+    --border-dark: #1F2937;
+    --app-bg-light: #f8fafc;
+  }
+
+  body {
+    @apply antialiased select-none touch-pan-y overflow-x-hidden transition-colors duration-500;
+    background-color: var(--app-bg-light);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html.dark body {
+    background-color: var(--app-bg-dark);
+  }
+
+  .safe-pt { padding-top: var(--safe-area-top); }
+  .safe-pb { padding-bottom: var(--safe-area-bottom); }
+  .safe-mt { margin-top: var(--safe-area-top); }
+  .safe-mb { margin-bottom: var(--safe-area-bottom); }
+
+  /* Custom Scrollbar */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+@layer components {
+  .btn-active-scale {
+    @apply active:scale-95 transition-transform duration-200;
+  }
+}

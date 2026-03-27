@@ -14,9 +14,10 @@ interface HomeProps {
   updatedCategory?: keyof NursingScores | null;
   onStartReport: () => void;
   onStartAssessment: () => void;
+  isDark?: boolean;
 }
 
-const Home: React.FC<HomeProps> = ({ profile, unreadCount, onUpdateProfile, onSelectNursing, updatedCategory, onStartReport, onStartAssessment }) => {
+const Home: React.FC<HomeProps> = ({ profile, unreadCount, onUpdateProfile, onSelectNursing, updatedCategory, onStartReport, onStartAssessment, isDark }) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [showPlanOverlay, setShowPlanOverlay] = useState(false);
   const [isGeneratingPlan, setIsGeneratingPlan] = useState(false);
@@ -47,7 +48,7 @@ const Home: React.FC<HomeProps> = ({ profile, unreadCount, onUpdateProfile, onSe
   };
 
   const handleGetPlan = async () => {
-    if (!profile.isQuestionnaireComplete) {
+    if (!(profile.isQuestionnaireComplete || !!profile.questionnaire?.chiefComplaint)) {
       onStartAssessment();
       return;
     }
@@ -66,10 +67,10 @@ const Home: React.FC<HomeProps> = ({ profile, unreadCount, onUpdateProfile, onSe
   return (
     <div className="p-5 space-y-8 pb-28 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Questionnaire Reminder Banner */}
-      {!profile.isQuestionnaireComplete && (
+      {!(profile.isQuestionnaireComplete || !!profile.questionnaire?.chiefComplaint) && (
         <button 
           onClick={onStartAssessment}
-          className="w-full bg-rose-50 dark:bg-rose-900/20 border-2 border-rose-100 dark:border-rose-800 rounded-[32px] p-6 text-left flex items-center justify-between group active:scale-[0.98] transition-all"
+          className="w-full bg-rose-50 dark:bg-rose-900/10 border border-rose-100 dark:border-rose-900/50 rounded-[32px] p-6 text-left flex items-center justify-between group btn-active-scale transition-all"
         >
           <div className="flex items-start space-x-4">
             <div className="p-3 bg-rose-500 text-white rounded-2xl shadow-lg shadow-rose-500/20 group-hover:scale-110 transition-transform">
@@ -89,7 +90,7 @@ const Home: React.FC<HomeProps> = ({ profile, unreadCount, onUpdateProfile, onSe
       {/* Daily Report Trigger Section */}
       <button 
         onClick={onStartReport}
-        className="w-full bg-slate-800 dark:bg-slate-900 rounded-[36px] p-7 shadow-xl shadow-slate-200/50 dark:shadow-none relative overflow-hidden group active:scale-95 transition-all border border-slate-700 dark:border-slate-800"
+        className="w-full bg-slate-800 dark:bg-[#111827] rounded-[36px] p-7 shadow-xl shadow-slate-200/50 dark:shadow-none relative overflow-hidden group btn-active-scale transition-all border border-slate-700 dark:border-white/5"
       >
         <div className="relative z-10 flex justify-between items-center text-left">
           <div>
@@ -108,39 +109,47 @@ const Home: React.FC<HomeProps> = ({ profile, unreadCount, onUpdateProfile, onSe
       </button>
 
       {/* Main Stats Card - Radar Chart Section */}
-      <div className="bg-white dark:bg-slate-900 rounded-[48px] p-8 shadow-sm border border-slate-100 dark:border-slate-800 relative overflow-hidden">
+      <div className="bg-white dark:bg-[#111827] rounded-[48px] p-8 shadow-sm border border-slate-100 dark:border-white/5 relative overflow-hidden backdrop-blur-xl">
         <div className="flex justify-between items-start mb-6">
           <div className="flex flex-col">
             <span className="text-sm font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em] mb-2">核心康复指数</span>
             <div className="flex items-center space-x-3">
-              <span className="text-7xl font-black text-slate-800 dark:text-slate-100 tracking-tighter leading-none">
-                  {Math.round((profile.scores.diet + profile.scores.exercise + profile.scores.sleep + profile.scores.mental + profile.scores.function) / 5) || 82.4}
+              <span className="font-black text-slate-800 dark:text-slate-100 tracking-tighter leading-none" style={{ fontSize: '3.2rem' }}>
+                  {Math.round((profile.scores.diet + profile.scores.exercise + profile.scores.sleep + profile.scores.mental + profile.scores.function) / 5) || 84.2}
               </span>
               <div className="flex items-center text-emerald-600 dark:text-emerald-400 text-sm font-black bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5 rounded-full border border-emerald-100/50 dark:border-emerald-800">
                 <TrendingUp size={16} className="mr-1" />+2.1%
               </div>
             </div>
           </div>
-          <button onClick={handleSync} className="p-4 bg-slate-50 dark:bg-slate-800 rounded-3xl text-slate-400 dark:text-slate-500 hover:text-emerald-500 hover:bg-emerald-50 transition-all active:scale-90 border border-slate-100 dark:border-slate-800">
+          <button onClick={handleSync} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-3xl text-slate-400 dark:text-slate-500 hover:text-emerald-500 hover:bg-emerald-50 transition-all btn-active-scale border border-slate-100 dark:border-slate-800/50">
             <RefreshCw size={28} className={isSyncing ? 'animate-spin' : ''} />
           </button>
         </div>
 
         <div className="h-80 w-full flex items-center justify-center">
           <ResponsiveContainer width="100%" height="100%">
-            <RadarChart 
+              <RadarChart 
               cx="50%" 
               cy="50%" 
-              outerRadius="80%" 
+              outerRadius="82%" 
               data={chartData}
-              margin={{ top: 20, right: 60, bottom: 20, left: 60 }}
+              margin={{ top: 20, right: 40, bottom: 20, left: 40 }}
             >
-              <PolarGrid stroke="#f1f5f9" className="dark:opacity-10" />
+              <PolarGrid stroke={isDark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.08)"} gridType="polygon" />
               <PolarAngleAxis 
                 dataKey="subject" 
-                tick={{ fill: '#94a3b8', fontSize: 16, fontWeight: 700 }} 
+                tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 14, fontWeight: 800 }} 
               />
-              <Radar name="Score" dataKey="A" stroke="#10b981" strokeWidth={5} fill="#10b981" fillOpacity={0.2} />
+              <Radar 
+                name="Score" 
+                dataKey="A" 
+                stroke="#10b981" 
+                strokeWidth={3} 
+                fill="#10b981" 
+                fillOpacity={isDark ? 0.08 : 0.12}
+                dot={false}
+              />
             </RadarChart>
           </ResponsiveContainer>
         </div>
@@ -170,7 +179,7 @@ const StatusPill: React.FC<{ score: number }> = ({ score }) => {
 
 const MetricCard: React.FC<{ title: string; score: number; label: string; icon: React.ReactNode; onClick: () => void; isHighlighted?: boolean; horizontal?: boolean }> = ({ title, score, label, icon, onClick, isHighlighted, horizontal }) => {
   return (
-    <button onClick={onClick} className={`p-8 rounded-[48px] border-2 transition-all active:scale-[0.97] group w-full relative overflow-hidden flex flex-col items-start ${isHighlighted ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-500 shadow-xl scale-105 z-10' : 'bg-white dark:bg-slate-900 border-slate-50 dark:border-slate-800 shadow-sm hover:border-emerald-200/50'}`}>
+    <button onClick={onClick} className={`p-8 rounded-[48px] border-2 transition-all active:scale-[0.97] group w-full relative overflow-hidden flex flex-col items-start ${isHighlighted ? 'bg-emerald-50 dark:bg-emerald-500/10 border-emerald-500 shadow-xl scale-105 z-10' : 'bg-white dark:bg-[#111827] border-slate-50 dark:border-white/5 shadow-sm hover:border-emerald-200/50'}`}>
       <div className={`absolute top-0 right-0 w-48 h-48 blur-[80px] -mr-16 -mt-16 opacity-10 transition-colors ${score >= 80 ? 'bg-emerald-500' : score >= 60 ? 'bg-blue-500' : 'bg-amber-500'}`}></div>
       <div className="flex w-full justify-between items-start relative z-10 mb-6">
         <div className="p-2 rounded-2xl bg-slate-50 dark:bg-white/5 text-emerald-500 dark:text-emerald-400 transition-transform group-hover:scale-110 scale-125">{icon}</div>
@@ -179,11 +188,13 @@ const MetricCard: React.FC<{ title: string; score: number; label: string; icon: 
       <div className={`relative z-10 w-full text-left flex ${horizontal ? 'flex-row items-center justify-between' : 'flex-col'}`}>
         <div className="flex flex-col flex-1 space-y-3">
             <div className="text-base text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.2em]">{title}</div>
-            <div className="flex items-baseline space-x-2">
-                <span className="text-7xl font-black text-slate-800 dark:text-slate-100 tracking-tighter leading-none">{score}</span>
-                <ChevronRight size={24} className="text-slate-200 dark:text-slate-700 group-hover:text-emerald-500 group-hover:translate-x-1 transition-all" />
+            <div className="flex flex-col">
+                <div className="flex items-center space-x-2">
+                    <span className="text-6xl font-black text-slate-800 dark:text-white tracking-tight leading-none">{score}</span>
+                    <ChevronRight size={24} className="text-slate-200 dark:text-slate-700 group-hover:text-emerald-500 group-hover:translate-x-1 transition-all" />
+                </div>
             </div>
-            <div className="text-sm text-slate-400 dark:text-slate-500 font-black truncate tracking-tight opacity-90 mt-2">{label}</div>
+            <div className="text-sm text-slate-400 dark:text-slate-500 font-black truncate tracking-tight opacity-90 mt-4">{label}</div>
         </div>
         {horizontal && (
             <div className="flex items-end space-x-2 h-16 ml-8 pb-1 shrink-0">

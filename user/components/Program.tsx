@@ -9,9 +9,10 @@ interface ProgramProps {
   onStartVoice: () => void;
   recentLogs: VoiceLog[];
   onViewJournal: () => void;
+  isDark?: boolean;
 }
 
-const Program: React.FC<ProgramProps> = ({ onStartVoice, recentLogs, onViewJournal }) => {
+const Program: React.FC<ProgramProps> = ({ onStartVoice, recentLogs, onViewJournal, isDark }) => {
   const today = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -99,8 +100,8 @@ const Program: React.FC<ProgramProps> = ({ onStartVoice, recentLogs, onViewJourn
                 onClick={() => setSelectedDate(date)}
                 className={`flex flex-col items-center justify-center min-w-[54px] h-20 rounded-[24px] transition-all duration-300 shrink-0 border-2 ${
                   isSelected 
-                  ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-500 shadow-lg scale-105' 
-                  : 'bg-white dark:bg-slate-900 text-slate-400 dark:text-slate-500 border-slate-100 dark:border-slate-800 hover:border-emerald-200 shadow-sm'
+                  ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500 shadow-lg scale-105' 
+                  : 'bg-white dark:bg-[#111827] text-slate-400 dark:text-slate-500 border-slate-100 dark:border-white/5 hover:border-emerald-200'
                 }`}
               >
                 <span className={`text-[9px] font-black mb-1.5 uppercase tracking-tighter ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : 'opacity-60'}`}>
@@ -116,14 +117,14 @@ const Program: React.FC<ProgramProps> = ({ onStartVoice, recentLogs, onViewJourn
         </div>
         <button 
           onClick={() => setShowCalendar(true)}
-          className="w-14 h-20 rounded-[24px] bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 shadow-sm active:scale-95 transition-transform shrink-0"
+          className="w-14 h-20 rounded-[24px] bg-white dark:bg-[#111827] border border-slate-100 dark:border-white/5 flex items-center justify-center text-slate-400 dark:text-slate-500 active:scale-95 transition-transform shrink-0"
         >
           <CalendarIcon size={22} />
         </button>
       </div>
 
       {/* Progress Card */}
-      <div className="bg-white dark:bg-slate-900 rounded-[40px] p-8 shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden relative group">
+      <div className="bg-white dark:bg-[#111827] rounded-[40px] p-8 shadow-sm border border-slate-100 dark:border-white/5 overflow-hidden relative group">
         <div className="flex justify-between items-end mb-4 relative z-10">
           <div>
             <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tight">
@@ -150,7 +151,7 @@ const Program: React.FC<ProgramProps> = ({ onStartVoice, recentLogs, onViewJourn
       {isToday ? (
         <div 
           onClick={onStartVoice}
-          className="bg-slate-800 dark:bg-slate-900 rounded-[32px] p-7 text-white shadow-2xl shadow-slate-200/50 dark:shadow-none cursor-pointer group active:scale-95 transition-all relative overflow-hidden border border-slate-700"
+          className="bg-slate-800 dark:bg-[#111827] rounded-[32px] p-7 text-white shadow-2xl shadow-slate-200/50 dark:shadow-none cursor-pointer group active:scale-95 transition-all relative overflow-hidden border border-slate-700 dark:border-white/5"
         >
           <div className="relative z-10">
             <div className="flex items-center justify-between mb-4">
@@ -202,7 +203,7 @@ const Program: React.FC<ProgramProps> = ({ onStartVoice, recentLogs, onViewJourn
         {filteredLogs.length > 0 ? (
           <div className="space-y-4">
             {filteredLogs.map(log => (
-              <div key={log.id} className="bg-white dark:bg-slate-900 p-6 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm animate-in zoom-in-95 duration-300">
+              <div key={log.id} className="bg-white dark:bg-[#111827] p-6 rounded-[32px] border border-slate-100 dark:border-white/5 shadow-sm animate-in zoom-in-95 duration-300">
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex items-center space-x-2.5">
                     <div className="w-9 h-9 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-inner">
@@ -241,8 +242,8 @@ const Program: React.FC<ProgramProps> = ({ onStartVoice, recentLogs, onViewJourn
             onClick={() => toggleTask(task.id)}
             className={`flex items-center space-x-5 p-6 rounded-[36px] transition-all cursor-pointer border ${
               task.completed 
-              ? 'bg-slate-50/50 dark:bg-slate-900/50 border-slate-100 dark:border-slate-800 opacity-60' 
-              : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 shadow-sm hover:border-emerald-200'
+              ? 'bg-slate-50/50 dark:bg-[#111827]/50 border-slate-100 dark:border-white/5 opacity-60' 
+              : 'bg-white dark:bg-[#111827] border-slate-100 dark:border-white/5 shadow-sm hover:border-emerald-200'
             } ${!isToday ? 'cursor-default pointer-events-none' : ''}`}
           >
             <div className={`shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-500 ${

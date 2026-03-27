@@ -55,6 +55,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [previousTab, setPreviousTab] = useState('dashboard');
   const [assistantMode, setAssistantMode] = useState<'chat' | 'logging' | null>(null);
+  const [assistantSessionId, setAssistantSessionId] = useState<string | null>(null);
   const [showReport, setShowReport] = useState(false);
   const [selectedNursing, setSelectedNursing] = useState<keyof NursingScores | null>(null);
   const [showJournal, setShowJournal] = useState(false);
@@ -78,10 +79,10 @@ const App: React.FC = () => {
   const [unreadCount, setUnreadCount] = useState(0);
 
   const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>(() => (localStorage.getItem('themeMode') as any) || 'system');
-  const [fontSize, setFontSize] = useState(() => localStorage.getItem('font-size') || 'standard');
+  const [fontSize, setFontSize] = useState<'small' | 'normal' | 'large' | 'extra-large'>(() => (localStorage.getItem('font-size') as any) || 'normal');
   const [language, setLanguage] = useState(() => localStorage.getItem('language') || 'zh');
   const [hapticFeedback, setHapticFeedback] = useState(() => localStorage.getItem('haptics') !== 'false');
-  const [unitSystem, setUnitSystem] = useState(() => localStorage.getItem('units') || 'metric');
+  const [unitSystem, setUnitSystem] = useState<'metric' | 'imperial'>(() => (localStorage.getItem('units') as any) || 'metric');
 
   const [isDarkEffective, setIsDarkEffective] = useState(false);
 
@@ -115,6 +116,7 @@ const App: React.FC = () => {
     if (dbUser) {
       setProfile(prev => ({
         ...prev,
+        ...dbUser,
         id: dbUser.id || dbUser._id || prev.id,
         name: dbUser.name || '',
         nickname: dbUser.nickname || '',
@@ -183,7 +185,15 @@ const App: React.FC = () => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const applyTheme = (isDark: boolean) => {
       setIsDarkEffective(isDark);
-      if (isDark) root.classList.add('dark'); else root.classList.remove('dark');
+      if (isDark) {
+        root.classList.add('dark');
+        document.body.classList.add('dark');
+        root.style.colorScheme = 'dark';
+      } else {
+        root.classList.remove('dark');
+        document.body.classList.remove('dark');
+        root.style.colorScheme = 'light';
+      }
     };
     if (themeMode === 'system') {
       applyTheme(mediaQuery.matches);
@@ -260,7 +270,7 @@ const App: React.FC = () => {
     if (showFavorites) return <FavoritesView favorites={favorites} onBack={() => setShowFavorites(false)} onRemoveFavorite={(id) => setFavorites(f => f.filter(x => x.id !== id))} onSelectProduct={(sku) => { setViewingProduct(sku); setShowFavorites(false); }} />;
     if (viewingProduct) return <ProductDetail sku={viewingProduct} profile={profile} isFavorited={favorites.some(f => f.id === viewingProduct.id)} onToggleFavorite={toggleFavorite} onBack={() => setViewingProduct(null)} onPurchase={() => {}} onAddToCart={(sku, q) => setCart(prev => [...prev, {...sku, quantity: q, selected: true}])} />;
     if (protocolType) return <ProtocolView onBack={() => setProtocolType(null)} initialTab={protocolType} />;
-    if (showSettings) return <SettingsView onBack={() => setShowSettings(false)} onLogout={handleLogout} onDeleteAccount={handleLogout} isDeviceConnected={profile.wearable.isConnected} profile={profile} onUpdateProfile={handleUpdateProfile} fontSize={fontSize} setFontSize={setFontSize} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} hapticFeedback={hapticFeedback} setHapticFeedback={setHapticFeedback} unitSystem={unitSystem} setUnitSystem={setUnitSystem} />;
+    if (showSettings) return <SettingsView onBack={() => setShowSettings(false)} onLogout={handleLogout} onDeleteAccount={handleLogout} profile={profile} onUpdateProfile={handleUpdateProfile} fontSize={fontSize} setFontSize={setFontSize} themeMode={themeMode} setThemeMode={setThemeMode} language={language} setLanguage={setLanguage} hapticFeedback={hapticFeedback} setHapticFeedback={setHapticFeedback} unitSystem={unitSystem} setUnitSystem={setUnitSystem} />;
     if (showCart) return <CartView cart={cart} onBack={() => setShowCart(false)} onUpdateQuantity={() => {}} onRemove={() => {}} onToggleSelect={() => {}} onSelectAll={() => {}} onCheckout={() => {}} />;
     if (showOrders) return <OrdersLogistics onBack={() => setShowOrders(false)} onBuyAgain={() => {}} />;
     if (showJournal) return <RecoveryJournal logs={voiceLogs} onBack={() => setShowJournal(false)} />;
@@ -271,12 +281,12 @@ const App: React.FC = () => {
       case 'dashboard':
         return (
           <div className="flex flex-col text-left">
-            <Home profile={profile} unreadCount={unreadCount} onUpdateProfile={handleUpdateProfile} onSelectNursing={(n) => setSelectedNursing(n)} updatedCategory={lastUpdatedCategory} onStartReport={() => setShowReport(true)} onStartAssessment={() => setShowQuestionnaire(true)} />
+            <Home profile={profile} unreadCount={unreadCount} onUpdateProfile={handleUpdateProfile} onSelectNursing={(n) => setSelectedNursing(n)} updatedCategory={lastUpdatedCategory} onStartReport={() => setShowReport(true)} onStartAssessment={() => setShowQuestionnaire(true)} isDark={isDarkEffective} />
           </div>
         );
-      case 'program': return <Program onStartVoice={() => setAssistantMode('logging')} recentLogs={voiceLogs} onViewJournal={() => setShowJournal(true)} />;
-      case 'chat': return <AIChat profile={profile} onStartVoice={() => setAssistantMode('chat')} onBack={() => { setAssistantMode(null); setPreviousTab('dashboard'); setActiveTab('dashboard'); }} onStartAssessment={() => setShowQuestionnaire(true)} onReadMessages={() => setUnreadCount(0)} />;
-      case 'mall': return <Marketplace profile={profile} cartCount={cart.length} favorites={favorites} onToggleFavorite={toggleFavorite} onOpenCart={() => setShowCart(true)} onAddToCart={(sku, q) => setCart(prev => [...prev, {...sku, quantity: q, selected: true}])} />;
+      case 'program': return <Program onStartVoice={() => setAssistantMode('logging')} recentLogs={voiceLogs} onViewJournal={() => setShowJournal(true)} isDark={isDarkEffective} />;
+      case 'chat': return <AIChat profile={profile} onStartVoice={(sid) => { setAssistantSessionId(sid || null); setAssistantMode('chat'); }} onBack={() => { setAssistantMode(null); setPreviousTab('dashboard'); setActiveTab('dashboard'); }} onStartAssessment={() => setShowQuestionnaire(true)} onReadMessages={() => setUnreadCount(0)} isDark={isDarkEffective} />;
+      case 'mall': return <Marketplace profile={profile} cartCount={cart.length} favorites={favorites} onToggleFavorite={toggleFavorite} onOpenCart={() => setShowCart(true)} onAddToCart={(sku, q) => setCart(prev => [...prev, {...sku, quantity: q, selected: true}])} isDark={isDarkEffective} />;
       case 'profile':
         return (
           <div className="p-6 space-y-10 pb-32 overflow-y-auto no-scrollbar">
@@ -345,21 +355,64 @@ const App: React.FC = () => {
     }
   };
 
+  const handleVoiceMessageGenerated = async (msg: { role: 'user' | 'model'; text: string }) => {
+    if (!user) return;
+    try {
+        await fetch(`${API_URL}/api/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userId: user.uid,
+                role: msg.role,
+                text: msg.text,
+                sessionId: assistantSessionId,
+                sessionTitle: '语音通话记录',
+                type: 'chat'
+            })
+        });
+    } catch (e) {
+        console.error("Failed to persist voice message:", e);
+    }
+  };
+
   return (
-    <div className="min-h-screen max-w-md mx-auto relative bg-slate-50 dark:bg-slate-950 flex flex-col shadow-2xl border-x border-slate-200 dark:border-slate-800 transition-colors duration-300 no-scrollbar">
-      {assistantMode && <LiveVoiceAssistant mode={assistantMode} onClose={() => setAssistantMode(null)} />}
+    <div className={`min-h-screen max-w-md mx-auto relative flex flex-col shadow-2xl border-x border-slate-200 dark:border-slate-800/50 transition-colors duration-500 no-scrollbar overflow-hidden ${isDarkEffective ? 'bg-[#050912]' : 'bg-[#f8fafc]'}`}>
+      {/* Safe Area Top Spacer */}
+      <div className="h-[var(--safe-area-top)] bg-slate-50/80 dark:bg-[#050912]/80 backdrop-blur-md sticky top-0 z-50"></div>
+      {assistantMode && (
+        <LiveVoiceAssistant 
+            profile={profile} 
+            sessionId={assistantSessionId}
+            onClose={() => setAssistantMode(null)} 
+            onConfirmLog={() => {}} 
+            onMessageGenerated={handleVoiceMessageGenerated}
+        />
+      )}
       {showReport && <DailyHealthReport profile={profile} onClose={() => setShowReport(false)} cache={reportCache} onUpdateCache={setReportCache} />}
       {!selectedNursing && !showJournal && !showOrders && !showCart && !showCompleteProfile && !showQuestionnaire && !showHealthRecord && !showSafetySettings && !protocolType && !showSettings && activeTab !== 'chat' && !showHumanCoach && !showMembership && !showFavorites && !viewingProduct && (
-        <header className="px-6 pt-6 pb-4 bg-slate-50/80 dark:bg-slate-950/80 backdrop-blur-md sticky top-0 z-40 border-b border-transparent dark:border-slate-900">
-          <div className="flex items-center justify-between"><div className="flex flex-col text-left"><span className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-[0.2em] leading-none">NURSING PLUS</span><span className="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight mt-1">{NAV_ITEMS.find(i => i.id === activeTab)?.label || '康养家'}</span></div><div className="flex items-center space-x-3"><button onClick={() => setThemeMode(isDarkEffective ? 'light' : 'dark')} className="w-11 h-11 rounded-2xl bg-white dark:bg-slate-900 text-slate-400 flex items-center justify-center border border-slate-100 dark:border-slate-800 shadow-sm active:scale-90 transition-all">{isDarkEffective ? <Sun size={20} className="text-amber-400" /> : <Moon size={20} />}</button><button onClick={() => setAssistantMode('chat')} className="w-11 h-11 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-lg active:scale-90 transition-all shadow-emerald-500/20"><Mic size={20} /></button></div></div>
+        <header className="px-6 pt-2 pb-4 bg-slate-50/80 dark:bg-[#050912]/80 backdrop-blur-md sticky top-0 z-40 border-b border-transparent dark:border-white/5">
+          <div className="flex items-center justify-between font-outfit">
+            <div className="flex flex-col text-left">
+              <span className="text-[10px] font-black text-emerald-500 dark:text-emerald-400 uppercase tracking-[0.2em] mb-1">康养家</span>
+              <span className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">{NAV_ITEMS.find(i => i.id === activeTab)?.label || '首页'}</span>
+            </div>
+            <div className="flex items-center space-x-3">
+              <button onClick={() => setThemeMode(isDarkEffective ? 'light' : 'dark')} className="w-11 h-11 rounded-2xl bg-white dark:bg-[#111827] text-slate-400 flex items-center justify-center border border-slate-100 dark:border-white/5 shadow-sm active:scale-90 transition-all">
+                {isDarkEffective ? <Sun size={20} className="text-amber-400" /> : <Moon size={20} />}
+              </button>
+              <button onClick={() => { setAssistantSessionId(null); setAssistantMode('chat'); }} className="w-11 h-11 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-[0_10px_20px_rgba(16,185,129,0.3)] active:scale-90 transition-all">
+                <Mic size={20} />
+              </button>
+            </div>
+          </div>
         </header>
       )}
-      <main className={`flex-1 overflow-y-auto no-scrollbar ${activeTab === 'chat' ? 'h-screen' : ''}`}>{renderContent()}</main>
+      <main key={activeTab} className={`flex-1 overflow-y-auto no-scrollbar animate-in fade-in slide-in-from-bottom-2 duration-300 ${activeTab === 'chat' ? 'h-full' : ''}`}>{renderContent()}</main>
       {!selectedNursing && !showJournal && !showOrders && !showCart && !showCompleteProfile && !showQuestionnaire && !showHealthRecord && !showSafetySettings && !protocolType && !showSettings && activeTab !== 'chat' && !showHumanCoach && !showMembership && !showFavorites && !viewingProduct && (
-        <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-[360px] bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-100 dark:border-slate-800 flex justify-around items-center py-3.5 px-2 shadow-2xl z-50 rounded-[32px]">
+        <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-[400px] bg-white/95 dark:bg-[#0B0F1A]/95 backdrop-blur-3xl border border-slate-100 dark:border-white/10 flex justify-around items-center py-4 px-2 shadow-[0_25px_60px_rgba(0,0,0,0.4)] z-50 rounded-[40px] mb-[var(--safe-area-bottom)] transition-all duration-700">
           {NAV_ITEMS.map((item) => (
-            <button key={item.id} onClick={() => { setPreviousTab(activeTab); setActiveTab(item.id); }} className={`flex flex-col items-center justify-center min-w-[56px] transition-all duration-300 relative ${activeTab === item.id ? 'text-emerald-600 dark:text-emerald-400 transform scale-110' : 'text-slate-400'}`}>
-              <div className={`p-1.5 rounded-xl ${activeTab === item.id ? 'bg-emerald-50 dark:bg-emerald-900/20' : ''}`}>
+            <button key={item.id} onClick={() => { setPreviousTab(activeTab); setActiveTab(item.id); }} className={`flex flex-col items-center justify-center min-w-[64px] transition-all duration-500 relative btn-active-scale ${activeTab === item.id ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`}>
+              <div className={`p-2 rounded-2xl transition-all duration-300 ${activeTab === item.id ? 'bg-emerald-50 dark:bg-emerald-500/10 shadow-[0_0_20px_rgba(16,185,129,0.2)]' : ''}`}>
                 {item.icon}
                 {item.id === 'chat' && unreadCount > 0 && (
                    <span className="absolute top-0 right-1 w-4 h-4 bg-rose-500 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white dark:border-slate-900 animate-bounce">{unreadCount}</span>
@@ -370,6 +423,8 @@ const App: React.FC = () => {
           ))}
         </nav>
       )}
+      {/* Safe Area Bottom Spacer */}
+      <div className="h-[var(--safe-area-bottom)] bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl"></div>
     </div>
   );
 };
