@@ -11,6 +11,10 @@ export const getAssetUrl = (url) => {
         return url.replace(prodDomain, "");
     }
     
-    // If the URL is already relative (starts with /uploads), it will be handled by the Vite proxy
+    // If the path is relative (starts with /uploads), prefix with API_URL if in production
+    if (url.startsWith('/uploads')) {
+        return import.meta.env.DEV ? url : `https://api-u46fik5vcq-uc.a.run.app${url}`;
+    }
+    
     return url;
 };

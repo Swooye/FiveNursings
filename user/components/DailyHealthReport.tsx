@@ -113,29 +113,30 @@ const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose,
 
     const applyVoice = () => {
       const voices = window.speechSynthesis.getVoices();
-      if (voices.length === 0) return;
+      if (voices.length === 0) {
+        // Some browsers need a kick
+        window.speechSynthesis.getVoices();
+        return;
+      }
 
       const voicePref = profile.voicePreference || 'default';
+      console.log("Health Report voice preference:", voicePref);
       let selectedVoice: SpeechSynthesisVoice | undefined;
 
       // 1. User's saved preference (exact then fuzzy)
-      if (voicePref !== 'default') {
+      if (voicePref !== 'default' && voicePref !== '') {
         selectedVoice = voices.find(v => v.name === voicePref);
         if (!selectedVoice) {
           const lowerPref = voicePref.toLowerCase();
-          selectedVoice = voices.find(v =>
-            v.name.toLowerCase().includes(lowerPref) ||
-            lowerPref.includes(v.name.toLowerCase())
-          );
+          selectedVoice = voices.find(v => v.name.toLowerCase().includes(lowerPref));
         }
       }
 
-      // 2. Google 普通话（中国大陆） — natural cloud voice
-      if (!selectedVoice) {
+      // 2. Google 普通话 — natural cloud voice
+      if (!selectedVoice || voicePref === 'default' || voicePref === '') {
         selectedVoice = voices.find(v =>
           v.name.includes('Google') &&
-          v.name.includes('普通话') &&
-          v.name.includes('大陆')
+          (v.name.includes('普通话') || v.name.includes('Mandarin'))
         );
       }
 
@@ -150,10 +151,10 @@ const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose,
       if (!selectedVoice) {
         selectedVoice =
           voices.find(v => v.lang.startsWith('zh-CN')) ||
-          voices.find(v => v.lang.startsWith('zh')) ||
-          voices[0];
+          voices.find(v => v.lang.startsWith('zh'));
       }
 
+      console.log("Health Report selected voice:", selectedVoice?.name || 'default');
       if (selectedVoice) utterance.voice = selectedVoice;
     };
 

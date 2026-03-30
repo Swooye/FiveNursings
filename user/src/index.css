@@ -41,4 +41,20 @@
   .btn-active-scale {
     @apply active:scale-95 transition-transform duration-200;
   }
+
+  @keyframes ripple-wave {
+    0% {
+      transform: scale(1);
+      opacity: 0.5;
+    }
+    100% {
+      transform: scale(2.2);
+      opacity: 0;
+    }
+  }
+
+  .ripple-circle {
+    @apply absolute inset-0 rounded-full border border-emerald-400/30 pointer-events-none;
+    animation: ripple-wave 3s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
 }

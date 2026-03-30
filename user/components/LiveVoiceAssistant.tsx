@@ -1,17 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { PatientProfile } from '../types';
-import { Mic, Square, X, BrainCircuit, Volume2, Waves, PhoneCall } from 'lucide-react';
+import { Mic, X, Volume2, PhoneCall, Speaker, Activity, AlertCircle } from 'lucide-react';
 import { createClient, LiveClient, LiveTranscriptionEvents } from '@deepgram/sdk';
-import { Tool, GenerativeModel, FunctionDeclaration, Part } from '@google/generative-ai';
 
-const PROCESSING_STAGES = [
-  "正在倾听您的反馈...",
-  "深入理解您的语义...",
-  "分析潜在的康复需求...",
-  "正在组织更人性化的语言...",
-  "即将为您提供回复..."
-];
+const API_URL = import.meta.env.DEV ? "" : "https://api-u46fik5vcq-uc.a.run.app";
 
 interface LiveVoiceAssistantProps {
   profile: PatientProfile;
@@ -26,311 +19,419 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
   const { profile, onClose, onConfirmLog } = props;
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [processingStage, setProcessingStage] = useState(0);
   const [transcript, setTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
   const [aiResponse, setAiResponse] = useState('');
   const [sessionMessages, setSessionMessages] = useState<{ role: 'user' | 'model'; text: string }[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  // States for Volume/Mute/AI Speaking
+  const [isMuted, setIsMuted] = useState(false);
+  const [isAiSpeaking, setIsAiSpeaking] = useState(false);
+  const [volumeLevel, setVolumeLevel] = useState(0);
+
+  // Use refs for values accessed in closures to avoid stale state
+  const isMutedRef = useRef(false);
+  const isAiSpeakingRef = useRef(false);
 
   const deepgramConnection = useRef<LiveClient | null>(null);
   const microphone = useRef<MediaRecorder | null>(null);
-  const model = useRef<GenerativeModel | null>(null);
-  const chat = useRef<any>(null); // Using 'any' for chat because the type is complex
+  const audioContext = useRef<AudioContext | null>(null);
+  const analyser = useRef<AnalyserNode | null>(null);
+  const animationFrame = useRef<number | null>(null);
+  const mediaStream = useRef<MediaStream | null>(null);
+  const allStreams = useRef<MediaStream[]>([]);
+  const isSessionActive = useRef<boolean>(false);
+  const conversationHistory = useRef<{ role: 'user' | 'model'; text: string }[]>([]);
+  // Ref-based transcript to avoid React state batching issues
+  const transcriptRef = useRef('');
+  const isProcessingRef = useRef(false);  // Mutex to prevent duplicate AI requests
 
-  // Define function calling tools
-  const recordLogFunction: FunctionDeclaration = {
-    name: 'start_logging_intent',
-    description: '当用户明确表示想要记录今天的健康状况、饮食、运动或想要把当前谈话内容存入日志/看板时调用。',
-    parameters: {
-      type: "OBJECT" as any,
-      properties: {
-        reason: { type: "STRING" as any, description: '用户想要记录的原因或提到的关键词' }
-      }
+  // Keep refs in sync with state
+  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
+  useEffect(() => { isAiSpeakingRef.current = isAiSpeaking; }, [isAiSpeaking]);
+
+  useEffect(() => {
+    isSessionActive.current = true;
+    // Pre-load voices for speech synthesis
+    const loadVoices = () => { window.speechSynthesis.getVoices(); };
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    loadVoices();
+    startSession();
+    return () => stopSession();
+  }, []);
+
+  const updateVolume = () => {
+    if (!analyser.current) return;
+    const dataArray = new Uint8Array(analyser.current.frequencyBinCount);
+    analyser.current.getByteFrequencyData(dataArray);
+    let sum = 0;
+    for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+    const average = sum / dataArray.length;
+    setVolumeLevel(Math.min(100, (average / 80) * 100));
+    animationFrame.current = requestAnimationFrame(updateVolume);
+  };
+
+  const setupAudioAnalysis = (stream: MediaStream) => {
+    try {
+        if (!audioContext.current) {
+          audioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        }
+        if (audioContext.current.state === 'suspended') audioContext.current.resume();
+        analyser.current = audioContext.current.createAnalyser();
+        analyser.current.fftSize = 256;
+        const source = audioContext.current.createMediaStreamSource(stream);
+        source.connect(analyser.current);
+        updateVolume();
+    } catch (e) { console.error("Audio analysis setup failed", e); }
+  };
+
+  // Interrupt AI speech when user starts talking
+  const interruptAiSpeech = () => {
+    if (isAiSpeakingRef.current) {
+      console.log("[Voice] User interrupted AI speech");
+      window.speechSynthesis.cancel();
+      setIsAiSpeaking(false);
+      isAiSpeakingRef.current = false;
+      setAiResponse('');
     }
   };
 
-  const tools: Tool[] = [{ functionDeclarations: [recordLogFunction] }];
-
-  // Initialize and clean up Deepgram connection
-  useEffect(() => {
-    const initialize = async () => {
-      const { GoogleGenerativeAI } = await import('@google/generative-ai');
-      const genAI = new GoogleGenerativeAI((import.meta as any).env.VITE_GEMINI_API_KEY);
-      model.current = genAI.getGenerativeModel({ model: "gemini-1.5-pro-latest" });
-    };
-    initialize();
-
-    return () => {
-      stopSession();
-    };
-  }, []);
-
-  // Handle stage cycle animation when processing
-  useEffect(() => {
-    let interval: any;
-    if (isProcessing) {
-      interval = setInterval(() => {
-        setProcessingStage((prev) => (prev + 1) % PROCESSING_STAGES.length);
-      }, 1500);
-    } else {
-      setProcessingStage(0);
-    }
-    return () => clearInterval(interval);
-  }, [isProcessing]);
-
   const startSession = async () => {
-    if (isListening || isProcessing) return;
-
+    if (isListening || isProcessingRef.current || isAiSpeaking) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      if (!stream) {
-        console.error("No audio stream found.");
-        return;
+      // Stop any existing stream tracks before creating a new one
+      if (mediaStream.current) {
+        mediaStream.current.getTracks().forEach(t => t.stop());
       }
-
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStream.current = stream;
+      allStreams.current.push(stream);
       const apiKey = (import.meta as any).env.VITE_DEEPGRAM_API_KEY;
       if (!apiKey) {
-        console.error("Deepgram API Key not found.");
-        return;
+          setError("未检测到语音识别密钥 (Deepgram Key)，请在 .env 中补充 VITE_DEEPGRAM_API_KEY 后重启服务。");
+          return;
       }
 
       const deepgram = createClient(apiKey);
       const connection = deepgram.listen.live({
-        model: 'nova-2',
-        language: 'zh-CN',
-        smart_format: true,
-        interim_results: true,
-        endpointing: 300,
-        utterance_end_ms: 1000,
+        model: 'nova-2', language: 'zh-CN', smart_format: true,
+        interim_results: true, endpointing: 300, utterance_end_ms: 1000,
       });
 
       connection.on(LiveTranscriptionEvents.Open, () => {
         microphone.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
         microphone.current.ondataavailable = (event) => {
-          if (event.data.size > 0 && connection.getReadyState() === 1) {
+          // Always send audio (even during AI speech) to enable interruption detection
+          if (!isMutedRef.current && event.data.size > 0 && connection.getReadyState() === 1) {
             connection.send(event.data);
           }
         };
         microphone.current.start(250);
+        setupAudioAnalysis(stream);
         setIsListening(true);
+        setError(null);
       });
 
       connection.on(LiveTranscriptionEvents.Transcript, (data) => {
         const sentence = data.channel.alternatives[0].transcript;
+        if (!sentence) return;  // Skip empty transcripts
+
         if (data.is_final) {
-          setTranscript(prev => `${prev} ${sentence}`.trim());
+          // If user is speaking while AI talks, interrupt immediately
+          if (isAiSpeakingRef.current && sentence.trim()) {
+            interruptAiSpeech();
+          }
+          transcriptRef.current = `${transcriptRef.current} ${sentence}`.trim();
+          setTranscript(transcriptRef.current);
           setInterimTranscript('');
         } else {
+          // Interim transcript detected while AI speaking = interrupt
+          if (isAiSpeakingRef.current && sentence.trim()) {
+            interruptAiSpeech();
+          }
           setInterimTranscript(sentence);
         }
       });
 
       connection.on(LiveTranscriptionEvents.UtteranceEnd, async () => {
-        if (transcript.trim()) {
-          const textToSend = transcript.trim();
-          const msg = { role: 'user' as const, text: textToSend };
-          setSessionMessages(prev => [...prev, msg]);
-          if (props.onMessageGenerated) props.onMessageGenerated(msg);
-          await getAIResponse(textToSend);
-        }
+        if (isMutedRef.current) return;
+        // If AI was speaking and user interrupted, the transcript will be processed here
+        
+        // Mutex: prevent duplicate processing
+        if (isProcessingRef.current) return;
+        
+        const textToSend = transcriptRef.current.trim();
+        if (!textToSend) return;
+        
+        // Clear transcript immediately and acquire mutex
+        transcriptRef.current = '';
+        setTranscript('');
+        isProcessingRef.current = true;
+
+        console.log("[Voice] Utterance complete, sending:", textToSend);
+        const msg = { role: 'user' as const, text: textToSend };
+        setSessionMessages(prev => [...prev, msg]);
+        conversationHistory.current.push(msg);
+        if (props.onMessageGenerated) props.onMessageGenerated(msg);
+        getAIResponse(textToSend);
       });
 
-      connection.on(LiveTranscriptionEvents.Close, () => console.log("Deepgram connection closed."));
-      connection.on(LiveTranscriptionEvents.Error, (e) => console.error("Deepgram error:", e));
+      connection.on(LiveTranscriptionEvents.Error, (err) => {
+        console.error("Deepgram error:", err);
+        setError("语音识别连接异常，正在重试...");
+      });
 
       deepgramConnection.current = connection;
-    } catch (error) {
-      console.error("Failed to start voice session:", error);
+    } catch (error: any) { 
+        console.error("Voice start error:", error); 
+        setError("无法访问麦克风，请确保浏览器已授权录音权限。");
     }
   };
 
   const getAIResponse = async (text: string) => {
-    if (!model.current) return;
-
     setIsListening(false);
     setIsProcessing(true);
-
+    setAiResponse('教练正在思考...');
     try {
-      if (!chat.current) {
-        chat.current = model.current.startChat({
-          tools,
-          history: [],
-          systemInstruction: `
-             你是一个顶级的、富有同情心的 AI 康复教练，名叫“五养教练”。你的主要职责是与癌症康复期患者进行开放式、支持性的对话，并帮助他们记录健康日志。
-             - 你的沟通风格必须是：友好、耐心、积极、充满鼓励，像一个真实的朋友。
-             - **核心任务**：倾听用户的任何想法，无论是关于他们当天的感受、饮食、运动、睡眠、情绪，还是任何生活琐事。
-             - **日志记录**：当用户在谈话中明确表达了想要“记录”或“记一下”今天的状况时（例如“我想记录一下今天吃了什么”或“帮我记一下今天感觉不错”），你必须调用 'start_logging_intent' 函数。在调用函数时，要在 'reason' 参数中简要说明用户想要记录的原因。
-             - **禁止行为**：绝对不能提供 any 医疗建议、诊断或治疗方案。如果被问到，必须委婉地拒绝并说明“我只是一个负责陪伴和记录的AI助手，任何医疗问题都需要咨询您的医生或专业康复师。”
-             - **用户信息**：你知道当前用户是 ${profile.name}，${profile.age}岁，正在进行 ${profile.cancerType || '相关'} 的康复。请在对话中适当地、自然地体现出你了解这些背景信息，让用户感到被专属服务。
-             - **简化互动**：你的回答应该简洁明了，易于理解。
-            `
-        });
+      console.log("[Voice] Sending to backend:", text);
+      const res = await fetch(`${API_URL}/api/get-ai-chat-reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          message: text, 
+          profile, 
+          history: conversationHistory.current.slice(-6) 
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error(`服务端返回 ${res.status}`);
       }
 
-      const result = await chat.current.sendMessage(text);
-      const response = result.response;
-      const functionCalls = response.functionCalls();
+      const data = await res.json();
+      const aiText = data.reply;
 
-      if (functionCalls && functionCalls.length > 0) {
-        const call = functionCalls[0];
-        if (call.name === 'start_logging_intent') {
-          const fullLog = `${transcript} - ${aiResponse}`.trim();
-          onConfirmLog(fullLog);
-        }
-      } else {
-        const aiText = response.text();
-        setAiResponse(aiText);
-        const msg = { role: 'model' as const, text: aiText };
-        setSessionMessages(prev => [...prev, msg]);
-        if (props.onMessageGenerated) props.onMessageGenerated(msg);
-        speakResponse(aiText);
+      if (!aiText) {
+        throw new Error("AI 返回了空回复");
       }
-    } catch (error) {
-      console.error("Error getting AI response:", error);
-      const errorMessage = "抱歉，我的大脑好像断线了，请稍后再试。";
-      setAiResponse(errorMessage);
-      speakResponse(errorMessage);
-    } finally {
+
+      console.log("[Voice] AI replied:", aiText.substring(0, 80));
+      setAiResponse(aiText);
+      const msg = { role: 'model' as const, text: aiText };
+      setSessionMessages(prev => [...prev, msg]);
+      conversationHistory.current.push(msg);
+      if (props.onMessageGenerated) props.onMessageGenerated(msg);
+      
       setIsProcessing(false);
-      setTranscript('');
+      isProcessingRef.current = false;
+      speakResponse(aiText);
+    } catch (e: any) { 
+      console.error("[Voice] AI response error:", e);
+      setError(`AI 回复失败: ${e.message}`);
+      setIsProcessing(false);
+      isProcessingRef.current = false;
       setAiResponse('');
+      // Resume listening after error
+      if (isSessionActive.current) {
+        setTimeout(() => {
+          setError(null);
+          startSession();
+        }, 3000);
+      }
     }
-  };
-
-  const stripMarkdown = (text: string) => {
-    return text
-      .replace(/[#*`_~]/g, '')
-      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-      .replace(/>+/g, '')
-      .replace(/\n+/g, ' ')
-      .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, '')
-      .replace(/\s+/g, ' ')
-      .trim();
   };
 
   const speakResponse = (text: string) => {
-    const cleanText = stripMarkdown(text);
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.lang = 'zh-CN';
-    utterance.rate = 1.1;
+    try {
+        // Strip markdown for cleaner TTS
+        const cleanText = text
+          .replace(/[#*`~>]/g, '')
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+          .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, '')
+          .replace(/\n+/g, '。')
+          .trim();
 
-    const voices = window.speechSynthesis.getVoices();
-    let selectedVoice = null;
-    const voiceName = profile.voicePreference;
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.lang = 'zh-CN';
+        
+        const voices = window.speechSynthesis.getVoices();
+        let selectedVoice: SpeechSynthesisVoice | null = null;
+        const voicePref = profile?.voicePreference || 'default';
 
-    if (voiceName && voiceName !== 'default') {
-      selectedVoice = voices.find(v => v.name === voiceName);
+        if (voicePref !== 'default' && voicePref !== '') {
+            selectedVoice = voices.find(v => v.name === voicePref) || null;
+            if (!selectedVoice) {
+                const lowerPref = voicePref.toLowerCase();
+                selectedVoice = voices.find(v => v.name.toLowerCase().includes(lowerPref)) || null;
+            }
+        }
+
+        if (!selectedVoice || voicePref === 'default' || voicePref === '') {
+            selectedVoice = voices.find(v => v.name.includes('Google') && (v.name.includes('普通话') || v.name.includes('Mandarin'))) || null;
+        }
+        
+        if (!selectedVoice) {
+            selectedVoice = voices.find(v => v.lang.includes('zh-CN')) || voices.find(v => v.lang.includes('zh')) || null;
+        }
+
+        if (selectedVoice) utterance.voice = selectedVoice;
+
+        utterance.onstart = () => {
+            setIsAiSpeaking(true);
+            isAiSpeakingRef.current = true;
+        };
+        utterance.onend = () => { 
+            setIsAiSpeaking(false);
+            isAiSpeakingRef.current = false;
+            setAiResponse('');
+            // Don't call startSession here — mic is already running for interruption
+            setIsListening(true);
+        };
+        utterance.onerror = (event) => { 
+            console.error("Speech error event:", event);
+            setIsAiSpeaking(false);
+            isAiSpeakingRef.current = false;
+            setAiResponse('');
+            setIsListening(true);
+        };
+        console.log("[Voice] Speaking with voice:", selectedVoice?.name || 'default');
+        window.speechSynthesis.speak(utterance);
+    } catch (e) {
+        console.error("Speech error", e);
+        setIsAiSpeaking(false);
+        isAiSpeakingRef.current = false;
+        setAiResponse('');
+        if (isSessionActive.current) startSession();
     }
-
-    if (!selectedVoice) {
-      selectedVoice = voices.find(v =>
-        v.name.includes('Google') &&
-        (v.name.includes('普通话') || v.name.includes('Mandarin')) &&
-        (v.lang.includes('zh') || v.lang.includes('CN'))
-      );
-    }
-
-    if (selectedVoice) utterance.voice = selectedVoice;
-
-    utterance.onend = () => {
-      // Potentially restart listening after AI speaks
-      startSession();
-    };
-    speechSynthesis.speak(utterance);
   };
 
-  const stopSession = (shouldSave = false) => {
-    if (microphone.current) {
-      microphone.current.stop();
-      microphone.current = null;
-    }
-    if (deepgramConnection.current) {
-      deepgramConnection.current.finish();
-      deepgramConnection.current = null;
-    }
-    speechSynthesis.cancel();
-
-    if (shouldSave && sessionMessages.length > 0 && props.onSaveMessages) {
-      props.onSaveMessages(sessionMessages);
-    }
-
+  const stopSession = () => {
+    isSessionActive.current = false;
+    try {
+        if (microphone.current && microphone.current.state !== 'inactive') {
+            microphone.current.stop();
+        }
+        // Stop ALL streams, not just the latest one
+        allStreams.current.forEach(stream => {
+            stream.getTracks().forEach(track => {
+                track.stop();
+                console.log("[Voice] Stopped track:", track.label, track.readyState);
+            });
+        });
+        allStreams.current = [];
+        mediaStream.current = null;
+        if (deepgramConnection.current) {
+            deepgramConnection.current.finish();
+            deepgramConnection.current = null;
+        }
+        if (audioContext.current) {
+            audioContext.current.close().catch(e => console.error("AudioContext close error", e));
+            audioContext.current = null;
+        }
+        window.speechSynthesis.cancel();
+    } catch (e) { console.error("Stop session error", e); }
     setIsListening(false);
     setIsProcessing(false);
-    setTranscript('');
-    setInterimTranscript('');
-    setAiResponse('');
+    setIsAiSpeaking(false);
+    if (animationFrame.current) cancelAnimationFrame(animationFrame.current);
   };
 
-
-  useEffect(() => {
-    startSession();
-    return () => stopSession();
-  }, []);
-
   return (
-    <div className="fixed inset-0 bg-[#161d2b] z-[200] flex flex-col items-center justify-between py-16 animate-in fade-in duration-500 overflow-hidden">
-      {/* Top Badge */}
-      <div className="flex flex-col items-center">
-        <div className="flex items-center space-x-2 px-6 py-2 bg-emerald-900/40 rounded-full border border-emerald-500/30 text-emerald-400 font-bold">
-          <PhoneCall size={16} />
-          <span className="text-[10px] font-black tracking-widest uppercase">五养教练服务中</span>
+    <div className="fixed inset-0 bg-[#0B0F1A] z-[200] flex flex-col items-center justify-between py-6 animate-in fade-in duration-500 overflow-hidden font-outfit">
+      {/* Top Header */}
+      <div className="flex flex-col items-center space-y-4">
+        <div className="flex items-center space-x-2 px-6 py-2 bg-emerald-900/20 rounded-full border border-emerald-500/20 text-emerald-400 font-bold backdrop-blur-md">
+          <PhoneCall size={14} />
+          <span className="text-[10px] uppercase tracking-widest">五养教练服务中</span>
         </div>
+        
+        {isAiSpeaking ? (
+            <div className="flex items-center space-x-1 px-4 py-1 bg-blue-500/10 rounded-full border border-blue-500/20 animate-pulse">
+                <Speaker size={12} className="text-blue-400" />
+                <span className="text-[9px] text-blue-400 font-black uppercase tracking-tighter">AI 正在说话...</span>
+            </div>
+        ) : (
+            <div className="h-6" />
+        )}
       </div>
 
-      {/* Center UI */}
-      <div className="flex flex-col items-center flex-1 justify-center w-full px-12">
-        <div className={`relative w-64 h-64 rounded-full flex items-center justify-center transition-all duration-700 ${isListening ? 'bg-emerald-600 shadow-[0_0_80px_rgba(16,185,129,0.4)]' : 'bg-emerald-500/20'}`}>
-          <div className={`absolute inset-0 rounded-full border-2 border-emerald-400/20 ${isListening ? 'animate-ping' : ''}`}></div>
-          <Mic size={80} className="text-white relative z-10" />
-
-          {/* Waves Effect */}
-          {isListening && (
-            <div className="absolute -bottom-8 flex items-end space-x-1 h-12">
-              {[1, 2, 3, 4, 5].map(i => (
-                <div key={i} className="w-1.5 bg-emerald-400 rounded-full animate-bounce" style={{ height: `${Math.random() * 100}%`, animationDelay: `${i * 0.1}s` }}></div>
-              ))}
-            </div>
+      {/* Center Mic Area */}
+      <div className="flex flex-col items-center justify-center flex-1 w-full px-12 -mt-4">
+        <div className={`relative w-56 h-56 rounded-full flex items-center justify-center transition-all duration-700 ${isAiSpeaking ? 'bg-emerald-500 shadow-[0_0_80px_rgba(16,185,129,0.4)]' : (isListening && !isMuted ? 'bg-emerald-500/10 shadow-[0_0_60px_rgba(16,185,129,0.1)] scale-105' : 'bg-slate-800/10')}`}>
+          {isAiSpeaking && (
+            <>
+              <div className="ripple-circle" style={{ animationDelay: '0s' }}></div>
+              <div className="ripple-circle" style={{ animationDelay: '1s' }}></div>
+              <div className="ripple-circle" style={{ animationDelay: '2s' }}></div>
+            </>
           )}
+          <div className={`absolute inset-0 rounded-full border-2 ${isAiSpeaking ? 'border-emerald-400/40 opacity-0' : 'border-emerald-400/5'} ${(isListening && !isMuted && !isAiSpeaking) ? 'animate-pulse scale-110' : ''}`}></div>
+          <div className={`w-48 h-48 rounded-full flex items-center justify-center backdrop-blur-sm transition-all duration-500 ${isAiSpeaking ? 'bg-emerald-400/20' : 'border border-white/5'}`}>
+             <Mic size={72} className={`transition-all duration-500 ${isAiSpeaking ? 'text-white scale-110' : (isListening && !isMuted ? 'text-white' : 'text-slate-700')}`} />
+          </div>
         </div>
 
-        <div className="mt-12 text-center space-y-4 max-w-sm">
-          <h2 className="text-3xl font-black text-white leading-tight">向教练倾诉您的心情</h2>
-          <p className="text-slate-400 text-lg font-bold italic leading-relaxed">
-            “{isProcessing ? aiResponse : (transcript || interimTranscript || '教练，我今天感觉心情有点沉重，该怎么办？')}”
-          </p>
+        <div className="mt-8 text-center space-y-3 max-w-sm px-6">
+          <h2 className="text-xl font-black text-white leading-tight">向教练倾诉您的心情</h2>
+          <div className="min-h-[60px] flex items-center justify-center text-center">
+             <p className="text-slate-400/60 text-sm font-bold italic leading-relaxed">
+               "{error ? error : (isProcessing ? (aiResponse || '教练正在根据您的反馈深入思考...') : (transcript || interimTranscript || '直接说话即可，教练正在专注倾听...'))}"
+             </p>
+          </div>
         </div>
       </div>
 
-      {/* Bottom Progress/Controls */}
-      <div className="w-full px-12 space-y-10 flex flex-col items-center">
-        <div className="w-full max-w-sm bg-slate-800/40 rounded-[32px] p-8 border border-slate-700/30">
-          <div className="flex justify-between items-center mb-4">
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Expert Insight Level</span>
-            <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Active</span>
+      {/* Bottom Control Card */}
+      <div className="w-full px-6 pb-6 space-y-4 flex flex-col items-center">
+        <div className="w-full max-w-sm bg-[#161d2b]/70 backdrop-blur-3xl rounded-[32px] p-6 border border-white/5 shadow-2xl">
+          <div className="flex justify-between items-center mb-5">
+            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">专家深度分析</span>
+            <span className={`text-[9px] font-black uppercase tracking-widest flex items-center ${isListening ? 'text-emerald-400' : 'text-slate-600'}`}>
+                <Activity size={10} className={`mr-1.5 ${isListening ? 'animate-pulse' : ''}`} />
+                {isListening ? '工作中' : (error ? '异常' : '待命')}
+            </span>
           </div>
-          <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
-            <div className="h-full bg-emerald-500 rounded-full w-2/3 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+
+          <div className="flex items-center space-x-4">
+            {/* Horn Icon (Green Tone) - Moved to Left */}
+            <button 
+              onClick={() => setIsMuted(!isMuted)} 
+              className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all border ${isMuted ? 'bg-rose-500/10 border-rose-500/20 text-rose-500' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500'}`}
+            >
+              <Volume2 size={20} />
+            </button>
+
+            {/* Volume Bar on Right */}
+            <div className="flex-1 h-2 bg-slate-800/50 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full rounded-full transition-all duration-75 ${error ? 'bg-rose-500/30' : (isMuted ? 'bg-slate-700 w-[66%]' : 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)]')}`}
+                  style={{ width: error ? '100%' : (isMuted ? '66%' : `${Math.max(10, volumeLevel)}%`) }}
+                ></div>
+            </div>
           </div>
-          <div className="flex items-center space-x-4 mt-6">
-            <div className="w-12 h-12 bg-emerald-600/20 rounded-2xl flex items-center justify-center text-emerald-400">
-              <Volume2 size={24} />
-            </div>
-            <div className="flex-1 space-y-1">
-              <div className="h-2 bg-slate-700 rounded-full w-full"></div>
-              <div className="h-2 bg-slate-700 rounded-full w-3/4 opacity-50"></div>
-            </div>
+
+          <div className="mt-4 text-[10px] text-slate-500 font-bold tracking-tight text-center">
+              {error ? '服务异常，请核对环境配置' : (isMuted ? '已暂停采音，请点击左侧图标恢复' : '语音服务已就绪，教练正在分析您的语音...')}
           </div>
         </div>
 
-        <button
-          onClick={() => { stopSession(true); props.onClose(); }}
-          className="w-full max-w-[200px] h-16 bg-slate-800/80 hover:bg-slate-700 rounded-full flex items-center justify-center space-x-3 text-white font-black transition-all active:scale-95 border border-slate-700"
+        <button 
+          onClick={() => { stopSession(); onClose(); }} 
+          className="w-full max-w-[160px] h-14 bg-white/5 hover:bg-white/10 rounded-full flex items-center justify-center space-x-2 text-white/50 font-black border border-white/5 text-xs transition-all active:scale-95"
         >
-          <X size={20} />
-          <span>结束对话</span>
+          <X size={16} />
+          <span>结束通话</span>
         </button>
       </div>
 
+      {/* Floating Error Badge */}
+      {error && (
+        <div className="absolute top-24 left-1/2 -translate-x-1/2 px-6 py-3 bg-rose-500/90 rounded-2xl flex items-center space-x-3 shadow-xl backdrop-blur-lg animate-in slide-in-from-top-4 duration-300">
+            <AlertCircle size={18} className="text-white shrink-0" />
+            <span className="text-[11px] text-white font-bold leading-tight">{error}</span>
+        </div>
+      )}
     </div>
   );
 };

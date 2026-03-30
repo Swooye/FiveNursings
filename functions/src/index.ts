@@ -40,7 +40,7 @@ const User = mongoose.models.User || mongoose.model('User', userSchema);
 const ChatMessage = mongoose.models.ChatMessage || mongoose.model('ChatMessage', chatSchema);
 const Admin = mongoose.models.Admin || mongoose.model('Admin', adminSchema);
 const Protocol = mongoose.models.Protocol || mongoose.model('Protocol', protocolSchema);
-const MallItem = mongoose.models.MallItem || mongoose.model('MallItem', mallItemSchema);
+const MallItem = mongoose.models.MallItem || mongoose.model('MallItem', mallItemSchema, 'mall_items');
 const Role = mongoose.models.Role || mongoose.model('Role', roleSchema);
 const Plan = mongoose.models.Plan || mongoose.model('Plan', planSchema);
 
@@ -72,6 +72,7 @@ const getSolarTerm = (): string => {
 const app = express();
 app.use(cors({ origin: true }));
 app.use(express.json());
+app.use('/uploads', express.static('uploads'));
 
 const format = (doc: any) => { 
     if (!doc) return null; 
@@ -360,6 +361,12 @@ apiRouter.post('/messages', async (req: any, res: any) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// 文件上传接口 (注意：云函数环境中本地存储是非持久化的)
+apiRouter.post('/upload', async (req: any, res: any) => {
+    // 兼容原有的 /api/upload 调用逻辑
+    res.status(501).json({ error: "Upload not supported on this endpoint. Please use Firebase Storage on frontend." });
+});
+
 apiRouter.get('/messages/:userId', async (req: any, res: any) => {
     try {
         const { sessionId } = req.query;
@@ -462,18 +469,20 @@ export const getAIChatResponse = onCall({ region: "us-central1", secrets: ["OPEN
 export const generateHealthReport = onCall({ region: "us-central1", secrets: ["OPENROUTER_API_KEY"] }, async (request) => {
     if (!request.auth) throw new HttpsError('unauthenticated', 'Unauthenticated');
     const { profile } = request.data;
-    const apiKey = "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";
+    const apiKey = process.env.OPENROUTER_API_KEY;
 
     try {
         const prompt = `请基于患者档案生成一份【今日康复简报】。
-患者：${profile.cancerType}, 阶段：${profile.stage}
+患者昵称：${profile.nickname || '用户'}
+诊断类型：${profile.cancerType}, 阶段：${profile.stage}
 五养评分：饮食${profile.scores.diet}, 运动${profile.scores.exercise}, 睡眠${profile.scores.sleep}, 心理${profile.scores.mental}, 功能${profile.scores.function}
 
 要求：
 1. 采用 Markdown 格式，层级清晰。
 2. 给出 1-2 条最核心的今日待办。
-3. 语气要温暖、鼓励，字数控制在 200 字左右。
-4. 必须包含免责声明。`;
+3. 请在简报中使用患者的昵称进行亲切称呼，禁止出现 [患者姓名] 等占位符。
+4. 语气要温暖、鼓励，字数控制在 200 字左右。
+5. 必须包含免责声明。`;
 
         const response = await fetch(OPENROUTER_URL, {
             method: "POST",

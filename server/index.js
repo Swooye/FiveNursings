@@ -11,6 +11,19 @@ const multer = require('multer');
 const app = express();
 const port = 3002;
 
+// --- Multer 配置 (用于图片上传) ---
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadPath = path.join(__dirname, 'uploads');
+        if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath);
+        cb(null, uploadPath);
+    },
+    filename: (req, file, cb) => {
+        cb(null, Date.now() + '-' + file.originalname);
+    }
+});
+const upload = multer({ storage });
+
 // --- 基础配置 ---
 const BASE_URI = process.env.MONGODB_URI + 'fivenursing_dev?retryWrites=true&w=majority';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
@@ -307,6 +320,13 @@ app.post('/api/messages', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 文件上传接口
+app.post('/api/upload', upload.single('file'), (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const fileUrl = `/uploads/${req.file.filename}`;
+    res.json({ url: fileUrl });
+});
+
 app.get('/api/messages/:userId', async (req, res) => {
     try {
         const { sessionId } = req.query;
@@ -397,14 +417,16 @@ app.post('/api/generate-health-report', async (req, res) => {
     if (!apiKey) return res.status(400).json({ error: "API Key not configured" });
 
     const prompt = `请基于以下患者档案生成一份【今日康复简报】。
-患者：${profile.cancerType}, 阶段：${profile.stage}
+患者昵称：${profile.nickname || '用户'}
+诊断类型：${profile.cancerType}, 阶段：${profile.stage}
 五养评分：饮食${profile.scores?.diet || 0}, 运动${profile.scores?.exercise || 0}, 睡眠${profile.scores?.sleep || 0}, 心理${profile.scores?.mental || 0}, 功能${profile.scores?.function || 0}
 
 要求：
 1. 采用 Markdown 格式，层级清晰。
 2. 给出 1-2 条最核心的今日待办。
-3. 语气要温暖、鼓励，字数控制在 200 字左右。
-4. 必须包含免责声明：本建议不构成医疗诊断。`;
+3. 请在简报中使用患者的昵称进行亲切称呼，禁止出现 [患者姓名] 等占位符。
+4. 语气要温暖、鼓励，字数控制在 200 字左右。
+5. 必须包含免责声明：本建议不构成医疗诊断。`;
 
     try {
         const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {

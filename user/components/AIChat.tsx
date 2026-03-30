@@ -98,6 +98,8 @@ interface AIChatProps {
   onStartAssessment: () => void;
   onReadMessages: () => void;
   isDark?: boolean;
+  refreshTrigger?: number;
+  voiceSessionId?: string | null;
 }
 
 const SUGGESTIONS = [
@@ -106,7 +108,7 @@ const SUGGESTIONS = [
     "感觉压力大该如何调节？"
 ];
 
-const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartAssessment, onReadMessages, isDark }) => {
+const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartAssessment, onReadMessages, isDark, refreshTrigger, voiceSessionId }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -179,29 +181,31 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
           applyVoiceAndSpeak();
           window.speechSynthesis.onvoiceschanged = null;
         };
+        // Some browsers need a "kick" to load voices
+        window.speechSynthesis.getVoices();
         return;
       }
 
       let selectedVoice: any = null;
       const voicePref = profile?.voicePreference || 'default';
+      console.log("TTS voice preference:", voicePref);
 
-      if (voicePref !== 'default') {
+      if (voicePref !== 'default' && voicePref !== '') {
         // First try exact match
         selectedVoice = voices.find(v => v.name === voicePref);
         
         // Then try partial match (case insensitive)
         if (!selectedVoice) {
           const lowerPref = voicePref.toLowerCase();
-          selectedVoice = voices.find(v => v.name.toLowerCase().includes(lowerPref) || lowerPref.includes(v.name.toLowerCase()));
+          selectedVoice = voices.find(v => v.name.toLowerCase().includes(lowerPref));
         }
       }
 
-      // Preferred fallback to Google Mandarin (Chinese Mainland) for natural tone
-      if (!selectedVoice || voicePref === 'default') {
+      // Preferred fallback to Google Mandarin
+      if (!selectedVoice || voicePref === 'default' || voicePref === '') {
         selectedVoice = voices.find(v => 
           v.name.includes('Google') && 
-          v.name.includes('普通话') && 
-          v.name.includes('大陆')
+          (v.name.includes('普通话') || v.name.includes('Mandarin'))
         );
       }
 
@@ -214,18 +218,22 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
       // Final fallback to any zh-CN voice
       if (!selectedVoice) {
         selectedVoice = voices.find(v => v.lang.includes('zh-CN')) || 
-                       voices.find(v => v.lang.includes('zh')) ||
-                       voices[0];
+                       voices.find(v => v.lang.includes('zh'));
       }
+
+      console.log("Selected TTS voice:", selectedVoice?.name || 'default');
 
       if (selectedVoice) {
         speech.voice = selectedVoice;
       }
 
+      speech.onstart = () => setIsSpeaking(true);
       speech.onend = () => setIsSpeaking(false);
-      speech.onerror = () => setIsSpeaking(false);
+      speech.onerror = (e) => {
+        console.error("TTS error:", e);
+        setIsSpeaking(false);
+      };
       
-      setIsSpeaking(true);
       window.speechSynthesis.speak(speech);
       setActiveMenuId(null);
     };
@@ -361,12 +369,25 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
         setIsInitialLoading(false);
         setIsHistoryLoading(false);
     }
-  }, [profile.name, onReadMessages]);
+  }, [profile.name, onReadMessages, currentSessionId]);
 
   useEffect(() => {
     fetchMessages();
     return () => { if (streamIntervalRef.current) clearInterval(streamIntervalRef.current); };
   }, [fetchMessages]); // Fixed dependency
+
+  // Re-fetch when voice overlay closes (refreshTrigger changes)
+  useEffect(() => {
+    if (refreshTrigger && refreshTrigger > 0) {
+      // If a voice session just ended, switch to that session to show the messages
+      if (voiceSessionId) {
+        setCurrentSessionId(voiceSessionId);
+        localStorage.setItem('currentAIChatSession', voiceSessionId);
+      }
+      // Small delay to let state settle before fetching
+      setTimeout(() => fetchMessages(), 100);
+    }
+  }, [refreshTrigger]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     if (e.currentTarget.scrollTop === 0 && hasMore && !isHistoryLoading) {

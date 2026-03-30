@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from './src/firebase';
 import { PatientProfile, CancerType, TreatmentStage, NursingScores, VoiceLog, CartItem, SKU, ChatSession } from './types';
@@ -56,6 +56,8 @@ const App: React.FC = () => {
   const [previousTab, setPreviousTab] = useState('dashboard');
   const [assistantMode, setAssistantMode] = useState<'chat' | 'logging' | null>(null);
   const [assistantSessionId, setAssistantSessionId] = useState<string | null>(null);
+  const [lastVoiceSessionId, setLastVoiceSessionId] = useState<string | null>(null);
+  const [chatRefreshTrigger, setChatRefreshTrigger] = useState(0);
   const [showReport, setShowReport] = useState(false);
   const [selectedNursing, setSelectedNursing] = useState<keyof NursingScores | null>(null);
   const [showJournal, setShowJournal] = useState(false);
@@ -77,6 +79,8 @@ const App: React.FC = () => {
   const [reportCache, setReportCache] = useState<{ date: string; profileJSON: string; text: string } | null>(null);
 
   const [unreadCount, setUnreadCount] = useState(0);
+
+  const voiceSessionIdRef = useRef<string | null>(null);
 
   const [themeMode, setThemeMode] = useState<'light' | 'dark' | 'system'>(() => (localStorage.getItem('themeMode') as any) || 'system');
   const [fontSize, setFontSize] = useState<'small' | 'normal' | 'large' | 'extra-large'>(() => (localStorage.getItem('font-size') as any) || 'normal');
@@ -252,7 +256,41 @@ const App: React.FC = () => {
       familyMembers: [], isVIP: false, coachSessionsRemaining: 0, referralCode: '', voicePreference: 'default'
     });
     setShowSettings(false);
+    setChatRefreshTrigger(prev => prev + 1);
     setActiveTab('dashboard');
+  };
+
+  // When voice mode starts, generate a sessionId if needed
+  useEffect(() => {
+    if (assistantMode) {
+      voiceSessionIdRef.current = assistantSessionId || `voice_${Date.now()}`;
+      if (!assistantSessionId) {
+        setAssistantSessionId(voiceSessionIdRef.current);
+      }
+    } else {
+      voiceSessionIdRef.current = null;
+    }
+  }, [assistantMode, assistantSessionId]);
+
+  const handleVoiceMessageGenerated = async (msg: { role: 'user' | 'model'; text: string }) => {
+    if (!user) return;
+    const sid = voiceSessionIdRef.current || assistantSessionId || `voice_${Date.now()}`;
+    try {
+        await fetch(`${API_URL}/api/messages`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userId: user.uid,
+                role: msg.role,
+                text: msg.text,
+                sessionId: sid,
+                sessionTitle: '语音通话记录',
+                type: 'chat'
+            })
+        });
+    } catch (e) {
+        console.error("Failed to persist voice message:", e);
+    }
   };
   
   if (loadingAuth) {
@@ -285,7 +323,7 @@ const App: React.FC = () => {
           </div>
         );
       case 'program': return <Program onStartVoice={() => setAssistantMode('logging')} recentLogs={voiceLogs} onViewJournal={() => setShowJournal(true)} isDark={isDarkEffective} />;
-      case 'chat': return <AIChat profile={profile} onStartVoice={(sid) => { setAssistantSessionId(sid || null); setAssistantMode('chat'); }} onBack={() => { setAssistantMode(null); setPreviousTab('dashboard'); setActiveTab('dashboard'); }} onStartAssessment={() => setShowQuestionnaire(true)} onReadMessages={() => setUnreadCount(0)} isDark={isDarkEffective} />;
+      case 'chat': return <AIChat profile={profile} onStartVoice={(sid) => { setAssistantSessionId(sid || null); setAssistantMode('chat'); }} onBack={() => { setAssistantMode(null); setPreviousTab('dashboard'); setActiveTab('dashboard'); }} onStartAssessment={() => setShowQuestionnaire(true)} onReadMessages={() => setUnreadCount(0)} isDark={isDarkEffective} refreshTrigger={chatRefreshTrigger} voiceSessionId={lastVoiceSessionId} />;
       case 'mall': return <Marketplace profile={profile} cartCount={cart.length} favorites={favorites} onToggleFavorite={toggleFavorite} onOpenCart={() => setShowCart(true)} onAddToCart={(sku, q) => setCart(prev => [...prev, {...sku, quantity: q, selected: true}])} isDark={isDarkEffective} />;
       case 'profile':
         return (
@@ -355,25 +393,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleVoiceMessageGenerated = async (msg: { role: 'user' | 'model'; text: string }) => {
-    if (!user) return;
-    try {
-        await fetch(`${API_URL}/api/messages`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                userId: user.uid,
-                role: msg.role,
-                text: msg.text,
-                sessionId: assistantSessionId,
-                sessionTitle: '语音通话记录',
-                type: 'chat'
-            })
-        });
-    } catch (e) {
-        console.error("Failed to persist voice message:", e);
-    }
-  };
+
 
   return (
     <div className={`min-h-screen max-w-md mx-auto relative flex flex-col shadow-2xl border-x border-slate-200 dark:border-slate-800/50 transition-colors duration-500 no-scrollbar overflow-hidden ${isDarkEffective ? 'bg-[#050912]' : 'bg-[#f8fafc]'}`}>
@@ -383,7 +403,11 @@ const App: React.FC = () => {
         <LiveVoiceAssistant 
             profile={profile} 
             sessionId={assistantSessionId}
-            onClose={() => setAssistantMode(null)} 
+            onClose={() => { 
+              setLastVoiceSessionId(voiceSessionIdRef.current || assistantSessionId);
+              setAssistantMode(null); 
+              setChatRefreshTrigger(prev => prev + 1); 
+            }} 
             onConfirmLog={() => {}} 
             onMessageGenerated={handleVoiceMessageGenerated}
         />
