@@ -341,9 +341,9 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
     <div className="fixed inset-0 bg-[#0B0F1A] z-[200] flex flex-col items-center justify-between py-6 animate-in fade-in duration-500 overflow-hidden font-outfit">
       {/* Top Header */}
       <div className="flex flex-col items-center space-y-4">
-        <div className="flex items-center space-x-2 px-6 py-2 bg-emerald-900/20 rounded-full border border-emerald-500/20 text-emerald-400 font-bold backdrop-blur-md">
-          <PhoneCall size={14} />
-          <span className="text-[10px] uppercase tracking-widest">五养教练服务中</span>
+        <div className="flex items-center space-x-2 px-6 py-2 bg-emerald-500/5 rounded-full border border-emerald-500/20 text-emerald-400 font-bold backdrop-blur-md">
+          <PhoneCall size={14} className="animate-pulse" />
+          <span className="text-[10px] uppercase tracking-[0.2em] font-black">专家连线服务中</span>
         </div>
         
         {isAiSpeaking ? (
@@ -385,11 +385,10 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
       {/* Bottom Control Card */}
       <div className="w-full px-6 pb-6 space-y-4 flex flex-col items-center">
         <div className="w-full max-w-sm bg-[#161d2b]/70 backdrop-blur-3xl rounded-[32px] p-6 border border-white/5 shadow-2xl">
-          <div className="flex justify-between items-center mb-5">
-            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">专家深度分析</span>
-            <span className={`text-[9px] font-black uppercase tracking-widest flex items-center ${isListening ? 'text-emerald-400' : 'text-slate-600'}`}>
-                <Activity size={10} className={`mr-1.5 ${isListening ? 'animate-pulse' : ''}`} />
-                {isListening ? '工作中' : (error ? '异常' : '待命')}
+          <div className="flex justify-between items-center mb-5 px-1">
+            <span className="text-[9px] font-black text-slate-500 uppercase tracking-[0.15em]">Expert Insight Level</span>
+            <span className={`text-[9px] font-black uppercase tracking-[0.15em] flex items-center ${isListening ? 'text-emerald-400' : 'text-slate-600'}`}>
+                {isListening ? 'Active' : (error ? 'Error' : 'Standby')}
             </span>
           </div>
 
@@ -402,10 +401,9 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
               <Volume2 size={20} />
             </button>
 
-            {/* Volume Bar on Right */}
-            <div className="flex-1 h-2 bg-slate-800/50 rounded-full overflow-hidden">
+            <div className="flex-1 h-1 bg-slate-800/80 rounded-full overflow-hidden">
                 <div 
-                  className={`h-full rounded-full transition-all duration-75 ${error ? 'bg-rose-500/30' : (isMuted ? 'bg-slate-700 w-[66%]' : 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.5)]')}`}
+                  className={`h-full rounded-full transition-all duration-75 ${error ? 'bg-rose-500/30' : (isMuted ? 'bg-slate-700 w-[66%]' : 'bg-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.4)]')}`}
                   style={{ width: error ? '100%' : (isMuted ? '66%' : `${Math.max(10, volumeLevel)}%`) }}
                 ></div>
             </div>

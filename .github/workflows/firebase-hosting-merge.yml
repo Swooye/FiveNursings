@@ -9,14 +9,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: Install dependencies
+      - name: Install all dependencies (Root + Workspaces)
         run: npm install
 
-      - name: Install Functions Dependencies
-        run: cd functions && npm install
-
-      - name: Build project
+      - name: Build Frontend Projects (User & Admin)
         run: npm run build
+
+      - name: Build Functions
+        run: npm run build:functions
         
       - name: Deploy to Firebase
         uses: w9jds/firebase-action@master

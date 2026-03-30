@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run build --prefix user && npm run build --prefix admin",
+    "build:functions": "npm run build --prefix functions",
     "lint": "eslint .",
     "preview": "vite preview",
     "user": "npm --prefix user run dev",
@@ -36,6 +37,10 @@
     "vite": "^5.4.11"
   },
   "workspaces": [
-    "server"
+    "server",
+    "user",
+    "admin",
+    "app",
+    "functions"
   ]
 }
