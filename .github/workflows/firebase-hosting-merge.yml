@@ -10,7 +10,7 @@ jobs:
       - uses: actions/checkout@v4
       
       - name: Install all dependencies (Root + Workspaces)
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Build Frontend Projects (User & Admin)
         run: npm run build
