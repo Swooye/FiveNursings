@@ -25,7 +25,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // --- 基础配置 ---
-const BASE_URI = process.env.MONGODB_URI + 'fivenursing_dev?retryWrites=true&w=majority';
+const BASE_URI = (process.env.MONGODB_URI?.includes('?') ? process.env.MONGODB_URI.replace(/\?/, 'fivenursing_pro?') : (process.env.MONGODB_URI + 'fivenursing_pro?')) + 'retryWrites=true&w=majority';
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 
 app.use(cors({ 
