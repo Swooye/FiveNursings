@@ -5,9 +5,9 @@ import { PatientProfile, TCMAnalysisResult } from "../types";
 // Initialize AI with the VITE environment variable
 const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 if (!apiKey) {
-  throw new Error("An API Key must be set when running in a browser. Please create a .env file and add VITE_GEMINI_API_KEY=YOUR_API_KEY");
+  console.warn("VITE_GEMINI_API_KEY is missing. AI features will be disabled.");
 }
-const ai = new GoogleGenAI({ apiKey });
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 const SYSTEM_INSTRUCTION = `你是一位专业的肿瘤康复AI教练。基于“五治五养”体系（饮食养、运动养、睡眠养、心理养、功能养）为患者提供支持。
 核心原则：
