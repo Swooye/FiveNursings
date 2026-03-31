@@ -347,7 +347,7 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
       <div className="flex flex-col items-center space-y-4">
         <div className="flex items-center space-x-2 px-6 py-2 bg-emerald-500/5 rounded-full border border-emerald-500/20 text-emerald-400 font-bold backdrop-blur-md">
           <PhoneCall size={14} className="animate-pulse" />
-          <span className="text-[10px] uppercase tracking-[0.2em] font-black">教练服务中</span>
+          <span className="text-[10px] uppercase tracking-[0.2em] font-black">通话中</span>
         </div>
 
       </div>
