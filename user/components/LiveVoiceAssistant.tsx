@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { PatientProfile } from '../types';
-import { Mic, X, Volume2, PhoneCall, Speaker, Activity, AlertCircle } from 'lucide-react';
+import { Mic, X, Volume2, PhoneCall, Activity, AlertCircle } from 'lucide-react';
 import { createClient, LiveClient, LiveTranscriptionEvents } from '@deepgram/sdk';
 
 const API_URL = import.meta.env.DEV ? "" : "https://api-u46fik5vcq-uc.a.run.app";
@@ -349,15 +349,7 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
           <PhoneCall size={14} className="animate-pulse" />
           <span className="text-[10px] uppercase tracking-[0.2em] font-black">专家连线服务中</span>
         </div>
-        
-        {isAiSpeaking ? (
-            <div className="flex items-center space-x-1 px-4 py-1 bg-blue-500/10 rounded-full border border-blue-500/20 animate-pulse">
-                <Speaker size={12} className="text-blue-400" />
-                <span className="text-[9px] text-blue-400 font-black uppercase tracking-tighter">AI 正在说话...</span>
-            </div>
-        ) : (
-            <div className="h-6" />
-        )}
+
       </div>
 
       {/* Center Mic Area */}
