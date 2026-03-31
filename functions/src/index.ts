@@ -474,9 +474,16 @@ apiRouter.post('/upload', async (req: any, res: any) => {
 apiRouter.get('/messages/:userId', async (req: any, res: any) => {
     try {
         const { sessionId } = req.query;
-        const query: any = { userId: req.params.userId };
+        let query: any = { userId: req.params.userId };
         if (sessionId) {
-            query.sessionId = sessionId;
+            // 核心逻辑：查询指定会话的消息，同时始终包含全局干预推送（无 sessionId 的干预消息）
+            query = { 
+                userId: req.params.userId,
+                $or: [
+                    { sessionId: sessionId },
+                    { type: 'intervention' }
+                ]
+            };
         } else {
             // 如果没传 sessionId，默认返回最新的会话或全量（向下兼容）
             // 这里为了支持“历史”，如果没有 sessionId，我们可能希望返回最后一条消息所在的会话

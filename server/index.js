@@ -433,8 +433,17 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
 app.get('/api/messages/:userId', async (req, res) => {
     try {
         const { sessionId } = req.query;
-        const query = { userId: req.params.userId };
-        if (sessionId) query.sessionId = sessionId;
+        let query = { userId: req.params.userId };
+        if (sessionId) {
+            // 同步云函数逻辑：查询指定会话时强制混入全局干预消息
+            query = {
+                userId: req.params.userId,
+                $or: [
+                    { sessionId: sessionId },
+                    { type: 'intervention' }
+                ]
+            };
+        }
         const data = await ChatMessage.find(query).sort({ timestamp: 1 });
         res.json(data.map(format));
     } catch (e) { res.status(500).json({ error: e.message }); }
