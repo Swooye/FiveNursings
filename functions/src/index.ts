@@ -10,8 +10,6 @@ dotenv.config();
 
 admin.initializeApp();
 
-const BASE_URI = process.env.MONGODB_URI || "mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net/";
-const AUTH_PARAMS = "?retryWrites=true&w=majority";
 const PROD_PROJECT_ID = "fivenursings-73917017-a0dfd";
 
 const userSchema = new mongoose.Schema({}, { strict: false, collection: 'users' });
@@ -51,7 +49,14 @@ const connectDb = async () => {
         const config = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : {};
         const projectId = config.projectId || admin.app().options.projectId || "";
         const dbName = (projectId === PROD_PROJECT_ID) ? "fivenursing_pro" : "fivenursing_dev";
-        await mongoose.connect(`${BASE_URI}${dbName}${AUTH_PARAMS}`);
+        
+        const envUri = process.env.MONGODB_URI || "mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net/";
+        const parsedUrl = new URL(envUri);
+        parsedUrl.pathname = `/${dbName}`;
+        if (!parsedUrl.searchParams.has('retryWrites')) parsedUrl.searchParams.set('retryWrites', 'true');
+        if (!parsedUrl.searchParams.has('w')) parsedUrl.searchParams.set('w', 'majority');
+        
+        await mongoose.connect(parsedUrl.toString());
         isConnected = true;
     } catch (err) { throw err; }
 };
@@ -410,7 +415,97 @@ apiRouter.delete('/chat/sessions/:sessionId', async (req: any, res: any) => {
 apiRouter.get('/debug-info', async (req: any, res: any) => {
     const config = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : {};
     const projectId = config.projectId || admin.app().options.projectId || "";
-    res.json({ status: "FINAL_STABLE_V9", db: projectId === PROD_PROJECT_ID ? "fivenursing_pro" : "fivenursing_dev" });
+    res.json({ status: "FINAL_STABLE_V10", db: projectId === PROD_PROJECT_ID ? "fivenursing_pro" : "fivenursing_dev" });
+});
+
+// --- HTTP 接口：为 AI 会话和简报提供支持 ---
+
+apiRouter.post('/get-ai-chat-reply', async (req: any, res: any) => {
+    const { message, text, profile, history = [] } = req.body;
+    const userMessage = message || text;
+    const apiKey = process.env.OPENROUTER_API_KEY;
+
+    if (!apiKey) return res.status(400).json({ error: "API Key not configured" });
+
+    const contextPrefix = `[患者背景] 类型：${profile.cancerType}, 阶段：${profile.stage}, 五养分数：饮食${profile.scores?.diet || 0}/100, 运动${profile.scores?.exercise || 0}/100, 睡眠${profile.scores?.sleep || 0}/100, 心理${profile.scores?.mental || 0}/100, 功能${profile.scores?.function || 0}/100。`;
+
+    try {
+        const response = await fetch(OPENROUTER_URL, {
+            method: "POST",
+            headers: { 
+                "Authorization": `Bearer ${apiKey}`, 
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://fivenursings-73917017-a0dfd.web.app/",
+                "X-Title": "FiveNursings"
+            },
+            body: JSON.stringify({
+                model: "google/gemini-2.0-flash-001",
+                messages: [
+                    { role: "system", content: SYSTEM_INSTRUCTION },
+                    { role: "system", content: contextPrefix },
+                    ...history.filter((h: any) => h.text).map((h: any) => ({ role: h.role === 'model' ? 'assistant' : 'user', content: h.text })),
+                    { role: "user", content: userMessage }
+                ],
+            }),
+        });
+        const data = await response.json();
+        if (data.error) {
+            console.error("AI Chat Error:", data.error);
+            return res.json({ reply: `AI服务错误: ${data.error.message || JSON.stringify(data.error)}` });
+        }
+        const reply = data.choices?.[0]?.message?.content || "抱歉，生成失败。";
+        res.json({ reply });
+    } catch (e: any) {
+        console.error("AI Chat Catch:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+apiRouter.post('/generate-health-report', async (req: any, res: any) => {
+    const { profile } = req.body;
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) return res.status(400).json({ error: "API Key not configured" });
+
+    const prompt = `请基于以下患者档案生成一份【今日康复简报】。
+患者昵称：${profile.nickname || '用户'}
+诊断类型：${profile.cancerType}, 阶段：${profile.stage}
+五养评分：饮食${profile.scores?.diet || 0}, 运动${profile.scores?.exercise || 0}, 睡眠${profile.scores?.sleep || 0}, 心理${profile.scores?.mental || 0}, 功能${profile.scores?.function || 0}
+
+要求：
+1. 采用 Markdown 格式，层级清晰。
+2. 给出 1-2 条最核心的今日待办。
+3. 请在简报中使用患者的昵称进行亲切称呼，禁止出现 [患者姓名] 等占位符。
+4. 语气要温暖、鼓励，字数控制在 200 字左右。
+5. 必须包含免责声明：本建议不构成医疗诊断。`;
+
+    try {
+        const response = await fetch(OPENROUTER_URL, {
+            method: "POST",
+            headers: { 
+                "Authorization": `Bearer ${apiKey}`, 
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://fivenursings-73917017-a0dfd.web.app/",
+                "X-Title": "FiveNursings"
+            },
+            body: JSON.stringify({
+                model: "google/gemini-2.0-flash-001",
+                messages: [
+                    { role: "system", content: "你是一位专业的肿瘤康复AI教练。" },
+                    { role: "user", content: prompt }
+                ],
+            }),
+        });
+        const data = await response.json();
+        if (data.error) {
+            console.error("Health report Error:", data.error);
+            return res.json({ report: `暂时无法生成简报: ${data.error.message || JSON.stringify(data.error)}` });
+        }
+        const report = data.choices?.[0]?.message?.content || "暂时无法生成简报，请稍后再试。";
+        res.json({ report });
+    } catch (e: any) {
+        console.error("Health report Catch:", e);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 app.use('/api', apiRouter);
