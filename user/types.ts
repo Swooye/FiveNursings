@@ -103,6 +103,7 @@ export interface PatientProfile {
   id: string;
   name: string; // 真实姓名
   nickname?: string; // 昵称
+  phoneNumber?: string; // 手机号
   age: number;
   birthDate?: string;
   gender?: '男' | '女';

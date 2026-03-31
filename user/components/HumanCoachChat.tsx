@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Send, Phone, MoreHorizontal, Image, Mic, Paperclip, CheckCheck, Loader2, UserHeadset, Headset, Calendar, AlertCircle, Zap } from 'lucide-react';
+import { ArrowLeft, Send, Phone, MoreHorizontal, Image, Mic, Paperclip, CheckCheck, Loader2, Headset, Calendar, AlertCircle, Zap } from 'lucide-react';
 import { PatientProfile } from '../types';
 
 interface Message {

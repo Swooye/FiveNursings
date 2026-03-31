@@ -132,6 +132,50 @@ const createRoutes = (path, Model) => {
     }
   });
 };
+// --- [核心工具] 为 OpenClaw 提供的全维上下文与环境感知 ---
+
+// 实时获取高德天气数据
+const getLiveWeather = async (cityName) => {
+    try {
+        const amapKey = "ce237825915cd4d2837264fdcf0298bc";
+        const url = `https://restapi.amap.com/v3/weather/weatherInfo?key=${amapKey}&city=${encodeURIComponent(cityName)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        if (data && data.status === "1" && data.lives && data.lives.length > 0) {
+            const live = data.lives[0];
+            return {
+                weather: live.weather,
+                temperature: live.temperature + "℃",
+                humidity: live.humidity + "%"
+            };
+        }
+    } catch (e) {
+        console.error("Amap Weather API failed:", e);
+    }
+    return {
+        weather: "未知 (API异常)",
+        temperature: "--℃",
+        humidity: "--%"
+    };
+};
+
+// 真实天文计算：基于 lunar-javascript 的精确节气
+const getSolarTerm = () => {
+    try {
+        const solar = Solar.fromDate(new Date());
+        const lunar = solar.getLunar();
+        const prev = lunar.getPrevJieQi(true); // 获取当前所处的节气
+        const next = lunar.getNextJieQi(false); // 获取下一个即将到来的节气
+        
+        // 生成确凿的动态天文字符串，证明系统不是返回死数据
+        return `${prev.getName()} (下一个节气 ${next.getName()} 将于 ${next.getSolar().toYmd()} 到来)`;
+    } catch (err) {
+        console.error("Solar Term Calculation Error:", err);
+        return "未知";
+    }
+};
+
 // **新功能：处理用户前端传来的真实 GPS 定位并使用高德转译**
 app.post('/api/users/:userId/location', async (req, res) => {
     try {
@@ -249,49 +293,6 @@ app.post('/api/login', async (req, res) => {
         }
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
-
-// 实时获取高德天气数据
-const getLiveWeather = async (cityName) => {
-    try {
-        const amapKey = "ce237825915cd4d2837264fdcf0298bc";
-        const url = `https://restapi.amap.com/v3/weather/weatherInfo?key=${amapKey}&city=${encodeURIComponent(cityName)}`;
-        const res = await fetch(url);
-        const data = await res.json();
-        
-        if (data && data.status === "1" && data.lives && data.lives.length > 0) {
-            const live = data.lives[0];
-            return {
-                weather: live.weather,
-                temperature: live.temperature + "℃",
-                humidity: live.humidity + "%"
-            };
-        }
-    } catch (e) {
-        console.error("Amap Weather API failed:", e);
-    }
-    return {
-        weather: "未知 (API异常)",
-        temperature: "--℃",
-        humidity: "--%"
-    };
-};
-
-// --- [核心] 为 OpenClaw 提供的全维上下文接口 ---
-// 真实天文计算：基于 lunar-javascript 的精确节气
-const getSolarTerm = () => {
-    try {
-        const solar = Solar.fromDate(new Date());
-        const lunar = solar.getLunar();
-        const prev = lunar.getPrevJieQi(true); // 获取当前所处的节气
-        const next = lunar.getNextJieQi(false); // 获取下一个即将到来的节气
-        
-        // 生成确凿的动态天文字符串，证明系统不是返回死数据
-        return `${prev.getName()} (下一个节气 ${next.getName()} 将于 ${next.getSolar().toYmd()} 到来)`;
-    } catch (err) {
-        console.error("Solar Term Calculation Error:", err);
-        return "未知";
-    }
-};
 
 app.get('/api/users/:userId/full-context', async (req, res) => {
     const { userId } = req.params;
