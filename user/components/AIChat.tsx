@@ -531,7 +531,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
     }
     setIsMoreMenuOpen(false);
     
-    // Auto-generate session ID early if needed so message goes to current thread
+    // Auto-generate session ID early if needed
     let sessionId = currentSessionId;
     if (!sessionId) {
         sessionId = `sess_${Date.now()}`;
@@ -539,54 +539,55 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
         localStorage.setItem('currentAIChatSession', sessionId);
     }
     
-    // 发送一条“用户角色”的消息记录，表示正在尝试同步环境数据，确认为右侧气泡
-    const loadingMsg: any = { role: 'user', text: "📍 正在尝试感知并同步您的环境数据...", timestamp: new Date().toISOString() };
+    const loadingMsg: ChatMessage = { 
+        role: 'user', 
+        text: "📍 正在尝试感知并同步您的环境数据...", 
+        timestamp: new Date().toISOString() 
+    };
     setMessages(prev => [...prev, loadingMsg]);
     setLoading(true);
 
     navigator.geolocation.getCurrentPosition(async (position) => {
         try {
-            const { latitude, longitude } = position.coords;
-            if (!auth.currentUser) return;
-            const res = await fetch(`${API_URL}/api/users/${auth.currentUser.uid}/location`, {
+            const { latitude: lat, longitude: lng } = position.coords;
+            const res = await fetch(`${API_URL}/api/users/${auth.currentUser?.uid}/location`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ lat: latitude, lng: longitude })
+                body: JSON.stringify({ lat, lng })
             });
-            const data = await res.json();
             
-            // Remove loading message
-            setMessages(prev => prev.filter(m => m !== loadingMsg));
-            
-            if (data.success && data.locationName) {
-                const weatherStr = data.weather ? `${data.weather.weather}，温度 ${data.weather.temperature}` : '暂无实时气象';
+            if (res.ok) {
+                const data = await res.json();
+                const weatherStr = `${data.weather.weather}, ${data.weather.temperature}, 湿度 ${data.weather.humidity}`;
+                const userText = `📍 我在 ${data.locationName} (${weatherStr})`;
                 
-                // 优化文案：用户端显示的气泡简短干练
-                const displayMsg = `📍 我已核准并分享了当前位置：${data.locationName} (${weatherStr})`;
                 const userMsgObj: ChatMessage = { 
                     role: 'user', 
-                    text: displayMsg, 
+                    text: userText, 
                     timestamp: new Date().toISOString(),
-                    sessionId
+                    sessionId 
                 };
 
-                // **核心修复：持久化保存该位置分享消息，防止刷新丢失**
                 const savedUserMsg = await persistMessage(userMsgObj);
+                const finalUserMsg = savedUserMsg || userMsgObj;
                 
-                // 系统侧的 Prompt 注入真实天气，消除 AI 的“无知”感
                 const promptMsg = `患者刚刚分享了此刻所属的新位置：${data.locationName}。当地目前天气状况为：${weatherStr}。请基于该地区当下的真实气候与环境，向他提供严谨、贴切的起居、身心和饮食防护调整干预。`;
+
+                let nextMsgs: ChatMessage[] = [];
+                setMessages(prev => {
+                    nextMsgs = prev.map(m => m === loadingMsg ? finalUserMsg : m);
+                    return nextMsgs;
+                });
                 
-                // 更新前端状态：将加载占位符替换为持久化后的真实消息
-                setMessages(prev => prev.map(m => m === loadingMsg ? (savedUserMsg || userMsgObj) : m));
-                
-                // 调用后台生成 AI 回复，输入使用详尽的 Prompt
-                generateResponse(promptMsg, [...messages, (savedUserMsg || userMsgObj)]);
+                // Important: Trigger AI response OUTSIDE the state updater to avoid React 18/Strict Mode loops
+                generateResponse(promptMsg, nextMsgs);
             } else {
-                alert("地理位置解析异常。");
+                throw new Error("Location API failed");
             }
         } catch (err) {
             console.error(err);
             setMessages(prev => prev.filter(m => m !== loadingMsg));
+            alert("位置同步失败，请检查网络后重试。");
         } finally {
             setLoading(false);
         }
@@ -671,7 +672,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
                         onTouchStart={(e) => handlePressStart(e, msg)}
                         onTouchEnd={handlePressEnd}
                         onContextMenu={(e) => { e.preventDefault(); handlePressStart(e, msg, true); }}
-                        className={`max-w-[85%] inline-block px-5 py-4 rounded-t-[28px] shadow-sm transition-transform active:scale-[0.98] cursor-pointer backdrop-blur-md ${msg.role === 'user' ? 'bg-emerald-600 text-white font-bold rounded-l-[28px] shadow-[0_8px_20px_rgba(16,185,129,0.2)]' : 'bg-white dark:bg-[#111827]/60 border dark:border-white/5 rounded-r-[28px]'}`}
+                        className={`max-w-[85%] inline-block px-5 py-4 rounded-t-[28px] shadow-sm transition-transform active:scale-[0.98] cursor-pointer backdrop-blur-md ${msg.role === 'user' ? 'bg-emerald-600 text-white font-bold rounded-l-[28px] shadow-[0_8px_20px_rgba(16,185,129,0.2)]' : 'bg-white dark:bg-[#111827]/60 border border-slate-100 dark:border-emerald-500/10 rounded-r-[28px]'}`}
                     >
                     <div className="flex flex-col">
                         {(msg as any).type === 'intervention' && (
@@ -833,7 +834,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
 
           <button 
             onClick={() => input.trim() ? handleSend() : setIsMoreMenuOpen(!isMoreMenuOpen)}
-            className={`p-3 w-12 h-12 flex items-center justify-center rounded-2xl transition-all btn-active-scale ${input.trim() ? 'bg-emerald-600 text-white shadow-[0_8px_20px_rgba(16,185,129,0.3)]' : (isMoreMenuOpen ? 'bg-rose-500/10 text-rose-500' : 'bg-slate-100 dark:bg-[#111827] text-slate-500 dark:text-slate-400 border dark:border-white/5')}`}
+            className={`p-3 w-12 h-12 flex items-center justify-center rounded-2xl transition-all btn-active-scale ${input.trim() ? 'bg-emerald-600 text-white shadow-[0_8px_20px_rgba(16,185,129,0.3)]' : (isMoreMenuOpen ? 'bg-rose-500/10 text-rose-500' : 'bg-slate-100 dark:bg-[#111827] text-slate-500 dark:text-slate-400 border border-slate-200/50 dark:border-emerald-500/20')}`}
           >
             {input.trim() ? <Send size={22} /> : (isMoreMenuOpen ? <X size={22} /> : <Plus size={22} />)}
           </button>

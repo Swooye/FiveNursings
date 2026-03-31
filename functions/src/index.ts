@@ -11,6 +11,51 @@ dotenv.config();
 
 admin.initializeApp();
 
+/**
+ * 实时获取高德天气数据
+ * @param {string} cityName 城市行政区划代码或名称
+ */
+async function getLiveWeather(cityName: string = "上海市") {
+    try {
+        const amapKey = "ce237825915cd4d2837264fdcf0298bc";
+        const url = `https://restapi.amap.com/v3/weather/weatherInfo?key=${amapKey}&city=${encodeURIComponent(cityName)}`;
+        const res = await fetch(url);
+        const data: any = await res.json();
+        
+        if (data && data.status === "1" && data.lives && data.lives.length > 0) {
+            const live = data.lives[0];
+            return {
+                weather: live.weather,
+                temperature: live.temperature + "℃",
+                humidity: live.humidity + "%"
+            };
+        }
+    } catch (e) {
+        console.error("Amap Weather API failed:", e);
+    }
+    return {
+        weather: "未知 (API异常)",
+        temperature: "--℃",
+        humidity: "--%"
+    };
+}
+
+/**
+ * 真实天文计算：基于 lunar-javascript 的精确节气
+ */
+function getSolarTerm(): string {
+    try {
+        const solar = Solar.fromDate(new Date());
+        const lunar = solar.getLunar();
+        const prev = lunar.getPrevJieQi(true); 
+        const next = lunar.getNextJieQi(false); 
+        return `${prev.getName()} (下一个节气 ${next.getName()} 将于 ${next.getSolar().toYmd()} 到来)`;
+    } catch (err) {
+        console.error("Solar Term Calculation Error:", err);
+        return "未知";
+    }
+}
+
 const PROD_PROJECT_ID = "fivenursings-73917017-a0dfd";
 
 const userSchema = new mongoose.Schema({}, { strict: false, collection: 'users' });
@@ -62,49 +107,8 @@ const connectDb = async () => {
     } catch (err) { throw err; }
 };
 
-// 实时获取高德天气数据
-const getLiveWeather = async (cityName: string = "上海市") => {
-    try {
-        // 使用用户提供的高德 API Web服务 Key
-        const amapKey = "ce237825915cd4d2837264fdcf0298bc";
-        const url = `https://restapi.amap.com/v3/weather/weatherInfo?key=${amapKey}&city=${encodeURIComponent(cityName)}`;
-        const res = await fetch(url);
-        const data: any = await res.json();
-        
-        if (data && data.status === "1" && data.lives && data.lives.length > 0) {
-            const live = data.lives[0];
-            return {
-                weather: live.weather,               // e.g. "晴"
-                temperature: live.temperature + "℃", // e.g. "23℃"
-                humidity: live.humidity + "%"        // e.g. "53%"
-            };
-        }
-    } catch (e) {
-        console.error("Amap Weather API failed:", e);
-    }
-    // 降级兜底方案
-    return {
-        weather: "未知 (API异常)",
-        temperature: "--℃",
-        humidity: "--%"
-    };
-};
 
-// 真实天文计算：基于 lunar-javascript 的精确节气
-const getSolarTerm = (): string => {
-    try {
-        const solar = Solar.fromDate(new Date());
-        const lunar = solar.getLunar();
-        const prev = lunar.getPrevJieQi(true); // 获取当前所处的节气
-        const next = lunar.getNextJieQi(false); // 获取下一个即将到来的节气
-        
-        // 生成确凿的动态天文字符串，证明系统不是返回死数据
-        return `${prev.getName()} (下一个节气 ${next.getName()} 将于 ${next.getSolar().toYmd()} 到来)`;
-    } catch (err) {
-        console.error("Solar Term Calculation Error:", err);
-        return "未知";
-    }
-};
+// --- [核心] 为 OpenClaw 提供的全维上下文接口 ---
 
 const app = express();
 app.use(cors({ origin: true }));
