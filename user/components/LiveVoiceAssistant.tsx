@@ -216,6 +216,8 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
         throw new Error("AI 返回了空回复");
       }
 
+      if (!isSessionActive.current) return;
+
       console.log("[Voice] AI replied:", aiText.substring(0, 80));
       setAiResponse(aiText);
       const msg = { role: 'model' as const, text: aiText };
@@ -282,6 +284,7 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
             isAiSpeakingRef.current = true;
         };
         utterance.onend = () => { 
+            if (!isSessionActive.current) return;
             setIsAiSpeaking(false);
             isAiSpeakingRef.current = false;
             setAiResponse('');
@@ -290,6 +293,7 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
         };
         utterance.onerror = (event) => { 
             console.error("Speech error event:", event);
+            if (!isSessionActive.current) return;
             setIsAiSpeaking(false);
             isAiSpeakingRef.current = false;
             setAiResponse('');

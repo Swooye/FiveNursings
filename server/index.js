@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const { Solar } = require('lunar-javascript');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -207,16 +208,17 @@ app.post('/api/login', async (req, res) => {
 });
 
 // --- [核心] 为 OpenClaw 提供的全维上下文接口 ---
+// 真实天文计算：基于 lunar-javascript 的精确节气
 const getSolarTerm = () => {
-    const m = new Date().getMonth() + 1;
-    const d = new Date().getDate();
-    const terms = {
-        1: ['小寒', '大寒'], 2: ['立春', '雨水'], 3: ['惊蛰', '春分'],
-        4: ['清明', '谷雨'], 5: ['立夏', '小满'], 6: ['芒种', '夏至'],
-        7: ['小暑', '大暑'], 8: ['立秋', '处暑'], 9: ['白露', '秋分'],
-        10: ['寒露', '霜降'], 11: ['立冬', '小雪'], 12: ['大雪', '冬至']
-    };
-    return d < 16 ? terms[m][0] : terms[m][1];
+    try {
+        const solar = Solar.fromDate(new Date());
+        const lunar = solar.getLunar();
+        // 获取最近一个已到达的节气（包含今天）
+        return lunar.getPrevJieQi(true).getName();
+    } catch (err) {
+        console.error("Solar Term Calculation Error:", err);
+        return "未知";
+    }
 };
 
 app.get('/api/users/:userId/full-context', async (req, res) => {
