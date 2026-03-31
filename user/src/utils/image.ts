@@ -10,7 +10,7 @@ export const getAssetUrl = (url: string | undefined): string => {
     const prodDomain = "https://fivenursings-73917017-a0dfd.web.app";
     
     if (url.startsWith('/uploads')) {
-        return (import.meta as any).env.DEV ? url : `${prodApiUrl}${url}`;
+        return url;
     }
 
     // Rewrite production domain to local in dev

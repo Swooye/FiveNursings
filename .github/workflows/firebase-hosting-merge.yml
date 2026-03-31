@@ -22,6 +22,11 @@ jobs:
       - name: Build Functions
         run: npm run build:functions
         
+      - name: Inject Backend Env
+        run: |
+          echo "OPENROUTER_API_KEY=${{ secrets.VITE_OPENROUTER_API_KEY }}" > functions/.env
+          
+
       - name: Deploy to Firebase
         uses: w9jds/firebase-action@master
         with:

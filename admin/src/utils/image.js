@@ -13,7 +13,7 @@ export const getAssetUrl = (url) => {
     
     // If the path is relative (starts with /uploads), prefix with API_URL if in production
     if (url.startsWith('/uploads')) {
-        return import.meta.env.DEV ? url : `https://api-u46fik5vcq-uc.a.run.app${url}`;
+        return url;
     }
     
     return url;
