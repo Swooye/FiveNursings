@@ -132,7 +132,47 @@ const createRoutes = (path, Model) => {
     }
   });
 };
+// **新功能：处理用户前端传来的真实 GPS 定位并使用高德转译**
+app.post('/api/users/:userId/location', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { lat, lng } = req.body;
+        if (!lat || !lng) return res.status(400).json({ error: "Missing coordinates" });
+        
+        let user = await User.findOne({ firebaseUid: userId });
+        if (!user && mongoose.Types.ObjectId.isValid(userId)) {
+            user = await User.findById(userId);
+        }
+        if (!user) return res.status(404).json({ error: "User not found" });
 
+        // 请求高德逆地址编码 API
+        const amapKey = "ce237825915cd4d2837264fdcf0298bc";
+        const url = `https://restapi.amap.com/v3/geocode/regeo?location=${lng},${lat}&key=${amapKey}`;
+        const regeoRes = await fetch(url);
+        const geoData = await regeoRes.json();
+
+        let adcode = "310000"; // Fallback Shanghai
+        let locationName = "上海市";
+        if (geoData && geoData.status === "1" && geoData.regeocode) {
+            const addr = geoData.regeocode.addressComponent;
+            adcode = addr.adcode || adcode;
+            const fullAddress = geoData.regeocode.formatted_address;
+            
+            // 为了让教练不觉得太啰嗦，抽简短地址 (如: 浙江省杭州市西湖区)
+            locationName = `${addr.province || ''}${addr.city && addr.city.length ? addr.city : ''}${addr.district || ''}` || fullAddress;
+        }
+
+        // 保存进用户档案
+        user.locationAdcode = adcode;
+        user.locationName = locationName;
+        await user.save();
+
+        res.json({ success: true, locationName, adcode });
+    } catch (e) {
+        console.error("Location update failed:", e);
+        res.status(500).json({ error: e.message });
+    }
+});
 app.post('/api/users/sync', async (req, res) => {
     try {
         const uid = req.body.firebaseUid.trim();
@@ -263,9 +303,12 @@ app.get('/api/users/:userId/full-context', async (req, res) => {
             .sort({ timestamp: -1 })
             .limit(5);
 
-        const liveWeather = await getLiveWeather("上海市");
+        const locAdcode = user.locationAdcode || "310000";
+        const locName = user.locationName || "上海市";
+
+        const liveWeather = await getLiveWeather(locAdcode);
         const mockEnvironment = {
-            location: "上海市",
+            location: locName,
             time: new Date().toISOString(),
             solarTerm: getSolarTerm(),
             weather: liveWeather.weather,
@@ -275,26 +318,47 @@ app.get('/api/users/:userId/full-context', async (req, res) => {
             altitude: 15
         };
 
-        const mockVitals = {
-            heartRate: 72,
-            stepsToday: 3420,
-            sleepQuality: "良好",
-            lastBloodPressure: "120/80 mmHg",
-            bodyTemperature: 36.6
+        // --- 动态计算体征数据 ---
+        const weight = user.weight || user.questionnaire?.weight;
+        const height = user.height || user.questionnaire?.height;
+        let bmi = "未知";
+        if (weight && height) {
+            bmi = (weight / Math.pow(height / 100, 2)).toFixed(1);
+        }
+
+        const vitals = {
+            bmi: bmi,
+            heartRate: user.wearable?.isConnected ? "72 bpm" : "未监测 (建议接入设备)",
+            stepsToday: user.wearable?.isConnected ? "3420" : "待同步",
+            sleepQuality: user.scores?.sleep > 80 ? "良好" : "需调优",
+            lastBloodPressure: "近期未记录",
+            bodyTemperature: "36.6℃ (档案常态)"
         };
 
-        const mockAdherence = {
-            completionRate: "85%",
-            missedTasks: ["午间情绪冥想"]
+        // --- 动态计算依从性 ---
+        const scores = user.scores || { diet: 80, exercise: 80, sleep: 80, mental: 80, function: 80 };
+        const avgScore = Math.round((scores.diet + scores.exercise + scores.sleep + scores.mental + scores.function) / 5);
+        const missedTasks = [];
+        if (scores.exercise < 70) missedTasks.push("每日适度户外活动");
+        if (scores.mental < 70) missedTasks.push("晚间正念冥想");
+
+        const adherence = {
+            completionRate: `${avgScore}%`,
+            missedTasks: missedTasks.length > 0 ? missedTasks : ["暂无明显遗漏"]
         };
+
+        // --- 动态合成最新医嘱/康复背景 ---
+        const cancerInfo = user.cancerType || "肿瘤康复";
+        const stageInfo = user.stage || "康复期";
+        const lastMedicalOrder = `患者处于${cancerInfo}${stageInfo}阶段。当前康复重点：维持${avgScore}%以上的依从水平，重点关注${scores.diet < 70 ? '饮食营养' : '身体平衡'}与心理状态。`;
 
         res.json({
             profile: format(user),
             recentMessages: recentMessages.map(format),
             environment: mockEnvironment,
-            vitals: mockVitals,
-            adherence: mockAdherence,
-            lastMedicalOrder: "术后第二周，保持清淡饮食，轻度步行。"
+            vitals: vitals,
+            adherence: adherence,
+            lastMedicalOrder: lastMedicalOrder
         });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });

@@ -370,6 +370,22 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
         setIsHistoryLoading(false);
     }
   }, [profile.name, onReadMessages, currentSessionId]);
+  
+  // --- 静默同步位置：组件加载时如果权限允许则自动感知环境变化 ---
+  useEffect(() => {
+    if (navigator.geolocation && auth.currentUser) {
+        navigator.geolocation.getCurrentPosition(async (position) => {
+            try {
+                const { latitude, longitude } = position.coords;
+                await fetch(`${API_URL}/api/users/${auth.currentUser?.uid}/location`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ lat: latitude, lng: longitude, silent: true })
+                });
+            } catch (e) {}
+        }, undefined, { timeout: 5000 });
+    }
+  }, []);
 
   useEffect(() => {
     fetchMessages();
@@ -522,6 +538,67 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
     });
 
     generateResponse(messageText, newMessages);
+  };
+
+  const handleLocationClick = () => {
+    if (!navigator.geolocation) {
+        alert("您的浏览器不支持地理位置功能。");
+        return;
+    }
+    setIsMoreMenuOpen(false);
+    
+    // Auto-generate session ID early if needed so message goes to current thread
+    let sessionId = currentSessionId;
+    if (!sessionId) {
+        sessionId = `sess_${Date.now()}`;
+        setCurrentSessionId(sessionId);
+        localStorage.setItem('currentAIChatSession', sessionId);
+    }
+    
+    // 发送一条“用户角色”的消息记录，表示正在尝试同步环境数据，确认为右侧气泡
+    const loadingMsg: any = { role: 'user', text: "📍 正在尝试感知并同步您的环境数据...", timestamp: new Date().toISOString() };
+    setMessages(prev => [...prev, loadingMsg]);
+    setLoading(true);
+
+    navigator.geolocation.getCurrentPosition(async (position) => {
+        try {
+            const { latitude, longitude } = position.coords;
+            if (!auth.currentUser) return;
+            const res = await fetch(`${API_URL}/api/users/${auth.currentUser.uid}/location`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lat: latitude, lng: longitude })
+            });
+            const data = await res.json();
+            
+            // Remove loading message
+            setMessages(prev => prev.filter(m => m !== loadingMsg));
+            
+            if (data.success && data.locationName) {
+                // 优化文案：用户端显示的气泡简短干练
+                const displayMsg = `📍 我已核准并分享了当前位置：${data.locationName}`;
+                // 系统侧的 Prompt 保持详尽
+                const promptMsg = `患者刚刚分享了此刻所属的新位置：${data.locationName}。请基于该地区当下的真实气候、时区与环境，向他提供严谨、贴切的起居、身心和饮食防护调整干预。`;
+                
+                // 将加载占位符替换为真实的分享语
+                setMessages(prev => prev.map(m => m === loadingMsg ? { ...m, text: displayMsg } : m));
+                
+                // 调用后台生成 AI 回复，输入使用详尽的 Prompt
+                generateResponse(promptMsg, [...messages, { role: 'user', text: displayMsg, timestamp: new Date().toISOString() }]);
+            } else {
+                alert("地理位置解析异常。");
+            }
+        } catch (err) {
+            console.error(err);
+            setMessages(prev => prev.filter(m => m !== loadingMsg));
+        } finally {
+            setLoading(false);
+        }
+    }, (err) => {
+        setMessages(prev => prev.filter(m => m !== loadingMsg));
+        setLoading(false);
+        alert("无法获取位置，请检查设备的定位权限。");
+    }, { timeout: 10000 });
   };
 
   const startNewChat = () => {
@@ -774,7 +851,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
                     { icon: <Camera size={24} className="text-emerald-500" />, label: "拍摄", onClick: () => {} },
                     { icon: <PhoneCall size={24} className="text-emerald-500" />, label: "语音通话", onClick: () => onStartVoice(currentSessionId) },
                     { icon: <MicVocal size={24} className="text-emerald-500" />, label: "语音输入", onClick: () => setInputMode('voice') },
-                    { icon: <MapPin size={24} className="text-emerald-500" />, label: "位置", onClick: () => {} },
+                    { icon: <MapPin size={24} className="text-emerald-500" />, label: "位置", onClick: handleLocationClick },
                 ].map((item, idx) => (
                     <button key={idx} onClick={item.onClick} className="flex flex-col items-center space-y-2 group">
                         <div className="w-16 h-16 bg-slate-50 dark:bg-[#1F2937] rounded-3xl flex items-center justify-center group-active:scale-90 transition-transform shadow-sm border border-slate-100 dark:border-white/5">
