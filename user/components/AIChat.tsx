@@ -370,22 +370,6 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
         setIsHistoryLoading(false);
     }
   }, [profile.name, onReadMessages, currentSessionId]);
-  
-  // --- 静默同步位置：组件加载时如果权限允许则自动感知环境变化 ---
-  useEffect(() => {
-    if (navigator.geolocation && auth.currentUser) {
-        navigator.geolocation.getCurrentPosition(async (position) => {
-            try {
-                const { latitude, longitude } = position.coords;
-                await fetch(`${API_URL}/api/users/${auth.currentUser?.uid}/location`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ lat: latitude, lng: longitude, silent: true })
-                });
-            } catch (e) {}
-        }, undefined, { timeout: 5000 });
-    }
-  }, []);
 
   useEffect(() => {
     fetchMessages();
@@ -575,16 +559,28 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
             setMessages(prev => prev.filter(m => m !== loadingMsg));
             
             if (data.success && data.locationName) {
-                // 优化文案：用户端显示的气泡简短干练
-                const displayMsg = `📍 我已核准并分享了当前位置：${data.locationName}`;
-                // 系统侧的 Prompt 保持详尽
-                const promptMsg = `患者刚刚分享了此刻所属的新位置：${data.locationName}。请基于该地区当下的真实气候、时区与环境，向他提供严谨、贴切的起居、身心和饮食防护调整干预。`;
+                const weatherStr = data.weather ? `${data.weather.weather}，温度 ${data.weather.temperature}` : '暂无实时气象';
                 
-                // 将加载占位符替换为真实的分享语
-                setMessages(prev => prev.map(m => m === loadingMsg ? { ...m, text: displayMsg } : m));
+                // 优化文案：用户端显示的气泡简短干练
+                const displayMsg = `📍 我已核准并分享了当前位置：${data.locationName} (${weatherStr})`;
+                const userMsgObj: ChatMessage = { 
+                    role: 'user', 
+                    text: displayMsg, 
+                    timestamp: new Date().toISOString(),
+                    sessionId
+                };
+
+                // **核心修复：持久化保存该位置分享消息，防止刷新丢失**
+                const savedUserMsg = await persistMessage(userMsgObj);
+                
+                // 系统侧的 Prompt 注入真实天气，消除 AI 的“无知”感
+                const promptMsg = `患者刚刚分享了此刻所属的新位置：${data.locationName}。当地目前天气状况为：${weatherStr}。请基于该地区当下的真实气候与环境，向他提供严谨、贴切的起居、身心和饮食防护调整干预。`;
+                
+                // 更新前端状态：将加载占位符替换为持久化后的真实消息
+                setMessages(prev => prev.map(m => m === loadingMsg ? (savedUserMsg || userMsgObj) : m));
                 
                 // 调用后台生成 AI 回复，输入使用详尽的 Prompt
-                generateResponse(promptMsg, [...messages, { role: 'user', text: displayMsg, timestamp: new Date().toISOString() }]);
+                generateResponse(promptMsg, [...messages, (savedUserMsg || userMsgObj)]);
             } else {
                 alert("地理位置解析异常。");
             }

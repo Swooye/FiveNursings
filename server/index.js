@@ -167,7 +167,10 @@ app.post('/api/users/:userId/location', async (req, res) => {
         user.locationName = locationName;
         await user.save();
 
-        res.json({ success: true, locationName, adcode });
+        // **新增：同步获取天气信息返回前端，供 AI 瞬间周知**
+        const weatherInfo = await getLiveWeather(adcode);
+
+        res.json({ success: true, locationName, adcode, weather: weatherInfo });
     } catch (e) {
         console.error("Location update failed:", e);
         res.status(500).json({ error: e.message });

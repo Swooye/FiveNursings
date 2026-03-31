@@ -164,7 +164,10 @@ apiRouter.post('/users/:userId/location', async (req: any, res: any) => {
         user.locationName = locationName;
         await user.save();
 
-        res.json({ success: true, locationName, adcode });
+        // 核心亮点：在高德精准定位后紧接着获取实时天气
+        const weatherInfo = await getLiveWeather(adcode);
+
+        res.json({ success: true, locationName, adcode, weather: weatherInfo });
     } catch (e: any) {
         console.error("Location update failed:", e);
         res.status(500).json({ error: e.message });

@@ -143,6 +143,20 @@ const App: React.FC = () => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
+        // --- 核心优化：一旦登录成功，静默同步地理位置供 OpenClaw 教练参考 ---
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(async (position) => {
+            try {
+              const { latitude, longitude } = position.coords;
+              await fetch(`${API_URL}/api/users/${currentUser.uid}/location`, {
+                 method: 'POST',
+                 headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify({ lat: latitude, lng: longitude, silent: true })
+              });
+            } catch (e) {}
+          }, undefined, { timeout: 10000 });
+        }
+
         try {
           const res = await fetch(`${API_URL}/api/users/sync`, {
             method: 'POST',

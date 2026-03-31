@@ -25,7 +25,7 @@ const Dashboard = () => {
   return (
     <div className="flex h-screen bg-gray-100">
       <aside className="w-64 bg-gray-800 text-white flex flex-col">
-        <div className="p-4 text-2xl font-bold">Admin</div>
+        <div className="p-4 text-2xl font-bold">五养管理后台</div>
         <nav className="mt-10 flex-1">
           <NavLink to="/" className={navLinkClassName} end>
             <Home className="w-5 h-5 mr-3" />

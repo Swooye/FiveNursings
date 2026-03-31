@@ -174,6 +174,10 @@ export interface ChatMessage {
   role: 'user' | 'model';
   text: string;
   timestamp: string;
+  type?: 'text' | 'image' | 'voice' | 'intervention';
+  category?: string;
+  isRead?: boolean;
+  sessionId?: string;
 }
 
 export interface ChatSession {
