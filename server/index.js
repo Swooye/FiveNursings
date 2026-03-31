@@ -207,6 +207,32 @@ app.post('/api/login', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 实时获取高德天气数据
+const getLiveWeather = async (cityName) => {
+    try {
+        const amapKey = "ce237825915cd4d2837264fdcf0298bc";
+        const url = `https://restapi.amap.com/v3/weather/weatherInfo?key=${amapKey}&city=${encodeURIComponent(cityName)}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        if (data && data.status === "1" && data.lives && data.lives.length > 0) {
+            const live = data.lives[0];
+            return {
+                weather: live.weather,
+                temperature: live.temperature + "℃",
+                humidity: live.humidity + "%"
+            };
+        }
+    } catch (e) {
+        console.error("Amap Weather API failed:", e);
+    }
+    return {
+        weather: "未知 (API异常)",
+        temperature: "--℃",
+        humidity: "--%"
+    };
+};
+
 // --- [核心] 为 OpenClaw 提供的全维上下文接口 ---
 // 真实天文计算：基于 lunar-javascript 的精确节气
 const getSolarTerm = () => {
@@ -237,13 +263,14 @@ app.get('/api/users/:userId/full-context', async (req, res) => {
             .sort({ timestamp: -1 })
             .limit(5);
 
+        const liveWeather = await getLiveWeather("上海市");
         const mockEnvironment = {
             location: "上海市",
             time: new Date().toISOString(),
             solarTerm: getSolarTerm(),
-            weather: ["晴朗", "多云", "阴天", "小雨", "大风"][Math.floor(Math.random() * 5)] + " (Mock暂代)",
-            temperature: Math.floor(Math.random() * 15) + 10 + "℃ (Mock)",
-            humidity: "65%",
+            weather: liveWeather.weather,
+            temperature: liveWeather.temperature,
+            humidity: liveWeather.humidity,
             airQuality: "优",
             altitude: 15
         };

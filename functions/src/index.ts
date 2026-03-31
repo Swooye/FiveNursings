@@ -62,6 +62,34 @@ const connectDb = async () => {
     } catch (err) { throw err; }
 };
 
+// 实时获取高德天气数据
+const getLiveWeather = async (cityName: string = "上海市") => {
+    try {
+        // 使用用户提供的高德 API Web服务 Key
+        const amapKey = "ce237825915cd4d2837264fdcf0298bc";
+        const url = `https://restapi.amap.com/v3/weather/weatherInfo?key=${amapKey}&city=${encodeURIComponent(cityName)}`;
+        const res = await fetch(url);
+        const data: any = await res.json();
+        
+        if (data && data.status === "1" && data.lives && data.lives.length > 0) {
+            const live = data.lives[0];
+            return {
+                weather: live.weather,               // e.g. "晴"
+                temperature: live.temperature + "℃", // e.g. "23℃"
+                humidity: live.humidity + "%"        // e.g. "53%"
+            };
+        }
+    } catch (e) {
+        console.error("Amap Weather API failed:", e);
+    }
+    // 降级兜底方案
+    return {
+        weather: "未知 (API异常)",
+        temperature: "--℃",
+        humidity: "--%"
+    };
+};
+
 // 真实天文计算：基于 lunar-javascript 的精确节气
 const getSolarTerm = (): string => {
     try {
@@ -258,15 +286,16 @@ apiRouter.get('/users/:userId/full-context', async (req: any, res: any) => {
             .sort({ timestamp: -1 })
             .limit(5);
 
-        // 3. 模拟实时环境数据 (加入随机化以证明服务确实更新，后续接入真实 API)
+        // 3. 模拟实时环境数据 (加入高德真实的实时气象)
+        const liveWeather = await getLiveWeather("上海市");
         const mockEnvironment = {
             location: "上海市",
             time: new Date().toISOString(),
             solarTerm: getSolarTerm(),
-            weather: ["晴朗", "多云", "阴天", "小雨", "大风"][Math.floor(Math.random() * 5)] + " (Mock暂代)",
-            temperature: Math.floor(Math.random() * 15) + 10 + "℃ (Mock)",
-            humidity: "65%",
-            airQuality: "优",
+            weather: liveWeather.weather,
+            temperature: liveWeather.temperature,
+            humidity: liveWeather.humidity,
+            airQuality: "优",                  // 其他暂留可扩展
             altitude: 15
         };
 
