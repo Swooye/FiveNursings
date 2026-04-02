@@ -477,24 +477,26 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
 
     try {
       let responseText = '';
-      if ((import.meta as any).env.DEV) {
-        try {
-          const res = await fetch('/api/get-ai-chat-reply', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: userText, profile, history: currentMsgs.slice(-5) })
-          });
-          if (res.ok) {
-            const data = await res.json();
-            responseText = data.reply;
-          }
-        } catch (e) { console.warn("Local AI reply failed:", e); }
-      }
-
-      if (!responseText) {
-        const getAIChatResponse = httpsCallable(functions, 'getAIChatResponse');
-        const response: any = await getAIChatResponse({ message: userText, profile, history: currentMsgs.slice(-5) });
-        responseText = response.data.reply;
+      
+      // Always use the Express backend's get-ai-chat-reply for production and dev stability
+      try {
+        const res = await fetch(`${API_URL}/api/get-ai-chat-reply`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            message: userText, 
+            profile, 
+            history: currentMsgs.slice(-5).map(m => ({ role: m.role, content: m.text })) 
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          responseText = data.reply;
+        } else {
+          console.error("AI reply failed with status:", res.status);
+        }
+      } catch (e) { 
+        console.error("Express AI reply failed:", e); 
       }
 
       let index = 0;

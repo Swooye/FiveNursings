@@ -94,7 +94,8 @@ app.post('/api/users/sync', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/daily_tasks/generate', async (req, res) => {
+// Alias for generating tasks (supports plural/singular)
+app.post(['/api/daily_tasks/generate', '/api/daily_task/generate'], async (req, res) => {
     try {
         const { userId, profile, date, commit = false } = req.body;
         if (!userId || !profile) return res.status(400).json({ error: "Missing parameters" });
@@ -200,8 +201,9 @@ createRoutes('roles', Role);
 createRoutes('chatmessages', ChatMessage);
 createRoutes('plans', User);
 createRoutes('voice_logs', VoiceLog);
-// daily_tasks: 自定义 GET（支持 userId 跨格式匹配），其余 CRUD 仍用通用生成器
-app.get('/api/daily_tasks', async (req, res) => {
+createRoutes('voice_log', VoiceLog); // Alias for legacy/resilience
+// daily_tasks: 支持复数/单数别名（GET 支持 userId 跨格式匹配），其余 CRUD 仍用通用生成器
+app.get(['/api/daily_tasks', '/api/daily_task'], async (req, res) => {
     try {
         const { userId, date, _start, _end, _sort, _order } = req.query;
 
@@ -230,20 +232,20 @@ app.get('/api/daily_tasks', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// daily_tasks 其他 CRUD（GET /:id, POST, PATCH, DELETE）
-app.get('/api/daily_tasks/:id', async (req, res) => {
+// daily_tasks 其他 CRUD（GET /:id, POST, PATCH, DELETE） - 支持别名
+app.get(['/api/daily_tasks/:id', '/api/daily_task/:id'], async (req, res) => {
     try { const data = await DailyTask.findById(req.params.id); res.json(format(data)); }
     catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/daily_tasks', async (req, res) => {
+app.post(['/api/daily_tasks', '/api/daily_task'], async (req, res) => {
     try { const data = await DailyTask.create({ ...req.body, createdAt: new Date() }); res.json(format(data)); }
     catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.patch('/api/daily_tasks/:id', async (req, res) => {
+app.patch(['/api/daily_tasks/:id', '/api/daily_task/:id'], async (req, res) => {
     try { const updated = await DailyTask.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true }); res.json(format(updated)); }
     catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/daily_tasks/:id', async (req, res) => {
+app.delete(['/api/daily_tasks/:id', '/api/daily_task/:id'], async (req, res) => {
     try { await DailyTask.findByIdAndDelete(req.params.id); res.json({ success: true }); }
     catch (e) { res.status(500).json({ error: e.message }); }
 });
