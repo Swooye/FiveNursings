@@ -61,7 +61,6 @@ const adminSchema = new mongoose.Schema({
 
 const protocolSchema = new mongoose.Schema({ key: String }, { strict: false, collection: 'protocols' });
 const mallItemSchema = new mongoose.Schema({}, { strict: false, collection: 'mall_items' });
-const roleSchema = new mongoose.Schema({}, { strict: false, collection: 'roles' });
 const planSchema = new mongoose.Schema({}, { strict: false, collection: 'plans' });
 
 // Models
