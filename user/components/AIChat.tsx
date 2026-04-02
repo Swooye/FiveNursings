@@ -6,7 +6,7 @@ import { Send, Mic, X, Calendar, MessageSquare, ArrowLeft, PhoneCall, AlertTrian
 import { auth, functions } from '../src/firebase';
 import { ResponsiveContainer, LineChart, BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Line, Bar } from 'recharts';
 
-const API_URL = import.meta.env.DEV ? "" : "https://api-u46fik5vcq-uc.a.run.app";
+const API_URL = import.meta.env.DEV ? "" : "https://us-central1-fivenursings-73917017-a0dfd.cloudfunctions.net/api";
 
 const ChartRenderer: React.FC<{ chartData: any }> = ({ chartData }) => {
   const { type, data, xAxisKey, grid, tooltip, lines, bars } = chartData;
