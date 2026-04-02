@@ -163,7 +163,7 @@ const PlanCustomizer: React.FC<PlanCustomizerProps> = ({ profile, existingTasks,
   const [addingSource, setAddingSource] = useState<'doctor' | 'custom' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const API_URL = import.meta.env.DEV ? "http://localhost:3002" : "https://us-central1-fivenursings-73917017-a0dfd.cloudfunctions.net/api";
+  const API_URL = import.meta.env.DEV ? "http://localhost:3002" : "https://us-central1-fivenursings-73917017-a0dfd.cloudfunctions.net";
 
   // Merged task list for submission
   const planProposal = [...aiTasks, ...doctorTasks, ...customTasks];

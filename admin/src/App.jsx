@@ -34,7 +34,7 @@ import { RoleEdit } from "./pages/roles/edit";
 
 import "@refinedev/antd/dist/reset.css";
 
-const API_URL = import.meta.env.DEV ? "/api" : "https://api-u46fik5vcq-uc.a.run.app/api";
+const API_URL = import.meta.env.DEV ? "/api" : "https://us-central1-fivenursings-73917017-a0dfd.cloudfunctions.net/api";
 
 const authProvider = {
   login: async ({ email, password }) => {

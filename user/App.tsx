@@ -46,7 +46,7 @@ import {
 } from 'lucide-react';
 
 // 动态识别环境
-const API_URL = import.meta.env.DEV ? "" : "https://us-central1-fivenursings-73917017-a0dfd.cloudfunctions.net/api";
+const API_URL = import.meta.env.DEV ? "" : "https://us-central1-fivenursings-73917017-a0dfd.cloudfunctions.net";
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Popconfirm } from "antd";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 
-const API_URL = import.meta.env.DEV ? "/api" : "https://api-u46fik5vcq-uc.a.run.app/api";
+const API_URL = import.meta.env.DEV ? "/api" : "https://us-central1-fivenursings-73917017-a0dfd.cloudfunctions.net/api";
 
 export const UserPlanManager = ({ userId }) => {
     const [tasks, setTasks] = useState([]);
