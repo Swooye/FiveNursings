@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 import { PatientProfile, TCMAnalysisResult } from '../types';
 import { NURSING_ICONS } from '../constants';
-import { analyzeTCMImages } from '../services/geminiService';
+import { analyzeHealthProfile } from '../services/geminiService';
 
 interface HealthRecordProps {
   profile: PatientProfile;
@@ -65,12 +65,15 @@ const HealthRecord: React.FC<HealthRecordProps> = ({ profile, onBack, onUpdatePr
   const q = profile.questionnaire;
 
   useEffect(() => {
-    const hasPhotos = !!(q?.tonguePhoto || q?.facePhoto);
-    const needsReport = !profile.tcmAnalysisResult;
-    if (hasPhotos && needsReport && !isAnalyzing) {
+    const isReady = profile.isQuestionnaireComplete;
+    // 深度查验：确保辨证结论不仅仅是一个空对象，而是包含实际报告内容
+    const hasValidResult = !!(profile.tcmAnalysisResult && profile.tcmAnalysisResult.constitutionType);
+    const needsReport = !hasValidResult;
+    
+    if (isReady && needsReport && !isAnalyzing) {
       handleStartAnalysis();
     }
-  }, [q?.tonguePhoto, q?.facePhoto, profile.tcmAnalysisResult]);
+  }, [profile.isQuestionnaireComplete, profile.tcmAnalysisResult?.constitutionType]);
 
   const triggerToast = (message: string, type: 'success' | 'info' = 'success') => {
     setShowToast({ message, type });
@@ -78,11 +81,11 @@ const HealthRecord: React.FC<HealthRecordProps> = ({ profile, onBack, onUpdatePr
   };
 
   const handleStartAnalysis = async () => {
-    if (!q?.tonguePhoto && !q?.facePhoto) return;
+    if (!profile.isQuestionnaireComplete) return;
     setError(null);
     setIsAnalyzing(true);
     try {
-      const result = await analyzeTCMImages(q.tonguePhoto, q.facePhoto);
+      const result = await analyzeHealthProfile(profile);
       onUpdateProfile({ tcmAnalysisResult: result });
       triggerToast("AI 辨证档案已更新");
     } catch (err) {
@@ -131,10 +134,10 @@ const HealthRecord: React.FC<HealthRecordProps> = ({ profile, onBack, onUpdatePr
     }
   };
 
-  const Section: React.FC<{ title: string; icon: React.ReactNode; children: React.ReactNode; badge?: string }> = ({ title, icon, children, badge }) => (
-    <div className="bg-white dark:bg-slate-900 rounded-[32px] p-6 shadow-sm border border-slate-100 dark:border-slate-800 space-y-4">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center space-x-3 text-left">
+  const Section: React.FC<{ title: string; icon: React.ReactNode; children: React.ReactNode; badge?: string; className?: string }> = ({ title, icon, children, badge, className = "" }) => (
+    <div className={`bg-white dark:bg-slate-900 rounded-[32px] p-6 shadow-sm border border-slate-100 dark:border-slate-800 space-y-4 ${className}`}>
+      <div className="flex items-center justify-between mb-2 text-left">
+        <div className="flex items-center space-x-3">
           <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl text-emerald-600">
             {icon}
           </div>
@@ -145,6 +148,7 @@ const HealthRecord: React.FC<HealthRecordProps> = ({ profile, onBack, onUpdatePr
       <div className="space-y-3">{children}</div>
     </div>
   );
+
 
   return (
     <div className="min-h-screen max-w-md mx-auto bg-slate-50 dark:bg-slate-950 flex flex-col animate-in slide-in-from-right duration-500 pb-32 shadow-2xl border-x border-slate-200 dark:border-slate-800 no-scrollbar relative">
@@ -157,35 +161,55 @@ const HealthRecord: React.FC<HealthRecordProps> = ({ profile, onBack, onUpdatePr
         </div>
       )}
 
-      {/* Record Settings */}
+      {/* Record Settings (Drawer relative to App Frame) */}
       {showSettings && (
-        <div className="fixed inset-0 z-[250] flex justify-end animate-in fade-in duration-300">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-md" onClick={() => setShowSettings(false)}></div>
-          <div className="relative w-80 bg-white dark:bg-slate-900 shadow-2xl p-8 flex flex-col animate-in slide-in-from-right duration-500">
-            <div className="flex justify-between items-center mb-10">
-              <h3 className="text-xl font-black text-slate-800 dark:text-white">档案配置</h3>
-              <button onClick={() => setShowSettings(false)} className="p-2 text-slate-300"><X size={24} /></button>
-            </div>
-            <div className="space-y-8 flex-1">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-bold text-slate-800 dark:text-slate-100">隐私脱敏模式</p>
-                  <p className="text-[10px] text-slate-400">分享时隐藏患者敏感真实信息</p>
+        <div className="fixed inset-0 z-[250] flex justify-center animate-in fade-in duration-300">
+          {/* Global Backdrop Mask */}
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowSettings(false)}></div>
+          
+          {/* Centered App Container for Drawer (Constraints drawer to App width) */}
+          <div className="relative w-full max-w-md h-full pointer-events-none">
+            <div className="absolute inset-y-0 left-0 w-[85%] max-w-[300px] bg-white dark:bg-slate-900 shadow-2xl p-8 flex flex-col pointer-events-auto animate-in slide-in-from-left duration-500 rounded-r-[40px]">
+                <div className="flex justify-between items-center mb-10 text-left">
+                  <h3 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">档案配置</h3>
+                  <button onClick={() => setShowSettings(false)} className="p-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-slate-400 active:scale-90 transition-transform">
+                    <X size={20} />
+                  </button>
                 </div>
-                <button onClick={() => setIsPrivateMode(!isPrivateMode)} className={`w-12 h-6 rounded-full transition-all relative ${isPrivateMode ? 'bg-emerald-500' : 'bg-slate-200'}`}>
-                   <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${isPrivateMode ? 'left-7' : 'left-1'}`} />
-                </button>
-              </div>
-              <button 
-                onClick={() => { setShowSettings(false); handleStartAnalysis(); }}
-                className="w-full flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl text-slate-700 dark:text-slate-200"
-              >
-                <div className="flex items-center space-x-3">
-                  <RefreshCw size={18} className="text-emerald-500" />
-                  <span className="font-bold">重新运行 AI 辨证</span>
+                
+                <div className="space-y-8 flex-1 text-left">
+                  <div className="flex items-center justify-between p-1">
+                    <div>
+                      <p className="text-sm font-bold text-slate-800 dark:text-slate-100">隐私脱敏模式</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">分享时隐藏患者敏感真实信息</p>
+                    </div>
+                    <button 
+                      onClick={() => setIsPrivateMode(!isPrivateMode)} 
+                      className={`w-11 h-6 rounded-full transition-all relative shrink-0 ${isPrivateMode ? 'bg-emerald-500 shadow-lg shadow-emerald-500/30' : 'bg-slate-200 dark:bg-slate-800'}`}
+                    >
+                       <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm ${isPrivateMode ? 'left-6' : 'left-1'}`} />
+                    </button>
+                  </div>
+                  
+                  <div className="pt-2">
+                    <button 
+                      onClick={() => { setShowSettings(false); handleStartAnalysis(); }}
+                      className="w-full flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl text-slate-700 dark:text-slate-200 border border-slate-100 dark:border-white/5 active:scale-95 transition-all"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="p-2 bg-white dark:bg-slate-800 rounded-xl">
+                          <RefreshCw size={16} className="text-emerald-500" />
+                        </div>
+                        <span className="text-sm font-bold">重新运行 AI 辨证</span>
+                      </div>
+                      <ChevronRight size={14} className="opacity-30" />
+                    </button>
+                  </div>
                 </div>
-                <ChevronRight size={16} />
-              </button>
+
+                <div className="mt-auto pt-10 text-center">
+                    <p className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest">Powered by Gemini Pro</p>
+                </div>
             </div>
           </div>
         </div>
@@ -249,7 +273,12 @@ const HealthRecord: React.FC<HealthRecordProps> = ({ profile, onBack, onUpdatePr
                   </div>
                 </div>
               </div>
-              {profile.tcmAnalysisResult ? (
+              {isAnalyzing ? (
+                 <div className="py-12 flex flex-col items-center justify-center space-y-4 animate-pulse">
+                    <Loader2 size={32} className="text-emerald-500 animate-spin" />
+                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest">专家辨证结论合成中...</p>
+                 </div>
+              ) : profile.tcmAnalysisResult ? (
                  <div className="animate-in slide-in-from-bottom-4 duration-700 space-y-6">
                     <div className="bg-slate-50 dark:bg-slate-800/50 rounded-[32px] p-6 border border-slate-100 dark:border-slate-800 flex flex-col items-center text-center">
                         <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-2">判定为主导体质</span>
@@ -257,9 +286,37 @@ const HealthRecord: React.FC<HealthRecordProps> = ({ profile, onBack, onUpdatePr
                         <p className="text-[12px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed italic px-4">“{profile.tcmAnalysisResult.constitutionAnalysis}”</p>
                     </div>
                  </div>
-              ) : <div className="py-10 text-center opacity-30 italic font-bold">暂无分析数据</div>}
+              ) : (
+                <div className="py-10 text-center opacity-30 italic font-bold">辨证分析收集中...</div>
+              )}
            </div>
         </div>
+
+        {/* Five Nursings Visualization Section */}
+        <Section title="五养康复纬度分析" icon={<Activity size={20} />} badge="核心康复指数">
+            <div className="space-y-5 py-2">
+                {[
+                    { label: '饮食养', score: profile.scores?.diet || 0, color: 'bg-amber-400' },
+                    { label: '运动养', score: profile.scores?.exercise || 0, color: 'bg-emerald-400' },
+                    { label: '膏方养', score: profile.scores?.sleep || 0, color: 'bg-purple-400' },
+                    { label: '心理养', score: profile.scores?.mental || 0, color: 'bg-rose-400' },
+                    { label: '功能养', score: profile.scores?.function || 0, color: 'bg-blue-400' },
+                ].map((item, idx) => (
+                    <div key={idx} className="space-y-1.5">
+                        <div className="flex justify-between items-center text-[11px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                            <span>{item.label}</span>
+                            <span className="text-slate-700 dark:text-slate-200">{item.score}分</span>
+                        </div>
+                        <div className="h-2.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                            <div 
+                                className={`h-full ${item.color} rounded-full transition-all duration-1000 delay-300`} 
+                                style={{ width: `${item.score}%` }}
+                            />
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </Section>
 
         {/* Cases */}
         <Section title="结构化康复档案" icon={<ClipboardList size={20} />} badge="临床背书">

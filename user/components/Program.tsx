@@ -1,18 +1,25 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { DailyTask, VoiceLog } from '../types';
+import { DailyTask, VoiceLog, PatientProfile } from '../types';
 import { NURSING_ICONS } from '../constants';
-import { Check, Calendar as CalendarIcon, Mic, Sparkles, ChevronRight, History, Info, X, ChevronLeft } from 'lucide-react';
+import { Check, Calendar as CalendarIcon, Mic, Sparkles, ChevronRight, History, Info, X, ChevronLeft, Plus, TrendingUp, Clock, ShieldOff, Eye, EyeOff, Trash2, Wand2, Bell } from 'lucide-react';
 import TodaySymptoms from './TodaySymptoms';
 
 interface ProgramProps {
+  profile: PatientProfile;
+  tasks: DailyTask[];
+  onToggleTask: (id: string) => void;
+  onUpdateTask: (id: string, updates: Partial<DailyTask>) => void;
+  onGeneratePlan: () => void;
+  onUpdateProfile: (updates: Partial<PatientProfile>) => void;
   onStartVoice: () => void;
   recentLogs: VoiceLog[];
   onViewJournal: () => void;
+  onAddDiary: () => void;
   isDark?: boolean;
 }
 
-const Program: React.FC<ProgramProps> = ({ onStartVoice, recentLogs, onViewJournal, isDark }) => {
+const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdateTask, onGeneratePlan, onUpdateProfile, onStartVoice, recentLogs, onViewJournal, onAddDiary, isDark }) => {
   const today = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -21,6 +28,8 @@ const Program: React.FC<ProgramProps> = ({ onStartVoice, recentLogs, onViewJourn
 
   const [selectedDate, setSelectedDate] = useState<Date>(today);
   const [showCalendar, setShowCalendar] = useState(false);
+  const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
+  const [showInfeasible, setShowInfeasible] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const dateStrip = useMemo(() => {
@@ -45,17 +54,9 @@ const Program: React.FC<ProgramProps> = ({ onStartVoice, recentLogs, onViewJourn
     return () => clearTimeout(timer);
   }, [selectedDate]);
 
-  const [tasks, setTasks] = useState<DailyTask[]>([
-    { id: '1', category: 'diet', title: '早起温开水 200ml', time: '07:00', completed: true, description: '唤醒肠胃，促进新陈代谢。' },
-    { id: '2', category: 'function', title: '呼吸功能训练', time: '08:30', completed: false, description: '深慢呼吸 10 组，增强肺部代偿。' },
-    { id: '3', category: 'exercise', title: '慢走 20 分钟', time: '10:00', completed: false, description: '林主任建议：心率保持在 105 以下。' },
-    { id: '4', category: 'diet', title: '优质蛋白补给', time: '12:00', completed: false, description: '鱼肉或豆腐，忌重油重盐。' },
-    { id: '5', category: 'mental', title: '午间情绪冥想', time: '14:00', completed: false, description: '闭目聆听白噪音，放松紧绷神经。' },
-  ]);
-
   const toggleTask = (id: string) => {
     if (selectedDate.getTime() !== today.getTime()) return;
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
+    onToggleTask(id);
   };
 
   const filteredLogs = useMemo(() => {
@@ -66,8 +67,12 @@ const Program: React.FC<ProgramProps> = ({ onStartVoice, recentLogs, onViewJourn
     });
   }, [recentLogs, selectedDate]);
 
-  const completedCount = tasks.filter(t => t.completed).length;
-  const progressPercent = Math.round((completedCount / tasks.length) * 100);
+  const infeasibleTasks = tasks.filter(t => t.isInfeasible);
+  const visibleTasks = tasks.filter(t => !t.isInfeasible);
+  const displayedTasks = showInfeasible ? tasks : visibleTasks;
+
+  const completedCount = visibleTasks.filter(t => t.completed).length;
+  const progressPercent = Math.round((completedCount / (visibleTasks.length || 1)) * 100);
   const isToday = selectedDate.getTime() === today.getTime();
 
   const getDayName = (date: Date) => {
@@ -131,7 +136,7 @@ const Program: React.FC<ProgramProps> = ({ onStartVoice, recentLogs, onViewJourn
               {isToday ? '今日康复进度' : `${selectedDate.getMonth() + 1}月${selectedDate.getDate()}日回顾`}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest mt-1">
-              {isToday ? `已完成 ${completedCount}/${tasks.length} 项任务` : '历史康复数据已归档'}
+              {isToday ? `已完成 ${completedCount}/${visibleTasks.length} 项任务` : '历史康复数据已归档'}
             </p>
           </div>
           <div className="text-4xl font-black text-emerald-600 dark:text-emerald-400 tracking-tighter">
@@ -147,86 +152,86 @@ const Program: React.FC<ProgramProps> = ({ onStartVoice, recentLogs, onViewJourn
         <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full blur-3xl -mr-16 -mt-16"></div>
       </div>
 
-      {/* Voice Entry */}
-      {isToday ? (
-        <div 
-          onClick={onStartVoice}
-          className="bg-slate-800 dark:bg-[#111827] rounded-[32px] p-7 text-white shadow-2xl shadow-slate-200/50 dark:shadow-none cursor-pointer group active:scale-95 transition-all relative overflow-hidden border border-slate-700 dark:border-white/5"
-        >
-          <div className="relative z-10">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center space-x-3">
-                <div className="p-3 bg-emerald-500 rounded-2xl shadow-[0_0_20px_rgba(16,185,129,0.4)] group-hover:scale-110 transition-transform">
-                  <Mic size={22} className="text-white" />
-                </div>
-                <span className="text-lg font-black tracking-tight">语音更新康复看板</span>
-              </div>
-              <Sparkles size={18} className="text-emerald-400 animate-pulse" />
-            </div>
-            <p className="text-slate-400 text-xs leading-relaxed font-bold">
-              林教练将为您分析今日动态并同步至您的健康评分。
-            </p>
-          </div>
-          <div className="absolute top-0 right-0 w-40 h-40 bg-emerald-500/10 rounded-full blur-[50px] -mr-16 -mt-16"></div>
-          <div className="absolute bottom-0 left-0 w-24 h-24 bg-white/5 rounded-full blur-3xl -ml-10 -mb-10"></div>
-        </div>
-      ) : (
-        <div className="bg-slate-100 dark:bg-slate-900 rounded-[32px] p-6 border border-slate-200 dark:border-slate-800 flex items-center space-x-4">
-          <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-2xl flex items-center justify-center text-slate-400 shadow-sm border border-slate-100 dark:border-slate-800">
-            <History size={24} />
-          </div>
-          <div className="flex-1">
-            <h4 className="text-sm font-black text-slate-800 dark:text-slate-100">历史回顾模式</h4>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest mt-0.5">
-              {selectedDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
-            </p>
-          </div>
-        </div>
-      )}
+
       
-      {isToday && <TodaySymptoms />}
+      {isToday && (
+        <TodaySymptoms 
+          selectedIds={profile.todaySymptoms || []} 
+          onChange={(ids) => onUpdateProfile({ todaySymptoms: ids, lastSymptomUpdate: new Date().toISOString() })} 
+        />
+      )}
 
       <div className="space-y-4">
         <div className="flex justify-between items-center px-1">
-          <h3 className="font-black text-slate-800 dark:text-slate-100 flex items-center tracking-tight">
-            <History size={18} className="mr-2 text-slate-400 dark:text-slate-600" />
-            康复动态
-          </h3>
+          <div className="flex items-center">
+            <h3 className="font-black text-slate-800 dark:text-slate-100 flex items-center tracking-tight">
+              <History size={18} className="mr-2 text-slate-400 dark:text-slate-600" />
+              康复日记
+            </h3>
+            <button 
+              onClick={onAddDiary}
+              className="ml-3 w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/20 active:scale-90 transition-transform"
+            >
+              <Plus size={18} />
+            </button>
+          </div>
           <button 
             onClick={onViewJournal}
-            className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3.5 py-1.5 rounded-full border border-emerald-100/50 dark:border-emerald-800/50 uppercase tracking-wider"
+            className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/10 px-4 py-2 rounded-full border border-emerald-100 dark:border-emerald-500/10 uppercase tracking-widest hover:bg-emerald-100 transition-colors"
           >
-            查看全志
+            查看全部
           </button>
         </div>
 
         {filteredLogs.length > 0 ? (
-          <div className="space-y-4">
-            {filteredLogs.map(log => (
-              <div key={log.id} className="bg-white dark:bg-[#111827] p-6 rounded-[32px] border border-slate-100 dark:border-white/5 shadow-sm animate-in zoom-in-95 duration-300">
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex items-center space-x-2.5">
-                    <div className="w-9 h-9 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 shadow-inner">
-                      <Mic size={16} />
-                    </div>
-                    <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                      {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </span>
+          <div className="relative pl-3">
+            {/* 竖向时间轴线 - 仅在多条记录时显示 */}
+            {filteredLogs.length > 1 && (
+              <div className="absolute left-[30px] top-12 bottom-12 w-[1.5px] bg-gradient-to-b from-emerald-500/50 via-slate-200 to-transparent z-0" />
+            )}
+            
+            <div className="space-y-6 relative z-10">
+              {[...filteredLogs]
+                .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                .map((log, index) => (
+                <div key={log.id} className="relative pl-11 group">
+                  {/* 时间轴节点 (图标) */}
+                  <div className={`absolute left-0 top-4 w-9 h-9 rounded-xl flex items-center justify-center shadow-lg z-20 transition-transform group-hover:scale-110 ${
+                    index === 0 ? 'bg-emerald-500 text-white animate-pulse shadow-emerald-500/20' : 'bg-white dark:bg-[#111827] text-slate-400 border border-slate-100 dark:border-white/10'
+                  }`}>
+                    <Clock size={16} />
                   </div>
-                  <div className="bg-emerald-500 text-white text-[9px] font-black px-2.5 py-1 rounded-lg shadow-lg shadow-emerald-500/10 dark:shadow-none">
-                    +{log.impact.change} 指标提升
+
+                  {/* 记录卡片 */}
+                  <div className="bg-white dark:bg-[#111827] p-5 rounded-[28px] border border-slate-100 dark:border-white/5 shadow-sm group-hover:shadow-md transition-all">
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+                        {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                      <div className="flex items-center space-x-1 text-emerald-600 dark:text-emerald-400">
+                        <TrendingUp size={12} className="opacity-70" />
+                        <span className="text-[10px] font-black">+{log.impact?.change || 2} 指标提升</span>
+                      </div>
+                    </div>
+                    <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-bold italic">“{log.summary}”</p>
                   </div>
                 </div>
-                <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-bold italic">“{log.summary}”</p>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         ) : (
-          <div className="bg-white dark:bg-slate-900 p-10 rounded-[40px] border border-slate-100 dark:border-slate-800 border-dashed text-center">
-            <div className="w-12 h-12 bg-slate-50 dark:bg-slate-800 rounded-2xl mx-auto flex items-center justify-center text-slate-300 dark:text-slate-700 mb-3">
-              <Info size={24} />
+          <div className="bg-white dark:bg-[#111827] p-12 rounded-[48px] border border-slate-100 dark:border-white/5 shadow-sm text-center">
+            <div className="w-16 h-16 bg-slate-50 dark:bg-slate-800 rounded-3xl mx-auto flex items-center justify-center text-slate-300 dark:text-slate-600 mb-6 group-hover:scale-110 transition-transform duration-500">
+              <Info size={32} />
             </div>
-            <p className="text-xs text-slate-400 dark:text-slate-500 font-bold italic">该日期下没有记录任何康复日志</p>
+            <p className="text-sm text-slate-400 dark:text-slate-500 font-bold italic mb-8">该日期下没有记录任何康复日志</p>
+            <button 
+              onClick={onAddDiary}
+              className="px-8 py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-[24px] font-black text-base shadow-xl shadow-emerald-600/20 active:scale-95 transition-all flex items-center mx-auto space-x-2"
+            >
+              <Plus size={20} strokeWidth={3} />
+              <span>添加日记</span>
+            </button>
           </div>
         )}
       </div>
@@ -235,36 +240,98 @@ const Program: React.FC<ProgramProps> = ({ onStartVoice, recentLogs, onViewJourn
         <h3 className="font-black text-slate-800 dark:text-slate-100 ml-1 tracking-tight flex items-center">
           <Check size={18} className="mr-2 text-emerald-500" />
           每日必做任务
-        </h3>
-        {tasks.map(task => (
-          <div 
-            key={task.id}
-            onClick={() => toggleTask(task.id)}
-            className={`flex items-center space-x-5 p-6 rounded-[36px] transition-all cursor-pointer border ${
-              task.completed 
-              ? 'bg-slate-50/50 dark:bg-[#111827]/50 border-slate-100 dark:border-white/5 opacity-60' 
-              : 'bg-white dark:bg-[#111827] border-slate-100 dark:border-white/5 shadow-sm hover:border-emerald-200'
-            } ${!isToday ? 'cursor-default pointer-events-none' : ''}`}
+          <button 
+            onClick={onGeneratePlan}
+            className="ml-auto flex items-center space-x-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 rounded-xl text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 active:scale-95 transition-all hover:bg-slate-200 dark:hover:bg-slate-700"
           >
-            <div className={`shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-500 ${
-              task.completed ? 'bg-emerald-500 text-white shadow-xl shadow-emerald-500/20 scale-105' : 'bg-slate-50 dark:bg-slate-800 text-emerald-600'
-            }`}>
-              {task.completed ? <Check size={26} strokeWidth={4} /> : NURSING_ICONS[task.category]}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex justify-between items-start mb-0.5">
-                <h4 className={`font-black text-base truncate ${task.completed ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
-                  {task.title}
-                </h4>
-                <div className={`text-[10px] font-black uppercase tracking-widest ${task.completed ? 'text-slate-300' : 'text-slate-400'}`}>
-                  {task.time}
+            <Wand2 size={12} className="text-emerald-500" />
+            <span>定制计划</span>
+          </button>
+          
+          {infeasibleTasks.length > 0 && (
+            <button 
+              onClick={() => setShowInfeasible(!showInfeasible)}
+              className="ml-auto flex items-center space-x-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-600 hover:text-emerald-500 transition-colors"
+            >
+              {showInfeasible ? <EyeOff size={14} /> : <Eye size={14} />}
+              <span>{showInfeasible ? '隐藏不可行项' : `查看不可行项 (${infeasibleTasks.length})`}</span>
+            </button>
+          )}
+        </h3>
+
+        {displayedTasks.length === 0 && !showInfeasible ? (
+          <div className="bg-white dark:bg-[#111827] p-12 rounded-[48px] border border-slate-100 dark:border-white/5 shadow-sm text-center">
+            <p className="text-sm text-slate-400 font-bold italic">今日暂无康复任务</p>
+          </div>
+        ) : (
+          displayedTasks.map(task => (
+            <div 
+              key={task.id}
+              className={`flex items-center space-x-5 p-6 rounded-[36px] transition-all cursor-pointer border ${
+                task.isInfeasible
+                ? 'bg-slate-100/50 dark:bg-slate-900/30 border-dashed border-slate-200 dark:border-slate-800'
+                : task.completed 
+                  ? 'bg-slate-50/50 dark:bg-[#111827]/50 border-slate-100 dark:border-white/5 opacity-60' 
+                  : 'bg-white dark:bg-[#111827] border-slate-100 dark:border-white/5 shadow-sm hover:border-emerald-200'
+              } ${!isToday ? 'cursor-default pointer-events-none' : ''}`}
+            >
+              <div 
+                onClick={(e) => { e.stopPropagation(); toggleTask(task.id); }}
+                className={`shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-500 ${
+                  task.completed ? 'bg-emerald-500 text-white shadow-xl shadow-emerald-500/20 scale-105' : 'bg-slate-50 dark:bg-slate-800 text-emerald-600'
+                }`}
+              >
+                {task.completed ? <Check size={26} strokeWidth={4} /> : NURSING_ICONS[task.category]}
+              </div>
+              <div className="flex-1 min-w-0" onClick={() => setEditingTask(task)}>
+                <div className="flex justify-between items-start mb-0.5">
+                  <div className="flex items-center space-x-2 min-w-0">
+                    <h4 className={`font-black text-base truncate ${task.completed ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
+                      {task.title}
+                    </h4>
+                    {task.isInfeasible && (
+                      <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-rose-500/10 text-rose-500 text-[8px] font-black uppercase tracking-tighter border border-rose-500/10">
+                        不可行
+                      </span>
+                    )}
+                  </div>
+                  <div className={`text-[10px] font-black uppercase tracking-widest flex items-center shrink-0 ml-2 ${task.completed ? 'text-slate-300' : 'text-emerald-500'}`}>
+                    {task.time && task.time.trim() !== '' && task.time !== '全天' && (
+                      <Bell size={10} className="mr-1" />
+                    )}
+                    {task.time}
+                  </div>
+                </div>
+                <div className="flex items-center space-x-1.5 mt-1">
+                  {/* Source Tag */}
+                  {task.source?.toLowerCase() === 'doctor' && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-black text-blue-600 bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">医嘱</span>
+                  )}
+                  {task.source?.toLowerCase() === 'ai' && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-black text-emerald-700 bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">五养建议</span>
+                  )}
+                  {task.source?.toLowerCase() === 'custom' && (
+                    <span className="inline-flex items-center text-[9px] font-black text-slate-500 dark:text-slate-400">自定义</span>
+                  )}
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium line-clamp-1">{task.description}</p>
                 </div>
               </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium line-clamp-1 pr-4">{task.description}</p>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
+
+      {/* Task Adjustment Modal */}
+      {editingTask && (
+        <TaskAdjustmentModal 
+          task={editingTask}
+          onClose={() => setEditingTask(null)}
+          onUpdate={(updates) => {
+            onUpdateTask(editingTask.id, updates);
+            setEditingTask(null);
+          }}
+        />
+      )}
     </div>
   );
 };
@@ -348,6 +415,75 @@ const CalendarPicker: React.FC<{
       </div>
     </div>
   );
+};
+
+const TaskAdjustmentModal: React.FC<{ 
+    task: DailyTask; 
+    onClose: () => void; 
+    onUpdate: (updates: Partial<DailyTask>) => void;
+}> = ({ task, onClose, onUpdate }) => {
+    const suggestions = task.suggestedTimes || ["07:30", "09:00", "15:30"]; // Fallback if no AI suggestions
+
+    return (
+        <div className="fixed inset-0 z-[120] bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-sm flex items-end justify-center animate-in fade-in duration-300">
+            <div className="w-full max-w-md bg-white dark:bg-[#111827] rounded-t-[48px] p-8 shadow-2xl animate-in slide-in-from-bottom-full duration-500 border-x border-t border-slate-100 dark:border-white/5">
+                <div className="flex justify-between items-start mb-8">
+                    <div className="flex-1">
+                        <div className="flex items-center space-x-2 mb-2">
+                          <div className="p-2 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-500 rounded-xl">
+                            {NURSING_ICONS[task.category]}
+                          </div>
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">{task.category}</span>
+                        </div>
+                        <h3 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight">{task.title}</h3>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 font-medium pr-8">{task.description}</p>
+                    </div>
+                    <button onClick={onClose} className="p-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-slate-400"><X size={22} /></button>
+                </div>
+
+                <div className="space-y-8">
+                    <div>
+                        <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center">
+                          <Sparkles size={14} className="mr-2 text-emerald-500" />
+                          AI 建议执行时间
+                        </h4>
+                        <div className="grid grid-cols-3 gap-3">
+                            {suggestions.map(time => (
+                                <button 
+                                    key={time}
+                                    onClick={() => onUpdate({ time })}
+                                    className={`py-4 rounded-[24px] font-black text-sm border-2 transition-all ${
+                                        task.time === time 
+                                        ? 'bg-emerald-500 text-white border-emerald-500 shadow-lg shadow-emerald-500/20' 
+                                        : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-white/5 text-slate-700 dark:text-slate-300'
+                                    }`}
+                                >
+                                    {time}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col space-y-3">
+                        <button 
+                            onClick={() => onUpdate({ isInfeasible: !task.isInfeasible })}
+                            className={`w-full py-5 rounded-[32px] font-black text-sm flex items-center justify-center space-x-3 transition-all ${
+                                task.isInfeasible
+                                ? 'bg-emerald-500 text-white shadow-xl shadow-emerald-500/20'
+                                : 'bg-rose-500 text-white shadow-xl shadow-rose-500/20 active:scale-95'
+                            }`}
+                        >
+                            {task.isInfeasible ? <Eye size={18} strokeWidth={3} /> : <ShieldOff size={18} strokeWidth={3} />}
+                            <span>{task.isInfeasible ? '恢复此任务' : '标记为不可行'}</span>
+                        </button>
+                        <p className="text-center text-[10px] text-slate-400 font-bold">
+                          {task.isInfeasible ? '点击恢复将该任务重新加入康复计划' : '被标记为不可行后任务将从主清单中隐藏'}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 export default Program;

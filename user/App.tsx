@@ -2,11 +2,12 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from './src/firebase';
-import { PatientProfile, CancerType, TreatmentStage, NursingScores, VoiceLog, CartItem, SKU, ChatSession } from './types';
+import { PatientProfile, CancerType, TreatmentStage, NursingScores, VoiceLog, CartItem, SKU, ChatSession, DailyTask } from './types';
 import Home from './components/Home';
 import Program from './components/Program';
 import AIChat from './components/AIChat';
 import Marketplace from './components/Marketplace';
+import PlanCustomizer from './components/PlanCustomizer';
 import LiveVoiceAssistant from './components/LiveVoiceAssistant';
 import NursingDetail from './components/NursingDetail';
 import RecoveryJournal from './components/RecoveryJournal';
@@ -24,6 +25,7 @@ import HumanCoachChat from './components/HumanCoachChat';
 import MembershipCenter from './components/MembershipCenter';
 import FavoritesView from './components/FavoritesView';
 import ProductDetail from './components/ProductDetail';
+import DiaryChat from './components/DiaryChat';
 import { NAV_ITEMS } from './constants';
 import { 
   Mic, 
@@ -54,8 +56,10 @@ const App: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [previousTab, setPreviousTab] = useState('dashboard');
+  const [initialCoachMessage, setInitialCoachMessage] = useState<string | null>(null);
   const [assistantMode, setAssistantMode] = useState<'chat' | 'logging' | null>(null);
   const [assistantSessionId, setAssistantSessionId] = useState<string | null>(null);
+  const [showPlanCustomizer, setShowPlanCustomizer] = useState(false);
   const [lastVoiceSessionId, setLastVoiceSessionId] = useState<string | null>(null);
   const [chatRefreshTrigger, setChatRefreshTrigger] = useState(0);
   const [showReport, setShowReport] = useState(false);
@@ -73,8 +77,10 @@ const App: React.FC = () => {
   const [protocolType, setProtocolType] = useState<'service' | 'privacy' | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showHumanCoach, setShowHumanCoach] = useState(false);
+  const [showDiaryChat, setShowDiaryChat] = useState(false);
   const [completeProfileMode, setCompleteProfileMode] = useState<'onboarding' | 'edit'>('onboarding');
   const [voiceLogs, setVoiceLogs] = useState<VoiceLog[]>([]);
+  const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([]);
   const [lastUpdatedCategory, setLastUpdatedCategory] = useState<keyof NursingScores | null>(null);
   const [reportCache, setReportCache] = useState<{ date: string; profileJSON: string; text: string } | null>(null);
 
@@ -93,10 +99,12 @@ const App: React.FC = () => {
   const [profile, setProfile] = useState<PatientProfile>({
     id: '', name: '', nickname: '', age: 0,
     cancerType: CancerType.OTHER, stage: TreatmentStage.UNTREATED,
-    scores: { diet: 0, exercise: 0, sleep: 0, mental: 0, function: 0 },
-    hasWarnings: false, wearable: { deviceType: 'None', isConnected: false, lastSync: null },
+    scores: { diet: 60, exercise: 40, sleep: 70, mental: 80, function: 80, environment: 85 },
+    baselines: { diet: 60, exercise: 40, sleep: 70, mental: 80, function: 80, environment: 85 },
+    hasWarnings: false, wearable: { deviceType: 'None', isConnected: false, lastSync: null, steps: 0, sleepHours: 0 },
     isProfileComplete: false, isQuestionnaireComplete: false,
-    familyMembers: [], isVIP: false, coachSessionsRemaining: 0, referralCode: '', voicePreference: 'default'
+    familyMembers: [], isVIP: false, coachSessionsRemaining: 0, referralCode: '', voicePreference: 'default',
+    todaySymptoms: [], lastSymptomUpdate: new Date().toISOString()
   });
 
   const [favorites, setFavorites] = useState<SKU[]>(() => {
@@ -118,26 +126,48 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (dbUser) {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const lastUpdateStr = dbUser.lastSymptomUpdate ? dbUser.lastSymptomUpdate.split('T')[0] : '';
+      
+      let todaySymptoms = dbUser.todaySymptoms || [];
+      if (lastUpdateStr && lastUpdateStr !== todayStr) {
+        todaySymptoms = [];
+      }
+
+      // 核心优化：合并分值，如果数据库为0则保留基准分
+      const mergedScores = { ...prevProfileRef.current.scores };
+      if (dbUser.scores) {
+        Object.keys(dbUser.scores).forEach(key => {
+          const k = key as keyof NursingScores;
+          if (dbUser.scores[k] > 0) {
+            mergedScores[k] = dbUser.scores[k];
+          }
+        });
+      }
+
       setProfile(prev => ({
         ...prev,
         ...dbUser,
         id: dbUser.id || dbUser._id || prev.id,
         name: dbUser.name || '',
         nickname: dbUser.nickname || '',
-        gender: dbUser.gender || prev.gender,
-        birthDate: dbUser.birthDate || prev.birthDate,
-        height: dbUser.height || prev.height,
-        weight: dbUser.weight || prev.weight,
-        cancerType: dbUser.cancerType || prev.cancerType,
-        stage: dbUser.stage || prev.stage,
-        scores: dbUser.scores || prev.scores,
+        scores: mergedScores,
         isProfileComplete: !!dbUser.isProfileComplete,
         isQuestionnaireComplete: !!dbUser.isQuestionnaireComplete,
         isVIP: !!dbUser.isVIP,
-        voicePreference: dbUser.voicePreference || prev.voicePreference || 'default'
+        todaySymptoms: todaySymptoms,
+        lastSymptomUpdate: dbUser.lastSymptomUpdate || prev.lastSymptomUpdate,
+        coreRecoveryIndex: dbUser.coreRecoveryIndex || prev.coreRecoveryIndex,
+        questionnaire: dbUser.questionnaire || prev.questionnaire,
+        tcmAnalysisResult: dbUser.tcmAnalysisResult || prev.tcmAnalysisResult
       }));
     }
   }, [dbUser]);
+
+  const prevProfileRef = useRef(profile);
+  useEffect(() => {
+    prevProfileRef.current = profile;
+  }, [profile]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -190,11 +220,52 @@ const App: React.FC = () => {
     } catch (e) { console.error("Failed to check unread:", e); }
   }, [user]);
 
+  const fetchVoiceLogs = useCallback(async (userId: string) => {
+    try {
+      const res = await fetch(`${API_URL}/api/voice_logs?userId=${userId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setVoiceLogs(data);
+      }
+    } catch (e) { console.error("Failed to fetch voice logs:", e); }
+  }, []);
+
+  const fetchDailyTasks = useCallback(async (userId: string) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const res = await fetch(`${API_URL}/api/daily_tasks?userId=${userId}&date=${today}`);
+      if (res.ok) {
+        const data = await res.json();
+        setDailyTasks(data);
+      }
+    } catch (e) { console.error("Failed to fetch tasks:", e); }
+  }, []);
+
+  const triggerTaskGeneration = useCallback(async (userId: string, profile: PatientProfile) => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const res = await fetch(`${API_URL}/api/daily_tasks/generate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, profile, date: today })
+      });
+      if (res.ok) {
+          const data = await res.json();
+          setDailyTasks(data);
+          return data;
+      }
+    } catch (e) { console.error("Failed to trigger task generation:", e); }
+  }, []);
+
   useEffect(() => {
     checkUnread();
+    if (profile.id) {
+        fetchVoiceLogs(profile.id);
+        fetchDailyTasks(profile.id);
+    }
     const timer = setInterval(checkUnread, 30000); 
     return () => clearInterval(timer);
-  }, [checkUnread]);
+  }, [checkUnread, profile.id, fetchVoiceLogs, fetchDailyTasks]);
 
   // 已读权交给 AIChat 组件处理，此处移除自动标记逻辑
 
@@ -235,27 +306,47 @@ const App: React.FC = () => {
 
   const handleUpdateProfile = async (updates: Partial<PatientProfile>) => {
     const targetId = dbUser?._id || dbUser?.id;
+    console.log(`[App] Updating profile for user ${targetId}...`, updates);
+    
+    // Immediate state updates for UI responsiveness
+    if (updates.isQuestionnaireComplete) {
+      console.log("[App] Questionnaire complete, transitioning UI...");
+      setShowQuestionnaire(false);
+      setShowHealthRecord(true);
+    }
+    if (updates.isProfileComplete && !profile.isQuestionnaireComplete && completeProfileMode === 'onboarding') {
+      setShowQuestionnaire(true);
+    }
+
     if (targetId) {
       try {
-        const response = await fetch(`${API_URL}/api/user/${targetId}`, {
+        const response = await fetch(`${API_URL}/api/users/${targetId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             ...updates,
-            isProfileComplete: true 
+            isProfileComplete: updates.isProfileComplete ?? true 
           })
         });
+        
         if (response.ok) {
           const updatedUserData = await response.json();
-          // API returns the user object directly (not wrapped in .user)
           setDbUser(updatedUserData.user || updatedUserData);
           setShowCompleteProfile(false);
+          console.log(`[App] Profile update successfully persisted. fields: ${Object.keys(updates).join(', ')}`);
+        } else {
+          console.error(`[App] Backend error ${response.status} when updating profile.`, await response.text());
         }
-      } catch (error) { console.error("Failed to update profile:", error); }
+      } catch (error) { console.error("[App] Network failed to update profile:", error); }
     }
-    setProfile(prev => ({ ...prev, ...updates }));
-    if (updates.isProfileComplete && !profile.isQuestionnaireComplete && completeProfileMode === 'onboarding') setShowQuestionnaire(true);
-    if (updates.isQuestionnaireComplete) { setShowQuestionnaire(false); setShowHealthRecord(true); }
+    setProfile(prev => {
+      const newProfile = { ...prev, ...updates };
+      if (updates.isQuestionnaireComplete) {
+        console.log("[App] Questionnaire complete, triggering task generation...");
+        triggerTaskGeneration(prev.id, newProfile);
+      }
+      return newProfile;
+    });
   };
 
   const handleLogout = async () => {
@@ -264,8 +355,8 @@ const App: React.FC = () => {
     setProfile({
       id: '', name: '', nickname: '', age: 0,
       cancerType: CancerType.OTHER, stage: TreatmentStage.UNTREATED,
-      scores: { diet: 0, exercise: 0, sleep: 0, mental: 0, function: 0 },
-      hasWarnings: false, wearable: { deviceType: 'None', isConnected: false, lastSync: null },
+      scores: { diet: 60, exercise: 40, sleep: 70, mental: 80, function: 80, environment: 85 },
+      hasWarnings: false, wearable: { deviceType: 'None', isConnected: false, lastSync: null, steps: 0, sleepHours: 0 },
       isProfileComplete: false, isQuestionnaireComplete: false,
       familyMembers: [], isVIP: false, coachSessionsRemaining: 0, referralCode: '', voicePreference: 'default'
     });
@@ -306,7 +397,116 @@ const App: React.FC = () => {
         console.error("Failed to persist voice message:", e);
     }
   };
+
+  const handleDiaryComplete = async (summary: string, impact: any) => {
+    try {
+        const res = await fetch(`${API_URL}/api/voice_logs`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userId: profile.id,
+                summary,
+                impact,
+                timestamp: new Date().toISOString()
+            })
+        });
+        if (res.ok) {
+            const savedLog = await res.json();
+            setVoiceLogs(prev => [savedLog, ...prev]);
+        }
+    } catch (e) { console.error("Failed to save diary log:", e); }
+    
+    setShowDiaryChat(false);
+  };
   
+  const handleToggleTask = async (taskId: string) => {
+    const task = dailyTasks.find(t => (t as any).id === taskId || (t as any)._id === taskId);
+    if (!task) return;
+    
+    const newCompleted = !task.completed;
+    setDailyTasks(prev => prev.map(t => ((t as any).id === taskId || (t as any)._id === taskId) ? { ...t, completed: newCompleted } : t));
+    
+    try {
+        await fetch(`${API_URL}/api/daily_tasks/${taskId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed: newCompleted })
+        });
+    } catch (e) { console.error("Failed to toggle task:", e); }
+  };
+  const handleUpdateTask = async (taskId: string, updates: Partial<DailyTask>) => {
+    setDailyTasks(prev => prev.map(t => ((t as any).id === taskId || (t as any)._id === taskId) ? { ...t, ...updates } : t));
+    try {
+        await fetch(`${API_URL}/api/daily_tasks/${taskId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updates)
+        });
+    } catch (e) { console.error("Failed to update task:", e); }
+  };
+
+  const handleGeneratePlan = async () => {
+    if (!profile.id) return;
+    try {
+        const res = await fetch(`${API_URL}/api/daily_tasks/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: profile.id, profile, date: new Date().toISOString().split('T')[0], commit: true })
+        });
+        if (res.ok) {
+            fetchDailyTasks(profile.id);
+        }
+    } catch (e) { console.error("Failed to generate plan:", e); }
+  };
+
+  const handlePlanAction = async (action: any) => {
+    if (!profile.id) return;
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        if (action.type === 'ADD_TASK') {
+            const newTask = {
+                userId: profile.id,
+                ...action.task,
+                date: today,
+                completed: false,
+                isManual: true,
+                source: 'AI_COACH'
+            };
+            const res = await fetch(`${API_URL}/api/daily_tasks`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newTask)
+            });
+            if (res.ok) {
+                fetchDailyTasks(profile.id);
+                setChatRefreshTrigger(prev => prev + 1);
+            }
+        }
+    } catch (e) { console.error("Plan action failed:", e); }
+  };
+
+  const handleCalculateIndex = async () => {
+    if (!profile.id) return;
+    try {
+        console.log(`[App] Triggering calculation for profile ID: ${profile.id}`);
+        const res = await fetch(`${API_URL}/api/users/${profile.id}/calculate-index`, {
+            method: 'POST'
+        });
+        console.log(`[App] Calculation response status: ${res.status}`);
+        if (res.ok) {
+            const data = await res.json();
+            console.log("[App] Calculation result:", data);
+            setProfile(prev => ({ 
+              ...prev, 
+              scores: data.scores, 
+              coreRecoveryIndex: data.cri,
+              baselines: data.baselines || prev.baselines
+            }));
+            return data;
+        }
+    } catch (e) { console.error("[App] Index calculation failed:", e); }
+  };
+
   if (loadingAuth) {
     return <div className="min-h-screen max-w-md mx-auto flex items-center justify-center bg-slate-50 dark:bg-slate-950"><Loader2 className="animate-spin text-emerald-500" size={48} /></div>;
   }
@@ -326,18 +526,45 @@ const App: React.FC = () => {
     if (showCart) return <CartView cart={cart} onBack={() => setShowCart(false)} onUpdateQuantity={() => {}} onRemove={() => {}} onToggleSelect={() => {}} onSelectAll={() => {}} onCheckout={() => {}} />;
     if (showOrders) return <OrdersLogistics onBack={() => setShowOrders(false)} onBuyAgain={() => {}} />;
     if (showJournal) return <RecoveryJournal logs={voiceLogs} onBack={() => setShowJournal(false)} />;
-    if (selectedNursing) return <NursingDetail category={selectedNursing} currentScore={profile.scores[selectedNursing]} onBack={() => setSelectedNursing(null)} />;
+    if (selectedNursing) return (
+      <NursingDetail 
+        category={selectedNursing} 
+        profile={profile} 
+        tasks={dailyTasks} 
+        currentScore={profile.scores[selectedNursing]} 
+        onBack={() => setSelectedNursing(null)} 
+        onAskCoach={(msg) => {
+          setInitialCoachMessage(msg);
+          setActiveTab('chat');
+          setSelectedNursing(null);
+        }}
+      />
+    );
     if (showHumanCoach) return <HumanCoachChat onBack={() => setShowHumanCoach(false)} profile={profile} onUpdateProfile={handleUpdateProfile} />;
 
     switch (activeTab) {
       case 'dashboard':
         return (
           <div className="flex flex-col text-left">
-            <Home profile={profile} unreadCount={unreadCount} onUpdateProfile={handleUpdateProfile} onSelectNursing={(n) => setSelectedNursing(n)} updatedCategory={lastUpdatedCategory} onStartReport={() => setShowReport(true)} onStartAssessment={() => setShowQuestionnaire(true)} isDark={isDarkEffective} />
+            <Home profile={profile} tasks={dailyTasks} unreadCount={unreadCount} onUpdateProfile={handleUpdateProfile} onSelectNursing={(n) => setSelectedNursing(n)} updatedCategory={lastUpdatedCategory} onStartReport={() => setShowReport(true)} onStartAssessment={() => setShowQuestionnaire(true)} onCalculateIndex={handleCalculateIndex} isDark={isDarkEffective} />
           </div>
         );
-      case 'program': return <Program onStartVoice={() => setAssistantMode('logging')} recentLogs={voiceLogs} onViewJournal={() => setShowJournal(true)} isDark={isDarkEffective} />;
-      case 'chat': return <AIChat profile={profile} onStartVoice={(sid) => { setAssistantSessionId(sid || null); setAssistantMode('chat'); }} onBack={() => { setAssistantMode(null); setPreviousTab('dashboard'); setActiveTab('dashboard'); }} onStartAssessment={() => setShowQuestionnaire(true)} onReadMessages={() => setUnreadCount(0)} isDark={isDarkEffective} refreshTrigger={chatRefreshTrigger} voiceSessionId={lastVoiceSessionId} />;
+      case 'program': return (
+        <Program 
+          profile={profile} 
+          tasks={dailyTasks}
+          onToggleTask={handleToggleTask}
+          onUpdateTask={handleUpdateTask}
+          onGeneratePlan={() => setShowPlanCustomizer(true)}
+          onUpdateProfile={handleUpdateProfile} 
+          onStartVoice={() => setAssistantMode('logging')} 
+          recentLogs={voiceLogs} 
+          onViewJournal={() => setShowJournal(true)} 
+          onAddDiary={() => setShowDiaryChat(true)}
+          isDark={isDarkEffective} 
+        />
+      );
+      case 'chat': return <AIChat profile={profile} onStartVoice={(sid) => { setAssistantSessionId(sid || null); setAssistantMode('chat'); }} onBack={() => { setAssistantMode(null); setPreviousTab('dashboard'); setActiveTab('dashboard'); }} onStartAssessment={() => setShowQuestionnaire(true)} onReadMessages={() => setUnreadCount(0)} isDark={isDarkEffective} refreshTrigger={chatRefreshTrigger} voiceSessionId={lastVoiceSessionId} initialPrompt={initialCoachMessage} onClearInitialPrompt={() => setInitialCoachMessage(null)} onPlanAction={handlePlanAction} />;
       case 'mall': return <Marketplace profile={profile} cartCount={cart.length} favorites={favorites} onToggleFavorite={toggleFavorite} onOpenCart={() => setShowCart(true)} onAddToCart={(sku, q) => setCart(prev => [...prev, {...sku, quantity: q, selected: true}])} isDark={isDarkEffective} />;
       case 'profile':
         return (
@@ -403,7 +630,7 @@ const App: React.FC = () => {
             </div>
           </div>
         );
-      default: return <Home profile={profile} unreadCount={unreadCount} onUpdateProfile={handleUpdateProfile} onSelectNursing={(n) => setSelectedNursing(n)} onStartReport={() => setShowReport(true)} onStartAssessment={() => setShowQuestionnaire(true)} />;
+      default: return <Home profile={profile} tasks={dailyTasks} unreadCount={unreadCount} onUpdateProfile={handleUpdateProfile} onSelectNursing={(n) => setSelectedNursing(n)} onStartReport={() => setShowReport(true)} onStartAssessment={() => setShowQuestionnaire(true)} onCalculateIndex={handleCalculateIndex} isDark={isDarkEffective} />;
     }
   };
 
@@ -449,11 +676,17 @@ const App: React.FC = () => {
       {!selectedNursing && !showJournal && !showOrders && !showCart && !showCompleteProfile && !showQuestionnaire && !showHealthRecord && !showSafetySettings && !protocolType && !showSettings && activeTab !== 'chat' && !showHumanCoach && !showMembership && !showFavorites && !viewingProduct && (
         <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-[400px] bg-white/95 dark:bg-[#0B0F1A]/95 backdrop-blur-3xl border border-slate-100 dark:border-white/10 flex justify-around items-center py-4 px-2 shadow-[0_25px_60px_rgba(0,0,0,0.4)] z-50 rounded-[40px] mb-[var(--safe-area-bottom)] transition-all duration-700">
           {NAV_ITEMS.map((item) => (
-            <button key={item.id} onClick={() => { setPreviousTab(activeTab); setActiveTab(item.id); }} className={`flex flex-col items-center justify-center min-w-[64px] transition-all duration-500 relative btn-active-scale ${activeTab === item.id ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`}>
+            <button key={item.id} onClick={() => { 
+                setPreviousTab(activeTab); 
+                setActiveTab(item.id); 
+                if (item.id === 'chat') setUnreadCount(0);
+              }} className={`flex flex-col items-center justify-center min-w-[64px] transition-all duration-500 relative btn-active-scale ${activeTab === item.id ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`}>
               <div className={`p-2 rounded-2xl transition-all duration-300 ${activeTab === item.id ? 'bg-emerald-50 dark:bg-emerald-500/10 shadow-[0_0_20px_rgba(16,185,129,0.2)]' : ''}`}>
                 {item.icon}
                 {item.id === 'chat' && unreadCount > 0 && (
-                   <span className="absolute top-0 right-1 w-4 h-4 bg-rose-500 text-white text-[8px] font-black rounded-full flex items-center justify-center border-2 border-white dark:border-slate-900 animate-bounce">{unreadCount}</span>
+                   <span className="absolute -top-1 -right-1 min-w-[18px] px-1 h-[18px] bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center border-2 border-white dark:border-[#0B0F1A] animate-bounce shadow-sm">
+                     {unreadCount > 99 ? '99+' : unreadCount}
+                   </span>
                 )}
               </div>
               <span className={`text-[9px] mt-0.5 font-bold uppercase tracking-wider transition-all duration-300 transform ${activeTab === item.id ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-1 scale-75 h-0 overflow-hidden'}`}>{item.label}</span>
@@ -461,8 +694,27 @@ const App: React.FC = () => {
           ))}
         </nav>
       )}
-      {/* Safe Area Bottom Spacer */}
       <div className="h-[var(--safe-area-bottom)] bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl"></div>
+      {showDiaryChat && (
+        <DiaryChat 
+          profile={profile} 
+          onBack={() => setShowDiaryChat(false)} 
+          onComplete={handleDiaryComplete} 
+          isDark={isDarkEffective} 
+        />
+      )}
+      {showPlanCustomizer && (
+        <PlanCustomizer 
+          profile={profile}
+          existingTasks={dailyTasks}
+          onBack={() => setShowPlanCustomizer(false)}
+          onConfirm={() => {
+            setShowPlanCustomizer(false);
+            fetchDailyTasks(profile.id);
+          }}
+          isDark={isDarkEffective}
+        />
+      )}
     </div>
   );
 };

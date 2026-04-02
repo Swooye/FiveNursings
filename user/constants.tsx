@@ -10,7 +10,8 @@ import {
   ClipboardCheck,
   MessageCircle,
   ShoppingBag,
-  User
+  User,
+  Wind
 } from 'lucide-react';
 
 export const RISK_SIGNALS = [
@@ -27,6 +28,7 @@ export const NURSING_ICONS = {
   sleep: <Moon className="w-5 h-5" />,
   mental: <Heart className="w-5 h-5" />,
   function: <Zap className="w-5 h-5" />,
+  environment: <Wind className="w-5 h-5" />,
 };
 
 export const NAV_ITEMS = [

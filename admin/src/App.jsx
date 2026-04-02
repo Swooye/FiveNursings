@@ -19,6 +19,7 @@ import { UserCreate } from "./pages/users/create";
 import { UserEdit } from "./pages/users/edit";
 import { UserShow } from "./pages/users/show";
 import { PlanList } from "./pages/plans/list";
+import { PlanShow } from "./pages/plans/show";
 import { MallItemList } from "./pages/mall_items/list";
 import { MallItemCreate } from "./pages/mall_items/create";
 import { MallItemEdit } from "./pages/mall_items/edit";
@@ -95,7 +96,8 @@ const App = () => {
               {
                 name: "plans",
                 list: "/plans",
-                meta: { label: "护理计划" },
+                show: "/plans/show/:id",
+                meta: { label: "康复计划" },
               },
               {
                 name: "mall_items",
@@ -147,6 +149,7 @@ const App = () => {
 
                 <Route path="/plans">
                   <Route index element={<PlanList />} />
+                  <Route path="show/:id" element={<PlanShow />} />
                 </Route>
 
                 <Route path="/mall_items">

@@ -74,8 +74,10 @@ const HealthQuestionnaire: React.FC<HealthQuestionnaireProps> = ({ profile, onCo
       setStep((step + 1) as Step);
     } else {
       setIsAnalyzing(true);
+      console.log("[HealthQuestionnaire] Starting analysis...");
       // Give the analysis a real-world feel
       setTimeout(() => {
+        console.log("[HealthQuestionnaire] Analysis complete, calling onComplete");
         onComplete({
           cancerType: formData.cancerType,
           stage: formData.stage,
@@ -92,8 +94,7 @@ const HealthQuestionnaire: React.FC<HealthQuestionnaireProps> = ({ profile, onCo
             facePhoto: formData.facePhoto
           }
         });
-        setIsAnalyzing(false);
-      }, ANALYSIS_STAGES.length * 1200 + 500);
+      }, ANALYSIS_STAGES.length * 1200 + 300);
     }
   };
 

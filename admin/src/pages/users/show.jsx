@@ -3,6 +3,7 @@ import { Show } from "@refinedev/antd";
 import { useShow } from "@refinedev/core";
 import { Typography, Tag, Descriptions, Avatar, Card, Space, Divider } from "antd";
 import { UserOutlined, PhoneOutlined, MailOutlined, SafetyCertificateOutlined } from "@ant-design/icons";
+import { UserPlanManager } from "../../components/UserPlanManager";
 
 const { Title, Text } = Typography;
 
@@ -89,6 +90,10 @@ export const UserShow = () => {
                         {renderScoreTag(record?.scores?.function || 0)}
                     </Descriptions.Item>
                 </Descriptions>
+
+                <Divider />
+                
+                {record?.id && <UserPlanManager userId={record.id} />}
             </Card>
         </Show>
     );

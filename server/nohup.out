@@ -1,0 +1,33 @@
+[dotenv@17.2.4] injecting env (6) from .env -- tip: 🔑 add access controls to secrets: https://dotenvx.com/ops
+(node:23843) [DEP0170] DeprecationWarning: The URL mongodb://admin:5Nursings%2BA@ac-pv5ksts-shard-00-01.k2sadls.mongodb.net:27017,ac-pv5ksts-shard-00-02.k2sadls.mongodb.net:27017,ac-pv5ksts-shard-00-00.k2sadls.mongodb.net:27017/fivenursing_pro?authSource=admin&replicaSet=atlas-5war90-shard-0&retryWrites=true&w=majority&ssl=true is invalid. Future versions of Node.js will throw an error.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:23843) DeprecationWarning: collection.ensureIndex is deprecated. Use createIndexes instead.
+MongoDB connected successfully.
+Dev Server running on port 3002
+Starting diary summary for profile: undefined
+OpenRouter Error Response: {"error":{"message":"No endpoints found for google/gemini-2.0-flash-exp:free.","code":404},"user_id":"user_39SkfbjGZtXsT0oEu4VTteO2nh1"}
+Diary summary Error: Error: OpenRouter failed: 404 - {"error":{"message":"No endpoints found for google/gemini-2.0-flash-exp:free.","code":404},"user_id":"user_39SkfbjGZtXsT0oEu4VTteO2nh1"}
+    at /Users/wayne/FiveNursings/server/index.js:615:19
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+[dotenv@17.2.4] injecting env (6) from .env -- tip: 👥 sync secrets across teammates & machines: https://dotenvx.com/ops
+(node:24199) [DEP0170] DeprecationWarning: The URL mongodb://admin:5Nursings%2BA@ac-pv5ksts-shard-00-00.k2sadls.mongodb.net:27017,ac-pv5ksts-shard-00-01.k2sadls.mongodb.net:27017,ac-pv5ksts-shard-00-02.k2sadls.mongodb.net:27017/fivenursing_pro?authSource=admin&replicaSet=atlas-5war90-shard-0&retryWrites=true&w=majority&ssl=true is invalid. Future versions of Node.js will throw an error.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:24199) DeprecationWarning: collection.ensureIndex is deprecated. Use createIndexes instead.
+MongoDB connected successfully.
+Dev Server running on port 3002
+Starting diary summary for profile: 6986ec04c82327ca27776556
+OpenRouter Error Response: {"error":{"message":"No endpoints found for google/gemini-2.0-flash-exp.","code":404},"user_id":"user_39SkfbjGZtXsT0oEu4VTteO2nh1"}
+Diary summary Error: Error: OpenRouter failed: 404 - {"error":{"message":"No endpoints found for google/gemini-2.0-flash-exp.","code":404},"user_id":"user_39SkfbjGZtXsT0oEu4VTteO2nh1"}
+    at /Users/wayne/FiveNursings/server/index.js:615:19
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+[dotenv@17.2.4] injecting env (6) from .env -- tip: 👥 sync secrets across teammates & machines: https://dotenvx.com/ops
+(node:24598) [DEP0170] DeprecationWarning: The URL mongodb://admin:5Nursings%2BA@ac-pv5ksts-shard-00-00.k2sadls.mongodb.net:27017,ac-pv5ksts-shard-00-01.k2sadls.mongodb.net:27017,ac-pv5ksts-shard-00-02.k2sadls.mongodb.net:27017/fivenursing_pro?authSource=admin&replicaSet=atlas-5war90-shard-0&retryWrites=true&w=majority&ssl=true is invalid. Future versions of Node.js will throw an error.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:24598) DeprecationWarning: collection.ensureIndex is deprecated. Use createIndexes instead.
+MongoDB connected successfully.
+Dev Server running on port 3002
+Starting diary summary for profile: test
+OpenRouter Error Response: {"error":{"message":"No endpoints found for google/gemini-flash-1.5.","code":404},"user_id":"user_39SkfbjGZtXsT0oEu4VTteO2nh1"}
+Diary summary Error: Error: OpenRouter failed: 404 - {"error":{"message":"No endpoints found for google/gemini-flash-1.5.","code":404},"user_id":"user_39SkfbjGZtXsT0oEu4VTteO2nh1"}
+    at /Users/wayne/FiveNursings/server/index.js:615:19
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)

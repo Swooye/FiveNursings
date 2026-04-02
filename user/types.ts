@@ -27,12 +27,15 @@ export interface NursingScores {
   sleep: number;
   mental: number;
   function: number;
+  environment: number;
 }
 
 export interface WearableData {
   deviceType: 'Apple Watch' | 'Fitbit' | 'Garmin' | 'None';
   lastSync: string | null;
   isConnected: boolean;
+  steps: number;
+  sleepHours: number;
 }
 
 export interface TCMAnalysisResult {
@@ -126,6 +129,12 @@ export interface PatientProfile {
   referralCode: string;
   // AI Voice setting
   voicePreference?: string;
+  // Today's symptoms collection
+  todaySymptoms?: string[];
+  lastSymptomUpdate?: string;
+  coreRecoveryIndex?: number;
+  baselines?: NursingScores;
+  dashboardConfig?: string[];
 }
 
 export interface DailyTask {
@@ -135,6 +144,10 @@ export interface DailyTask {
   time: string;
   completed: boolean;
   description: string;
+  isInfeasible?: boolean;
+  suggestedTimes?: string[];
+  /** 任务来源: 'ai'=五养建议(AI生成), 'doctor'=医嘱(医护/用户手填), 'custom'=自定义 */
+  source?: 'ai' | 'doctor' | 'custom';
 }
 
 export interface SKU {
