@@ -292,5 +292,5 @@ apiRouter.post('/diary/summarize', async (req: any, res: any) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-app.use('/api', apiRouter);
+app.use('/', apiRouter);
 export const api = onRequest({ region: "us-central1" }, app);
