@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Popconfirm } from "antd";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 
-const API_URL = import.meta.env.DEV ? "/api" : "https://api-u46fik5vcq-uc.a.run.app/api";
+const API_URL = import.meta.env.DEV ? "/api" : "https://fivenursings-backend-604368704549.us-central1.run.app/api";
 
 export const UserPlanManager = ({ userId }) => {
     const [tasks, setTasks] = useState([]);
@@ -81,6 +81,16 @@ export const UserPlanManager = ({ userId }) => {
             }
         },
         { title: "任务内容", dataIndex: "title", key: "title" },
+        {
+            title: "频次",
+            key: "frequency",
+            render: (_, record) => {
+                const freqMap = { daily: "每日", weekly: "每周", monthly: "每月" };
+                const label = freqMap[record.frequency] || record.frequency || "每日";
+                const count = record.targetCount > 1 ? ` ${record.targetCount}次` : "";
+                return <Tag color="cyan">{label}{count}</Tag>;
+            }
+        },
         { 
             title: "状态", 
             dataIndex: "completed", 
@@ -145,6 +155,20 @@ export const UserPlanManager = ({ userId }) => {
                     <Form.Item name="title" label="任务标题" rules={[{ required: true }]}>
                         <Input placeholder="输入具体任务指令" />
                     </Form.Item>
+                    <Space style={{ width: '100%' }}>
+                        <Form.Item name="frequency" label="执行频次" initialValue="daily" style={{ flex: 1 }}>
+                            <Select>
+                                <Select.Option value="daily">每日</Select.Option>
+                                <Select.Option value="weekly">每周</Select.Option>
+                                <Select.Option value="monthly">每月</Select.Option>
+                            </Select>
+                        </Form.Item>
+                        <Form.Item name="targetCount" label="执行次数" initialValue={1} style={{ flex: 1 }}>
+                            <Select>
+                                {[1, 2, 3, 4, 5].map(v => <Select.Option key={v} value={v}>{v}次</Select.Option>)}
+                            </Select>
+                        </Form.Item>
+                    </Space>
                     <Form.Item name="description" label="补充说明">
                         <Input.TextArea rows={2} placeholder="给患者的备注建议" />
                     </Form.Item>

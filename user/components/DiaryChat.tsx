@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Check, Plus, Mic, Image as ImageIcon, Camera, PhoneCall, MapPin, X, Trash2, Send, Loader2, MicVocal, AudioLines } from 'lucide-react';
 import { PatientProfile, ChatMessage } from '../types';
 
-const API_URL = import.meta.env.DEV ? "" : "https://api-u46fik5vcq-uc.a.run.app";
+const API_URL = import.meta.env.DEV ? "" : "https://fivenursings-backend-604368704549.us-central1.run.app";
 
 interface DiaryChatProps {
     profile: PatientProfile;
@@ -96,12 +96,12 @@ const DiaryChat: React.FC<DiaryChatProps> = ({ profile, onBack, onComplete, isDa
             {/* Message List */}
             <main ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-8 space-y-6 custom-scrollbar">
                 {messages.map((msg, i) => (
-                    <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[85%] px-5 py-4 rounded-[28px] shadow-sm relative group ${msg.role === 'user'
+                    <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} mb-8 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+                        <div className={`max-w-[85%] inline-block w-fit px-5 py-4 rounded-[28px] shadow-sm relative group ${msg.role === 'user'
                             ? 'bg-emerald-600 text-white font-black rounded-tr-none'
                             : 'bg-white dark:bg-[#111827] text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-white/5 rounded-tl-none'
                             }`}>
-                            <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                            <p className="text-sm leading-relaxed whitespace-pre-wrap break-keep inline-block">
                                 {msg.text?.split(/(\*\*.*?\*\*)/g).map((part, index) => {
                                     if (part.startsWith('**') && part.endsWith('**')) {
                                         return <strong key={index} className={msg.role === 'user' ? 'text-white underline' : 'text-emerald-600 dark:text-emerald-400'}>{part.slice(2, -2)}</strong>;
@@ -109,8 +109,10 @@ const DiaryChat: React.FC<DiaryChatProps> = ({ profile, onBack, onComplete, isDa
                                     return part;
                                 })}
                             </p>
-                            <span className={`text-[8px] absolute -bottom-6 uppercase tracking-widest opacity-80 ${msg.role === 'user' ? 'right-2 text-slate-300' : 'left-2 text-slate-300'}`}>
-                                {new Date(msg.timestamp || '').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                        <div className={`mt-1.5 px-2 flex items-center`}>
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium opacity-40 uppercase tracking-widest">
+                                {new Date(msg.timestamp || '').toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                             </span>
                         </div>
                     </div>

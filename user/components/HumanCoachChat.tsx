@@ -130,16 +130,16 @@ const HumanCoachChat: React.FC<HumanCoachChatProps> = ({ onBack, profile, onUpda
             {messages.map((msg) => (
               <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
                 <div className={`max-w-[85%] flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
-                  <div className={`px-5 py-4 rounded-[28px] text-[13.5px] leading-relaxed shadow-sm ${
+                  <div className={`px-5 py-4 inline-block w-fit rounded-[28px] text-[13.5px] leading-relaxed shadow-sm ${
                     msg.sender === 'user' 
                     ? 'bg-blue-600 text-white rounded-tr-none font-bold' 
                     : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-100 dark:border-slate-800 rounded-tl-none font-medium'
                   }`}>
-                    {msg.text}
+                    <span className="break-keep">{msg.text}</span>
                   </div>
                   <div className="flex items-center space-x-1.5 mt-2 px-1">
                     <span className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">
-                      {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(msg.timestamp).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                     {msg.sender === 'user' && <CheckCheck size={10} className="text-blue-500" />}
                   </div>

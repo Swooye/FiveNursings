@@ -527,42 +527,62 @@ apiRouter.get('/debug-info', async (req: any, res: any) => {
 // --- HTTP 接口：为 AI 会话和简报提供支持 ---
 
 apiRouter.post('/get-ai-chat-reply', async (req: any, res: any) => {
-    const { message, text, profile, history = [] } = req.body;
-    const userMessage = message || text;
-    const apiKey = process.env.OPENROUTER_API_KEY;
-
-    if (!apiKey) return res.status(400).json({ error: "API Key not configured" });
-
-    const contextPrefix = `[患者背景] 类型：${profile.cancerType}, 阶段：${profile.stage}, 五养分数：饮食${profile.scores?.diet || 0}/100, 运动${profile.scores?.exercise || 0}/100, 睡眠${profile.scores?.sleep || 0}/100, 心理${profile.scores?.mental || 0}/100, 功能${profile.scores?.function || 0}/100。`;
-
     try {
+        const { message, text, profile, history = [] } = req.body;
+        const userMessage = message || text;
+        const apiKey = process.env.OPENROUTER_API_KEY;
+
+        if (!apiKey) return res.status(400).json({ error: "API Key not configured" });
+
+        const SYSTEM_INSTRUCTION = `你是一位专业的肿瘤康复AI教练。基于“五治五养”体系（饮食养、运动养、睡眠养、心理养、功能养）为患者提供支持。
+核心原则：
+1. 只提供康养建议，不代替诊断与处方。
+2. 语言通俗易懂，给出明确的可执行方案。
+3. 识别“危险信号”（高热、剧痛、大出血、呼吸困难），一旦发现立即建议线下就医。
+4. 所有回答必须包含：[解释]、[今日行动建议]、[注意事项]。
+5. 永远带免责声明：本建议不构成医疗诊断。
+6. **计划管理能力**：当患者表达需要调整康复计划、增加任务或当前任务困难时，你可以在回复末尾包含 [PLAN_ACTION] 标签。
+   格式：[PLAN_ACTION]{"type": "ADD_TASK", "task": {"category": "diet|exercise|mental|function", "title": "任务标题", "description": "补充描述"}}[/PLAN_ACTION]
+   支持类型：ADD_TASK, UPDATE_TASK, DELETE_TASK。`;
+
+        const contextPrefix = profile ? `[患者档案] ${profile.cancerType}, 阶段: ${profile.stage}, 五养分数: ${JSON.stringify(profile.scores || {})}\n` : '';
+
+        const messages = [
+            { role: "system", content: SYSTEM_INSTRUCTION },
+        ];
+        if (contextPrefix) messages.push({ role: "system", content: contextPrefix });
+
+        // Add history (UI slices current message)
+        history.filter((h: any) => h.text).forEach((h: any) => {
+            messages.push({ role: h.role === 'model' ? 'assistant' : 'user', content: h.text });
+        });
+
+        messages.push({ role: "user", content: userMessage });
+
         const response = await fetch(OPENROUTER_URL, {
             method: "POST",
-            headers: { 
-                "Authorization": `Bearer ${apiKey}`, 
+            headers: {
+                "Authorization": `Bearer ${apiKey}`,
                 "Content-Type": "application/json",
                 "HTTP-Referer": "https://fivenursings-73917017-a0dfd.web.app/",
                 "X-Title": "FiveNursings"
             },
             body: JSON.stringify({
-                model: "google/gemini-2.0-flash-001",
-                messages: [
-                    { role: "system", content: SYSTEM_INSTRUCTION },
-                    { role: "system", content: contextPrefix },
-                    ...history.filter((h: any) => h.text).map((h: any) => ({ role: h.role === 'model' ? 'assistant' : 'user', content: h.text })),
-                    { role: "user", content: userMessage }
-                ],
-            }),
+                model: "google/gemini-2.0-flash",
+                messages
+            })
         });
-        const data = await response.json();
-        if (data.error) {
-            console.error("AI Chat Error:", data.error);
-            return res.json({ reply: `AI服务错误: ${data.error.message || JSON.stringify(data.error)}` });
+
+        if (!response.ok) {
+            const err = await response.text();
+            throw new Error(`Cloud AI API Error: ${response.status} ${err}`);
         }
+
+        const data: any = await response.json();
         const reply = data.choices?.[0]?.message?.content || "抱歉，生成失败。";
         res.json({ reply });
     } catch (e: any) {
-        console.error("AI Chat Catch:", e);
+        console.error("[Cloud AI Chat Error]", e);
         res.status(500).json({ error: e.message });
     }
 });

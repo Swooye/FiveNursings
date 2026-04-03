@@ -293,7 +293,7 @@ const HealthRecord: React.FC<HealthRecordProps> = ({ profile, onBack, onUpdatePr
         </div>
 
         {/* Five Nursings Visualization Section */}
-        <Section title="五养康复纬度分析" icon={<Activity size={20} />} badge="核心康复指数">
+        <Section title="五养康复纬度分析" icon={<Activity size={20} />} badge="康复指数">
             <div className="space-y-5 py-2">
                 {[
                     { label: '饮食养', score: profile.scores?.diet || 0, color: 'bg-amber-400' },

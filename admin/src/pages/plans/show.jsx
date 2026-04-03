@@ -6,7 +6,7 @@ import { SafetyCertificateOutlined, CalendarOutlined, HistoryOutlined } from "@a
 import { UserPlanManager } from "../../components/UserPlanManager";
 
 const { Title, Text } = Typography;
-const API_URL = import.meta.env.DEV ? "/api" : "https://api-u46fik5vcq-uc.a.run.app/api";
+const API_URL = import.meta.env.DEV ? "/api" : "https://fivenursings-backend-604368704549.us-central1.run.app/api";
 
 export const PlanShow = () => {
     const { queryResult } = useShow();
@@ -29,7 +29,8 @@ export const PlanShow = () => {
             // Fetch last 50 tasks for this user across all dates
             const res = await fetch(`${API_URL}/daily_tasks?userId=${uid}&_sort=date&_order=DESC&_start=0&_end=50`);
             const data = await res.json();
-            setHistory(Array.isArray(data) ? data : []);
+            // 过滤掉模板记录，只显示真实的执行任务
+            setHistory(Array.isArray(data) ? data.filter(t => !t.isTemplate) : []);
         } catch (e) {
             console.error("加载历史记录失败", e);
         } finally {

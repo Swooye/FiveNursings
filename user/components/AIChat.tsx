@@ -6,7 +6,7 @@ import { Send, Mic, X, Calendar, MessageSquare, ArrowLeft, PhoneCall, AlertTrian
 import { auth, functions } from '../src/firebase';
 import { ResponsiveContainer, LineChart, BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Line, Bar } from 'recharts';
 
-const API_URL = import.meta.env.DEV ? "" : "https://api-u46fik5vcq-uc.a.run.app";
+const API_URL = import.meta.env.DEV ? "" : "https://fivenursings-backend-604368704549.us-central1.run.app";
 
 const ChartRenderer: React.FC<{ chartData: any }> = ({ chartData }) => {
   const { type, data, xAxisKey, grid, tooltip, lines, bars } = chartData;
@@ -127,7 +127,8 @@ interface AIChatProps {
   onPlanAction?: (action: any) => void;
 }
 
-const SUGGESTIONS = [
+// Default fallback suggestions
+const DEFAULT_SUGGESTIONS = [
   "帮我推荐今日康复午餐食谱",
   "我想解读最近化验单异常",
   "感觉压力大该如何调节？"
@@ -147,6 +148,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
   const [isEditing, setIsEditing] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [hasConsumedInitialPrompt, setHasConsumedInitialPrompt] = useState(false);
 
   // New features UI states
   const [showHistory, setShowHistory] = useState(false);
@@ -282,11 +284,22 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
   };
 
   useEffect(() => {
-    if (initialPrompt && messages.length === 0 && !loading) {
-      handleSend(initialPrompt);
+    // 关键修复：确保 initialPrompt 只被消费一次，且作为 AI (model) 气泡发出，防止进入生成循环
+    if (initialPrompt && !hasConsumedInitialPrompt && !isInitialLoading) {
+      setHasConsumedInitialPrompt(true);
+      
+      const insightMsg: ChatMessage = {
+        role: 'model',
+        text: initialPrompt,
+        timestamp: new Date().toISOString(),
+        sessionId: currentSessionId || `sess_${Date.now()}`
+      };
+
+      setMessages(prev => [...prev, insightMsg]);
+      persistMessage(insightMsg);
       onClearInitialPrompt?.();
     }
-  }, [initialPrompt, messages.length, loading]);
+  }, [initialPrompt, hasConsumedInitialPrompt, isInitialLoading, currentSessionId]);
 
   const handleShare = async (text: string) => {
     if (navigator.share) {
@@ -482,7 +495,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
           const res = await fetch('/api/get-ai-chat-reply', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: userText, profile, history: currentMsgs.slice(-5) })
+            body: JSON.stringify({ message: userText, profile, history: currentMsgs.slice(0, -1).slice(-5) })
           });
           if (res.ok) {
             const data = await res.json();
@@ -493,7 +506,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
 
       if (!responseText) {
         const getAIChatResponse = httpsCallable(functions, 'getAIChatResponse');
-        const response: any = await getAIChatResponse({ message: userText, profile, history: currentMsgs.slice(-5) });
+        const response: any = await getAIChatResponse({ message: userText, profile, history: currentMsgs.slice(0, -1).slice(-5) });
         responseText = response.data.reply;
       }
 
@@ -712,61 +725,125 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
               </button>
             )}
             {messages.map((msg, i) => (
-              <div key={i} className={`flex items-end gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                {msg.role === 'model' && <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-emerald-500/10 flex items-center justify-center text-lg shrink-0 border-2 border-white/10 dark:border-white/5 shadow-sm backdrop-blur-md">🤖</div>}
-                <div
-                  onMouseDown={(e) => handlePressStart(e, msg)}
-                  onMouseUp={handlePressEnd}
-                  onMouseLeave={handlePressEnd}
-                  onTouchStart={(e) => handlePressStart(e, msg)}
-                  onTouchEnd={handlePressEnd}
-                  onContextMenu={(e) => { e.preventDefault(); handlePressStart(e, msg, true); }}
-                  className={`max-w-[85%] inline-block px-5 py-4 rounded-t-[28px] shadow-sm transition-transform active:scale-[0.98] cursor-pointer backdrop-blur-md ${msg.role === 'user' ? 'bg-emerald-600 text-white font-bold rounded-l-[28px] shadow-[0_8px_20px_rgba(16,185,129,0.2)]' : 'bg-white dark:bg-[#111827]/60 border border-slate-100 dark:border-emerald-500/10 rounded-r-[28px]'}`}
-                >
-                  <div className="flex flex-col">
-                    {(msg as any).type === 'intervention' && (
-                      <div className="flex items-center space-x-1.5 mb-2 py-1 px-2 bg-emerald-500/10 rounded-lg w-fit">
-                        <Sparkles size={10} className="text-emerald-500" />
-                        <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">干预建议</span>
-                      </div>
-                    )}
-                    {msg.role === 'model' ? (
-                      msg.text ? <MarkdownContent content={msg.text} onPlanAction={onPlanAction} /> : (
-                        <div className="flex space-x-1.5 items-center h-5 px-2">
-                          <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></div>
-                          <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:0.1s]"></div>
-                          <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+              <div key={i} className={`w-full flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} mb-8 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+                <div className={`w-full flex items-end ${msg.role === 'user' ? 'justify-end' : 'justify-start gap-3'}`}>
+                  {msg.role === 'model' && <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-emerald-500/10 flex items-center justify-center text-lg shrink-0 border-2 border-white/10 dark:border-white/5 shadow-sm backdrop-blur-md">🤖</div>}
+                  <div
+                    onMouseDown={(e) => handlePressStart(e, msg)}
+                    onMouseUp={handlePressEnd}
+                    onMouseLeave={handlePressEnd}
+                    onTouchStart={(e) => handlePressStart(e, msg)}
+                    onTouchEnd={handlePressEnd}
+                    onContextMenu={(e) => { e.preventDefault(); handlePressStart(e, msg, true); }}
+                    className={`max-w-[85%] transition-transform active:scale-[0.98] cursor-pointer backdrop-blur-md ${
+                      msg.role === 'user' 
+                        ? 'bg-emerald-600 text-white font-bold px-7 py-4 rounded-t-[28px] rounded-l-[28px] shadow-[0_8px_20px_rgba(16,185,129,0.2)] self-end' 
+                        : 'bg-white dark:bg-[#111827]/60 border border-slate-100 dark:border-emerald-500/10 px-6 py-4 rounded-t-[28px] rounded-r-[28px] self-start'
+                    }`}
+                  >
+                    <div className="flex flex-col">
+                      {(msg as any).type === 'intervention' && (
+                        <div className="flex items-center space-x-1.5 mb-2 py-1 px-2 bg-emerald-500/10 rounded-lg w-fit">
+                          <Sparkles size={10} className="text-emerald-500" />
+                          <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">干预建议</span>
                         </div>
-                      )
-                    ) : <p className="text-sm leading-relaxed">{msg.text}</p>}
+                      )}
+                      {msg.role === 'model' ? (
+                        msg.text ? <MarkdownContent content={msg.text} onPlanAction={onPlanAction} /> : (
+                          <div className="flex space-x-1.5 items-center h-5 px-2">
+                            <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce"></div>
+                            <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:0.1s]"></div>
+                            <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:0.2s]"></div>
+                          </div>
+                        )
+                      ) : <p className="text-sm leading-relaxed whitespace-pre-wrap break-keep">{msg.text}</p>}
+                    </div>
                   </div>
-                  <span className={`text-[8px] absolute -bottom-6 uppercase tracking-widest opacity-80 ${msg.role === 'user' ? 'right-2 text-slate-300' : 'left-2 text-slate-300'}`}>
-                    {new Date(msg.timestamp || '').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+                <div className={`mt-1.5 px-2 flex items-center ${msg.role === 'user' ? 'mr-0' : 'ml-12'}`}>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium opacity-40 uppercase tracking-widest">
+                    {new Date(msg.timestamp || '').toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
               </div>
             ))}
 
-            {/* Suggested Questions */}
-            {messages.length > 0 && messages[messages.length - 1].role === 'model' && !loading && (
-              <div className="flex flex-col space-y-3 pt-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div className="flex items-center space-x-2 text-slate-800 dark:text-slate-200">
-                  <div className="w-1 h-5 bg-emerald-500 rounded-full"></div>
-                  <span className="font-black text-sm">您可以尝试问我：</span>
+            {/* Dynamic Suggested Questions */}
+            {messages.length > 0 && messages[messages.length - 1].role === 'model' && !loading && (() => {
+              const lastMsg = messages[messages.length - 1].text || "";
+              
+              const getDynamicSuggestions = () => {
+                const suggestions: string[] = [];
+                
+                // 1. Context-based logic (last message keywords)
+                if (lastMsg.includes('运动') || lastMsg.includes('走') || lastMsg.includes('锻炼')) {
+                  suggestions.push("体力较弱时有哪些温和运动？", "如何判断当天的运动是否过量？");
+                }
+                if (lastMsg.includes('饮食') || lastMsg.includes('吃') || lastMsg.includes('营养')) {
+                  suggestions.push("化疗后没胃口该吃什么补营养？", "推荐几款适合我的康复食谱");
+                }
+                if (lastMsg.includes('睡眠') || lastMsg.includes('睡') || lastMsg.includes('失眠')) {
+                  suggestions.push("晚上容易醒有什么调理方法？", "睡前做哪些呼吸动作有助于入眠？");
+                }
+                if (lastMsg.includes('心理') || lastMsg.includes('焦虑') || lastMsg.includes('心情')) {
+                  suggestions.push("感觉压力大、没信心时该怎么调节？", "如何与家人沟通我的康复状态？");
+                }
+                if (lastMsg.includes('功能') || lastMsg.includes('恢复') || lastMsg.includes('练')) {
+                  suggestions.push("呼吸康复训练有什么动作要领？", "手脚发麻如何通过穴位按摩缓解？");
+                }
+
+                // 2. Profile-based logic (lowest scores or symptoms)
+                if (suggestions.length < 3) {
+                  // Check symptoms
+                  const symptoms = profile.todaySymptoms || [];
+                  if (symptoms.includes('乏力')) suggestions.push("感觉浑身乏力，该如何科学休息？");
+                  if (symptoms.includes('食欲不振')) suggestions.push("食欲不振时，有什么开胃的五养方案？");
+                  
+                  // Check lowest CRI score
+                  const scores = profile.scores || {};
+                  const scoreEntries = Object.entries(scores)
+                    .filter(([k]) => ['diet', 'exercise', 'sleep', 'mental', 'function'].includes(k))
+                    .sort(([, a], [, b]) => (a as number) - (b as number));
+                  
+                  if (scoreEntries.length > 0) {
+                    const lowest = scoreEntries[0][0];
+                    if (lowest === 'exercise' && !suggestions.includes("如何提高我的运动康复评分？")) suggestions.push("如何提高我的运动康复评分？");
+                    if (lowest === 'diet' && !suggestions.includes("我的饮食分值较低，该怎么吃？")) suggestions.push("我的饮食分值较低，该怎么吃？");
+                    if (lowest === 'sleep' && !suggestions.includes("睡眠质量不佳，五养有什么建议？")) suggestions.push("睡眠质量不佳，五养有什么建议？");
+                  }
+                }
+
+                // 3. Fallback to default
+                const finalSuggestions = [...new Set(suggestions)].slice(0, 3);
+                if (finalSuggestions.length < 3) {
+                  const combined = [...finalSuggestions, ...DEFAULT_SUGGESTIONS];
+                  return [...new Set(combined)].slice(0, 3);
+                }
+                return finalSuggestions;
+              };
+
+              const dynamicSuggestions = getDynamicSuggestions();
+
+              return (
+                <div className="flex flex-col space-y-3 pt-4 ml-[52px] animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="flex items-center space-x-2 text-slate-800 dark:text-slate-200">
+                    <div className="w-1 h-5 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+                    <span className="font-black text-sm">为您推荐的后续问题：</span>
+                  </div>
+                  <div className="flex flex-col space-y-3">
+                    {dynamicSuggestions.map((s, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => handleSend(s)}
+                        className="w-fit px-6 py-3 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200/50 dark:border-white/5 rounded-2xl text-emerald-700 dark:text-emerald-400 text-sm font-bold shadow-[0_4px_12px_rgba(0,0,0,0.03)] hover:bg-emerald-50 dark:hover:bg-emerald-900/20 active:scale-95 transition-all text-left"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-col space-y-3">
-                  {SUGGESTIONS.map((s, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => handleSend(s)}
-                      className="w-fit px-6 py-3 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm border border-slate-200 dark:border-slate-700 rounded-full text-emerald-700 dark:text-emerald-400 text-sm font-bold shadow-sm hover:bg-emerald-50 dark:hover:bg-emerald-900/20 active:scale-95 transition-all text-left"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+              );
+            })()}
           </>
         )}
       </main>

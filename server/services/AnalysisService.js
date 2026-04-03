@@ -116,7 +116,7 @@ ${(history || []).map(h => `${h.role === 'model' ? '助手' : '患者'}: ${h.tex
    - time: 建议执行时间 (HH:MM)
    - suggestedTimes: 另外3个可选的建议执行时间点, 数组格式 [HH:MM, HH:MM, HH:MM]
    - cycle: 建议周期 (如: 14天周期)
-   - frequency: 频率 (如: 每日一次)
+   - frequency: 频率，必须是 'daily', 'weekly', 或 'monthly' 之一 (例如: 作息、饮食任务通常是 'daily')
 
 示例：[{"category": "diet", "title": "...", "description": "...", "time": "...", "suggestedTimes": ["08:00", "08:15", "08:30"], "cycle": "...", "frequency": "..."}]
 只返回 JSON 数组，不要任何 Markdown 标记或多余文字。`;

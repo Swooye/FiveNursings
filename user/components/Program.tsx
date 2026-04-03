@@ -8,10 +8,12 @@ import TodaySymptoms from './TodaySymptoms';
 interface ProgramProps {
   profile: PatientProfile;
   tasks: DailyTask[];
-  onToggleTask: (id: string) => void;
+  onToggleTask: (id: string, currentStatus?: boolean) => void;
   onUpdateTask: (id: string, updates: Partial<DailyTask>) => void;
   onGeneratePlan: () => void;
   onUpdateProfile: (updates: Partial<PatientProfile>) => void;
+  onUpdateSymptoms: (symptoms: string[]) => Promise<void>;
+  currentDateSymptoms: string[];
   onStartVoice: () => void;
   recentLogs: VoiceLog[];
   onViewJournal: () => void;
@@ -21,7 +23,7 @@ interface ProgramProps {
   isDark?: boolean;
 }
 
-const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdateTask, onGeneratePlan, onUpdateProfile, onStartVoice, recentLogs, onViewJournal, onAddDiary, selectedDate, onSelectDate, isDark }) => {
+const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdateTask, onGeneratePlan, onUpdateProfile, onUpdateSymptoms, currentDateSymptoms, onStartVoice, recentLogs, onViewJournal, onAddDiary, selectedDate, onSelectDate, isDark }) => {
   const toLocalDateString = (date = new Date()) => {
     const d = new Date(date);
     const year = d.getFullYear();
@@ -33,7 +35,6 @@ const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdat
   const todayStr = useMemo(() => toLocalDateString(), []);
 
   const [showCalendar, setShowCalendar] = useState(false);
-  const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
   const [showInfeasible, setShowInfeasible] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -58,10 +59,7 @@ const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdat
     return () => clearTimeout(timer);
   }, [selectedDate]);
 
-  const toggleTask = (id: string) => {
-    if (selectedDate !== todayStr) return;
-    onToggleTask(id);
-  };
+  const canToggle = true; // [ALIGNMENT] 允许操作所有日期，不仅是今天
 
   const filteredLogs = useMemo(() => {
     return recentLogs.filter(log => {
@@ -161,12 +159,13 @@ const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdat
 
 
       
-      {isToday && (
-        <TodaySymptoms 
-          selectedIds={profile.todaySymptoms || []} 
-          onChange={(ids) => onUpdateProfile({ todaySymptoms: ids, lastSymptomUpdate: new Date().toISOString() })} 
-        />
-      )}
+          {/* [ALIGNMENT] 始终显示症状，根据日期动态文案并持久化 */}
+           <TodaySymptoms 
+             selectedIds={currentDateSymptoms || []} 
+             onChange={onUpdateSymptoms} 
+             title={isToday ? "今日症状" : "当日症状"}
+             readOnly={!isToday}
+           />
 
       <div className="space-y-4">
         <div className="flex justify-between items-center px-1">
@@ -274,28 +273,34 @@ const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdat
           displayedTasks.map(task => (
             <div 
               key={task.id}
+              onClick={() => onToggleTask(task.id, task.completed)}
               className={`flex items-center space-x-5 p-6 rounded-[36px] transition-all cursor-pointer border ${
                 task.isInfeasible
                 ? 'bg-slate-100/50 dark:bg-slate-900/30 border-dashed border-slate-200 dark:border-slate-800'
                 : task.completed 
                   ? 'bg-slate-50/50 dark:bg-[#111827]/50 border-slate-100 dark:border-white/5 opacity-60' 
                   : 'bg-white dark:bg-[#111827] border-slate-100 dark:border-white/5 shadow-sm hover:border-emerald-200'
-              } ${!isToday ? 'cursor-default pointer-events-none' : ''}`}
+              }`}
             >
               <div 
-                onClick={(e) => { e.stopPropagation(); toggleTask(task.id); }}
-                className={`shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-500 ${
-                  task.completed ? 'bg-emerald-500 text-white shadow-xl shadow-emerald-500/20 scale-105' : 'bg-slate-50 dark:bg-slate-800 text-emerald-600'
+                onClick={(e) => { e.stopPropagation(); onToggleTask(task._id || task.id, task.completed); }}
+                className={`shrink-0 w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-500 transform active:scale-90 ${
+                  task.completed ? 'bg-emerald-500 text-white shadow-xl shadow-emerald-500/20 scale-105 rotate-3' : 'bg-slate-100 dark:bg-slate-800 text-emerald-600 dark:text-emerald-400'
                 }`}
               >
-                {task.completed ? <Check size={26} strokeWidth={4} /> : NURSING_ICONS[task.category]}
+                {task.completed ? <Check size={30} strokeWidth={4} /> : React.cloneElement(NURSING_ICONS[task.category?.toLowerCase()] || NURSING_ICONS['exercise'], { size: 28, strokeWidth: 2.5 })}
               </div>
-              <div className="flex-1 min-w-0" onClick={() => setEditingTask(task)}>
+              <div className="flex-1 min-w-0 py-1">
                 <div className="flex justify-between items-start mb-0.5">
                   <div className="flex items-center space-x-2 min-w-0">
-                    <h4 className={`font-black text-base truncate ${task.completed ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-100'}`}>
-                      {task.title}
-                    </h4>
+                    <h3 className={`text-[15px] font-black tracking-tight transition-all duration-500 ${task.completed ? 'text-slate-400 line-through' : 'text-slate-800 dark:text-white'}`}>
+                    {task.title}
+                    {task.targetCount && task.targetCount > 1 && (
+                      <span className="ml-2 text-[11px] font-black text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded-md">
+                        ({task.currentCount || 0}/{task.targetCount})
+                      </span>
+                    )}
+                  </h3>
                     {task.isInfeasible && (
                       <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-rose-500/10 text-rose-500 text-[8px] font-black uppercase tracking-tighter border border-rose-500/10">
                         不可行
@@ -309,18 +314,22 @@ const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdat
                     {task.time}
                   </div>
                 </div>
-                <div className="flex items-center space-x-1.5 mt-1">
-                  {/* Source Tag */}
-                  {task.source?.toLowerCase() === 'doctor' && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-black text-blue-600 bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">医嘱</span>
+                <div className="flex flex-col space-y-1.5 mt-2">
+                  <div className="flex items-center space-x-2">
+                    {/* Source Tag */}
+                    {task.source?.toLowerCase() === 'doctor' && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-black text-blue-600 bg-blue-100 dark:bg-blue-500/10 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20 whitespace-nowrap">医嘱</span>
+                    )}
+                    {task.source?.toLowerCase() === 'ai' && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-black text-emerald-700 bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 whitespace-nowrap">五养建议</span>
+                    )}
+                    {task.source?.toLowerCase() === 'custom' && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-black text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800 whitespace-nowrap">自定义</span>
+                    )}
+                  </div>
+                  {task.description && (
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium leading-relaxed italic line-clamp-2">{task.description}</p>
                   )}
-                  {task.source?.toLowerCase() === 'ai' && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[9px] font-black text-emerald-700 bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">五养建议</span>
-                  )}
-                  {task.source?.toLowerCase() === 'custom' && (
-                    <span className="inline-flex items-center text-[9px] font-black text-slate-500 dark:text-slate-400">自定义</span>
-                  )}
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium line-clamp-1">{task.description}</p>
                 </div>
               </div>
             </div>
@@ -328,17 +337,7 @@ const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdat
         )}
       </div>
 
-      {/* Task Adjustment Modal */}
-      {editingTask && (
-        <TaskAdjustmentModal 
-          task={editingTask}
-          onClose={() => setEditingTask(null)}
-          onUpdate={(updates) => {
-            onUpdateTask(editingTask.id, updates);
-            setEditingTask(null);
-          }}
-        />
-      )}
+      {/* Task Adjustment Modal Removed - Execution page uses direct toggle */}
     </div>
   );
 };

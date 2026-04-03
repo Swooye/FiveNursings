@@ -24,11 +24,17 @@ export const RISK_SIGNALS = [
 
 export const NURSING_ICONS = {
   diet: <Utensils className="w-5 h-5" />,
+  '食疗': <Utensils className="w-5 h-5" />,
   exercise: <Activity className="w-5 h-5" />,
+  '运动': <Activity className="w-5 h-5" />,
   sleep: <Moon className="w-5 h-5" />,
+  '睡眠': <Moon className="w-5 h-5" />,
   mental: <Heart className="w-5 h-5" />,
+  '心理': <Heart className="w-5 h-5" />,
   function: <Zap className="w-5 h-5" />,
+  '机能': <Zap className="w-5 h-5" />,
   environment: <Wind className="w-5 h-5" />,
+  '环境': <Wind className="w-5 h-5" />,
 };
 
 export const NAV_ITEMS = [

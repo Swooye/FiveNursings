@@ -13,10 +13,13 @@ const symptomsData = [
 interface TodaySymptomsProps {
   selectedIds: string[];
   onChange: (ids: string[]) => void;
+  title?: string;
+  readOnly?: boolean;
 }
 
-const TodaySymptoms: React.FC<TodaySymptomsProps> = ({ selectedIds, onChange }) => {
+const TodaySymptoms: React.FC<TodaySymptomsProps> = ({ selectedIds, onChange, title = "今日症状", readOnly = false }) => {
   const toggleSymptom = (id: string) => {
+    if (readOnly) return;
     const newIds = selectedIds.includes(id) 
       ? selectedIds.filter(i => i !== id) 
       : [...selectedIds, id];
@@ -28,7 +31,7 @@ const TodaySymptoms: React.FC<TodaySymptomsProps> = ({ selectedIds, onChange }) 
       <div className="flex justify-between items-center mb-6 px-1">
         <div className="flex items-center">
           <Stethoscope size={22} className="text-emerald-500" />
-          <h2 className="text-lg font-black ml-2 text-slate-800 dark:text-white tracking-tight">今日症状</h2>
+          <h2 className="text-lg font-black ml-2 text-slate-800 dark:text-white tracking-tight">{title}</h2>
         </div>
         <button className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest hover:text-emerald-500 transition-colors">
           症状追踪

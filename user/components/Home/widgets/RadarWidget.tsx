@@ -12,18 +12,19 @@ interface RadarWidgetProps {
 
 const RadarWidget: React.FC<RadarWidgetProps> = ({ profile, onSync, isSyncing, isDark }) => {
   // 使用动态下发的健康基准线，若无则使用默认基准
-  const baselines = profile.baselines || {
-    diet: 60,
-    exercise: 40,
+  // 统一康复基准线为 70%，形成规则的参考区域，避免视觉上的“畸形”和断裂感
+  const baselines = {
+    diet: 70,
+    exercise: 70,
     sleep: 70,
-    mental: 80,
-    function: 80
+    mental: 70,
+    function: 70
   };
 
   const chartData = [
     { subject: '饮食', A: profile.scores.diet, B: baselines.diet },
     { subject: '运动', A: profile.scores.exercise, B: baselines.exercise },
-    { subject: '膏方', A: profile.scores.sleep, B: baselines.sleep },
+    { subject: '睡眠', A: profile.scores.sleep, B: baselines.sleep },
     { subject: '心理', A: profile.scores.mental, B: baselines.mental },
     { subject: '功能', A: profile.scores.function, B: baselines.function },
   ];
@@ -43,7 +44,7 @@ const RadarWidget: React.FC<RadarWidgetProps> = ({ profile, onSync, isSyncing, i
       <div className="flex justify-between items-start mb-6 relative z-10">
         <div className="flex flex-col text-left">
           <div className="flex items-center space-x-2 mb-2">
-            <span className="text-sm font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">核心康复指数</span>
+            <span className="text-sm font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.2em]">康复指数</span>
           </div>
           <div className="flex items-center space-x-3">
             <span className="font-black text-slate-800 dark:text-slate-100 tracking-tighter leading-none" style={{ fontSize: '3.2rem' }}>
@@ -73,14 +74,16 @@ const RadarWidget: React.FC<RadarWidgetProps> = ({ profile, onSync, isSyncing, i
               dataKey="subject" 
               tick={{ fill: isDark ? '#94a3b8' : '#64748b', fontSize: 13, fontWeight: 800 }} 
             />
-            {/* 康复基准线 - 虚线层 */}
+            {/* 康复基准线 - 采用统一 70 分参考线，且 fillOpacity={0} 强制闭合路径 */}
             <Radar 
               name="Baseline" 
               dataKey="B" 
-              stroke={isDark ? "rgba(255,255,255,0.3)" : "rgba(0,0,0,0.2)"} 
+              stroke={isDark ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.2)"} 
               strokeWidth={2} 
-              strokeDasharray="5 5"
-              fill="transparent" 
+              strokeDasharray="4 4"
+              fill={isDark ? "#fff" : "#000"} 
+              fillOpacity={0}
+              isAnimationActive={false}
               dot={false}
             />
             {/* 今日当前状态 - 实线层 */}

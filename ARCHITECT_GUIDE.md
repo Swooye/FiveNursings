@@ -79,3 +79,19 @@
 ### F. 智能语音 (TTS) 处理
 - **异步音色加载**：不同浏览器的语音包加载是异步的。必须监听 `speechSynthesis.onvoiceschanged` 并在回调中执行音色匹配。
 - **生命周期清理**：在 React 组件销毁 (`useEffect` cleanup) 或页面刷新 (`beforeunload`) 时，务必调用 `speechSynthesis.cancel()`，防止语音在后台重叠播报。
+82: 
+83: ### G. 用户身份标识符规范 (User ID Resolution Standard)
+84: - **痛点**：系统中存在多种用户 ID 格式：Firebase `uid` (auth 产生的字符串) 和 MongoDB `_id` (十六进制 ObjectId)。
+85: - **规范**：所有涉及 `userId` 业务逻辑（症状、日记、任务、计分等）的后端接口，**必须** 使用 `resolveUserIds` 辅助函数进行宽容匹配。
+86:   - **GET 请求**：使用 `{ userId: { $in: await resolveUserIds(queryId) } }` 进行查询，确保无论前端传哪种 ID 都能读到数据。
+87:   - **POST/PATCH 请求**：在存储前调用 `resolveUserIds`，并**统一存入 `idList[0]`**（通常是 MongoDB `_id`），确保数据不会因 ID 格式不同而产生冗余。
+88: - **前端准则**：`App.tsx` 中的 `profile.id` 包含业务主键，但在所有 API 请求中，后端应具备上述宽容识别能力。
+
+### H. 数据库连接安全与隔离规范 (Database Isolation Standard)
+- **核心红线**：严禁在后端 `server/index.js` 或任何数据持久化层硬编码 `fivenursing_pro`。
+- **动态切换逻辑**：必须通过 `process.env.NODE_ENV` 自动识别环境：
+  - `development` (本地)：默认连接 `fivenursing_dev`。
+  - `production` (云端)：自动连接 `fivenursing_pro`。
+- **覆盖机制**：支持使用环境变量 `MONGODB_DB_NAME` 进行手动覆盖，优先级最高。
+- **启动检查**：服务器启动时必须显式打印当前连接的数据库名称，严禁“静默连接”生产库。
+- **后果控制**：任何导致本地开发环境污染生产库的操作均视为严重事故，需立即触发数据库回滚并更新本规范。

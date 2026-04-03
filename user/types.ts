@@ -139,7 +139,8 @@ export interface PatientProfile {
 
 export interface DailyTask {
   id: string;
-  category: 'diet' | 'exercise' | 'sleep' | 'mental' | 'function';
+  _id?: string;
+  category: 'diet' | 'exercise' | 'sleep' | 'mental' | 'function' | 'environment';
   title: string;
   time: string;
   completed: boolean;
@@ -148,6 +149,33 @@ export interface DailyTask {
   suggestedTimes?: string[];
   /** 任务来源: 'ai'=五养建议(AI生成), 'doctor'=医嘱(医护/用户手填), 'custom'=自定义 */
   source?: 'ai' | 'doctor' | 'custom';
+  templateId?: string;
+  // 新增模板同步相关字段
+  frequency?: 'daily' | 'weekly' | 'monthly' | 'custom';
+  currentCount?: number;
+  targetCount?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface TaskTemplate {
+  id?: string;
+  _id?: string;
+  userId: string;
+  category: string;
+  title: string;
+  description?: string;
+  time?: string;
+  frequency: 'daily' | 'weekly' | 'monthly' | 'custom';
+  targetCount?: number;
+  frequencyValue?: number;
+  daysOfWeek?: number[];
+  startDate: string;
+  endDate?: string;
+  isActive: boolean;
+  isInfeasible: boolean;
+  source?: string;
+  suggestedTimes?: string[];
 }
 
 export interface SKU {

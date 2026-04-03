@@ -14,9 +14,10 @@ interface NursingDetailProps {
   onBack: () => void;
   onAskCoach?: (context: string) => void;
   currentScore: number;
+  isDark?: boolean;
 }
 
-const NursingDetail: React.FC<NursingDetailProps> = ({ category, profile, tasks, onBack, onAskCoach, currentScore }) => {
+const NursingDetail: React.FC<NursingDetailProps> = ({ category, profile, tasks, onBack, onAskCoach, currentScore, isDark }) => {
   const baselines: Record<string, number> = { diet: 60, exercise: 40, sleep: 70, mental: 80, function: 80 };
   const baseline = baselines[category] || 80;
   const diff = currentScore - baseline;
@@ -32,7 +33,6 @@ const NursingDetail: React.FC<NursingDetailProps> = ({ category, profile, tasks,
     const ledger: { label: string; value: number; type: 'base' | 'plus' | 'minus' }[] = [
       { label: '医学健康基准', value: base, type: 'base' }
     ];
-// ... (rest of ScoringLedger logic)
 
     if (category === 'exercise') {
       const steps = profile.wearable?.steps || 0;
@@ -55,7 +55,7 @@ const NursingDetail: React.FC<NursingDetailProps> = ({ category, profile, tasks,
     }
 
     return ledger;
-  }, [category, profile, tasks]);
+  }, [category, profile, tasks, baseline]);
 
   // --- 2. Dynamic Advice Factory ---
   const recoveryStrategies = useMemo(() => {
@@ -91,7 +91,7 @@ const NursingDetail: React.FC<NursingDetailProps> = ({ category, profile, tasks,
     return data;
   }, [currentScore]);
 
-  const categoryLabels: Record<keyof NursingScores, string> = {
+  const categoryLabels: Record<string, string> = {
     diet: '饮食调养', exercise: '运动调养', sleep: '膏方调养', mental: '心理调养', function: '功能调养', environment: '环境调养'
   };
 
@@ -104,159 +104,236 @@ const NursingDetail: React.FC<NursingDetailProps> = ({ category, profile, tasks,
   }, [category, currentScore, baseline]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-32 animate-in slide-in-from-right duration-500 no-scrollbar">
-      {/* Header with Background */}
-      <div className="relative bg-slate-900 dark:bg-slate-950 pt-10 pb-28 px-6 overflow-hidden">
-        <div className={`absolute top-0 right-0 w-80 h-80 bg-${accentColor}-500/10 rounded-full blur-[100px] -mr-32 -mt-20`}></div>
-        <header className="relative z-10 flex items-center justify-between mb-8">
-          <div className="flex items-center space-x-4">
-            <button onClick={onBack} className="p-2.5 bg-white/10 backdrop-blur-xl rounded-2xl text-white border border-white/10 active:scale-95"><ArrowLeft size={20} /></button>
-            <h1 className="text-xl font-black text-white tracking-tight">{categoryLabels[category]}详情</h1>
+    <div className="min-h-screen bg-[#f8fafc] dark:bg-[#020617] pb-32 animate-in fade-in duration-700 no-scrollbar overflow-x-hidden">
+      {/* Premium Header - Airy & Breathing */}
+      <div className="relative pt-10 pb-32 px-6 overflow-hidden">
+        {/* Soft Ambient Glows */}
+        <div className={`absolute top-0 right-0 w-[500px] h-[500px] bg-${accentColor}-500/10 rounded-full blur-[120px] -mr-64 -mt-64 transition-colors duration-1000`}></div>
+        <div className={`absolute top-1/2 left-0 w-[300px] h-[300px] bg-indigo-500/5 rounded-full blur-[100px] -ml-40 transition-colors duration-1000`}></div>
+
+        <header className="relative z-10 flex items-center justify-between mb-12">
+          <div className="flex items-center space-x-5">
+            <button 
+              onClick={onBack} 
+              className="w-12 h-12 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl flex items-center justify-center text-slate-800 dark:text-white border border-slate-200/50 dark:border-white/10 shadow-sm active:scale-95 transition-all"
+            >
+              <ArrowLeft size={22} />
+            </button>
+            <div className="flex flex-col">
+              <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">{categoryLabels[category]}</h1>
+            </div>
           </div>
-          <button className="p-2.5 bg-white/10 backdrop-blur-xl rounded-2xl text-white border border-white/10"><Share2 size={20} /></button>
+          <button className="w-12 h-12 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl flex items-center justify-center text-slate-800 dark:text-white border border-slate-200/50 dark:border-white/10 shadow-sm active:scale-95 transition-all">
+            <Share2 size={22} />
+          </button>
         </header>
 
+        {/* Hero Score Display */}
         <div className="relative z-10 flex items-center justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center space-x-2">
-              <span className={`text-[10px] font-black text-${accentColor}-400 uppercase tracking-widest`}>综合康复分值</span>
+          <div className="space-y-2">
+            <div className={`flex items-center space-x-2.5 py-1.5 px-3 bg-${accentColor}-500/10 rounded-full w-fit border border-${accentColor}-500/20 shadow-sm`}>
+               <Sparkles size={14} className={`text-${accentColor}-500`} />
+               <span className={`text-[11px] font-black text-${accentColor}-600 dark:text-${accentColor}-400 uppercase tracking-widest`}>维度健康评分</span>
             </div>
-            <h2 className={`text-5xl font-black tracking-tighter ${isHealthy ? 'text-white' : 'text-amber-400'}`}>{currentScore}<span className="text-lg text-white/30 ml-2">pts</span></h2>
-            <div className={`flex items-center text-${accentColor}-400 text-[11px] font-bold space-x-2 mt-2`}>
-              <TrendingUp size={14} />
-              <span>当前维度处于{isHealthy ? '健康管控' : '待提高'}区间</span>
+            <div className="flex items-baseline space-x-2">
+              <h2 className={`text-7xl font-black tracking-tighter ${isHealthy ? 'text-slate-900 dark:text-white' : 'text-amber-500'} drop-shadow-sm`}>
+                {currentScore}
+              </h2>
+              <span className="text-xl font-bold text-slate-300 dark:text-slate-700">/ 100</span>
+            </div>
+            <div className="flex items-center space-x-2 pt-2">
+              <div className={`p-1 bg-${accentColor}-500/20 rounded-md`}>
+                <TrendingUp size={14} className={`text-${accentColor}-600`} />
+              </div>
+              <span className="text-xs font-bold text-slate-600 dark:text-slate-400">目前处于{isHealthy ? '理想康复' : (isWarning ? '预警管控' : '待优化')}水平</span>
             </div>
           </div>
-          <div className="w-24 h-24 p-1 bg-white/5 rounded-3xl border border-white/10 flex items-center justify-center">
-             {NURSING_ICONS[category]}
+
+          {/* Artistic Icon Container */}
+          <div className="relative group">
+            <div className={`absolute inset-0 bg-${accentColor}-500/20 rounded-[40px] blur-2xl group-hover:scale-125 transition-transform duration-700`}></div>
+            <div className="relative w-32 h-32 bg-white/40 dark:bg-slate-900/40 backdrop-blur-2xl rounded-[36px] border border-white/20 dark:border-white/5 flex items-center justify-center shadow-[0_12px_40px_rgba(0,0,0,0.05)] transform-gpu hover:rotate-6 transition-transform duration-500">
+               <div className="scale-[1.8] opacity-80 dark:opacity-100">{NURSING_ICONS[category]}</div>
+            </div>
           </div>
         </div>
       </div>
 
-      <div className="-mt-14 px-5 space-y-6 relative z-20">
-        {/* Trend Card */}
-        <div className="bg-white dark:bg-slate-900 rounded-[36px] p-6 shadow-sm border border-slate-100 dark:border-slate-800">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 flex items-center"><Activity size={16} className={`mr-2 text-${accentColor}-500`}/>康复进度趋势</h3>
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-3 py-1 bg-slate-50 dark:bg-slate-800 rounded-full">REALTIME</span>
+      {/* Main Content Region */}
+      <div className="-mt-16 px-5 space-y-6 relative z-20 pb-20">
+        
+        {/* Glassmorphism Trend Card */}
+        <section className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-3xl rounded-[40px] p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/50 dark:border-white/5 animate-in slide-in-from-bottom-4 duration-700 delay-100">
+          <div className="flex justify-between items-center mb-8">
+            <div className="flex items-center space-x-3">
+              <div className={`p-2 bg-${accentColor}-500/10 rounded-xl`}><Activity size={20} className={`text-${accentColor}-500`}/></div>
+              <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 uppercase tracking-widest">康复值趋势变化</h3>
+            </div>
           </div>
-          <div className="h-44 w-full">
+          <div className="h-48 w-full -ml-2">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={trendData}>
                 <defs>
                   <linearGradient id="scoreColor" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={accentHex} stopOpacity={0.15}/>
+                    <stop offset="5%" stopColor={accentHex} stopOpacity={0.2}/>
                     <stop offset="95%" stopColor={accentHex} stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#94a3b8', fontWeight: 700 }} />
-                <Tooltip contentStyle={{ borderRadius: '16px', border: 'none', background: '#1e293b', color: '#fff', fontSize: '12px' }} />
-                <Area type="monotone" dataKey="score" stroke={accentHex} strokeWidth={3} fill="url(#scoreColor)" />
+                <CartesianGrid strokeDasharray="5 5" vertical={false} stroke={isDark ? '#ffffff05' : '#00000005'} />
+                <XAxis 
+                  dataKey="day" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 11, fill: '#94a3b8', fontWeight: 800 }} 
+                  dy={10}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    borderRadius: '24px', 
+                    border: 'none', 
+                    background: 'rgba(30, 41, 59, 0.8)', 
+                    backdropFilter: 'blur(12px)',
+                    color: '#fff', 
+                    fontSize: '13px',
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.1)'
+                  }} 
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="score" 
+                  stroke={accentHex} 
+                  strokeWidth={4} 
+                  fill="url(#scoreColor)" 
+                  animationDuration={1500}
+                />
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </section>
 
-        {/* Scoring Ledger Section - New & Critical */}
-        <div className="bg-white dark:bg-slate-900 rounded-[36px] border border-slate-100 dark:border-slate-800 overflow-hidden">
-           <div className="p-6 pb-2">
-              <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 flex items-center"><Target size={16} className={`mr-2 text-${accentColor}-500`}/>得分构成清单</h3>
+        {/* Improved Scoring Detail - Clean List */}
+        <section className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-3xl rounded-[40px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/50 dark:border-white/5 overflow-hidden animate-in slide-in-from-bottom-4 duration-700 delay-200">
+           <div className="p-8 pb-4">
+              <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 flex items-center tracking-widest uppercase">
+                <Target size={18} className={`mr-2.5 text-${accentColor}-500`}/>评分核心构成
+              </h3>
            </div>
-           <div className="px-6 pb-6 space-y-2">
+           <div className="px-8 pb-8 space-y-3">
               {scoringLedger.map((item, idx) => (
-                <div key={idx} className={`flex items-center justify-between p-4 rounded-2xl ${
-                  item.type === 'base' ? 'bg-slate-50 dark:bg-slate-800/50' : 
-                  item.type === 'plus' ? 'bg-emerald-50/50 dark:bg-emerald-950/20' : 'bg-rose-50/50 dark:bg-rose-950/20'
+                <div key={idx} className={`flex items-center justify-between p-5 rounded-3xl transition-all hover:translate-x-1 duration-300 ${
+                  item.type === 'base' ? 'bg-slate-50/80 dark:bg-slate-800/40' : 
+                  item.type === 'plus' ? 'bg-emerald-50/50 dark:bg-emerald-500/10' : 'bg-rose-50/50 dark:bg-rose-500/10'
                 }`}>
-                  <div className="flex items-center space-x-3">
-                    {item.type === 'base' && <Activity size={16} className="text-slate-400" />}
-                    {item.type === 'plus' && <PlusCircle size={16} className="text-emerald-500" />}
-                    {item.type === 'minus' && <MinusCircle size={16} className="text-rose-500" />}
-                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{item.label}</span>
+                  <div className="flex items-center space-x-4">
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                      item.type === 'base' ? 'bg-slate-200/50 dark:bg-slate-700/50 text-slate-400' : 
+                      item.type === 'plus' ? 'bg-emerald-500/20 text-emerald-500' : 'bg-rose-500/20 text-rose-500'
+                    }`}>
+                      {item.type === 'base' && <Activity size={16} />}
+                      {item.type === 'plus' && <PlusCircle size={16} />}
+                      {item.type === 'minus' && <MinusCircle size={16} />}
+                    </div>
+                    <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{item.label}</span>
                   </div>
-                  <span className={`text-sm font-black ${
+                  <span className={`text-base font-black ${
                     item.type === 'base' ? 'text-slate-900 dark:text-white' : 
-                    item.type === 'plus' ? 'text-emerald-600' : 'text-rose-600'
+                    item.type === 'plus' ? 'text-emerald-500' : 'text-rose-500'
                   }`}>
                     {item.value > 0 && item.type !== 'base' ? `+${item.value}` : item.value}
                   </span>
                 </div>
               ))}
-              <div className="h-px bg-slate-100 dark:bg-slate-800 my-4" />
+              
+              <div className="h-px bg-slate-200/50 dark:bg-slate-800/50 my-6" />
+              
               <div className="flex justify-between items-center px-4">
-                <span className="text-xs font-black text-slate-400">当前核算结果</span>
-                <span className="text-xl font-black text-slate-900 dark:text-white">{currentScore} <span className="text-[10px] text-slate-400 ml-1 tracking-tight">/ 100 PTS</span></span>
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-slate-600 dark:text-slate-400">核算维度总分</span>
+                </div>
+                <div className="flex items-baseline space-x-1.5">
+                  <span className="text-3xl font-black text-slate-900 dark:text-white tabular-nums">{currentScore}</span>
+                  <span className="text-[10px] font-black text-slate-400">分</span>
+                </div>
               </div>
            </div>
-        </div>
+        </section>
 
-        {/* AI Insight Card */}
-        <div className="bg-gradient-to-br from-indigo-900 to-slate-900 rounded-[40px] p-8 shadow-2xl relative overflow-hidden border border-white/5">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-[80px] -mr-20 -mt-20"></div>
-          <div className="relative z-10">
-            <div className="flex items-center space-x-3 mb-6">
-              <div className="p-2.5 bg-indigo-500/20 rounded-2xl text-indigo-400"><Sparkles size={24} /></div>
-              <h3 className="text-xl font-black text-white tracking-tight uppercase">AI 数据洞察报告</h3>
+        {/* AI Insight Report Card - Redesigned for Premium Look */}
+        <section className="group relative bg-white/70 dark:bg-slate-900/70 backdrop-blur-3xl rounded-[44px] p-1 shadow-[0_20px_50px_rgba(0,0,0,0.06)] border border-emerald-100/50 dark:border-white/5 animate-in slide-in-from-bottom-4 duration-700 delay-300">
+          <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 rounded-[44px]"></div>
+          <div className="relative p-7">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center space-x-3.5">
+                <div className="relative w-14 h-14 bg-emerald-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-emerald-200 dark:shadow-none hover:scale-105 transition-transform">
+                  <Sparkles size={28} />
+                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-rose-500 rounded-full border-2 border-white dark:border-slate-800 animate-ping"></div>
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">AI 数据洞察报告</h3>
+                </div>
+              </div>
             </div>
-            <p className="text-slate-300 text-base leading-relaxed font-medium mb-8">
-              {aiInsight}
-            </p>
+
+            <div className="mb-10 px-1">
+              <div className="flex space-x-3 mb-4">
+                <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></div>
+                <div className="w-1.5 h-1.5 bg-emerald-200 rounded-full"></div>
+              </div>
+              <p className="text-slate-700 dark:text-slate-300 text-base leading-relaxed font-bold italic">
+                “{aiInsight}”
+              </p>
+            </div>
+
             <button 
-              onClick={() => onAskCoach?.(`我刚才阅读了${categoryLabels[category]}的AI洞察：“${aiInsight}”。想请教一下我的康复计划是否需要针对当前情况做调整？`)}
-              className="w-full py-5 bg-white text-indigo-900 rounded-[28px] font-black text-lg shadow-xl hover:bg-slate-100 transition-all flex items-center justify-center space-x-3 active:scale-95"
+              onClick={() => onAskCoach?.(`【AI洞察】您的${categoryLabels[category]}动态分析如下：\n\n${aiInsight}\n\n针对以上分析，您想深入了解如何优化目前的康复方案吗？`)}
+              className="w-full h-18 py-5 bg-emerald-600 text-white rounded-[28px] font-black text-lg shadow-2xl shadow-emerald-600/30 hover:bg-emerald-700 hover:-translate-y-1 active:scale-95 transition-all flex items-center justify-center space-x-3 group"
             >
-              <MessageSquare size={20} />
-              <span>立即咨询五养教练</span>
+              <MessageSquare size={22} className="group-hover:rotate-12 transition-transform" />
+              <span>深度咨询五养教练</span>
+              <ChevronRight size={18} className="opacity-60" />
             </button>
           </div>
-        </div>
+        </section>
 
-        {/* Dynamic Strategy */}
-        <div className="space-y-4 pb-10">
-          <div className="flex items-center space-x-2 px-2">
-            <Zap size={16} className={`text-${accentColor}-500`} />
-            <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 tracking-tight">今日针对性调养策略</h3>
+        {/* Optimized Dynamic Strategy Component */}
+        <section className="space-y-5 pb-10 animate-in slide-in-from-bottom-4 duration-700 delay-400">
+          <div className="flex items-center justify-between px-3">
+            <div className="flex items-center space-x-3">
+              <Zap size={20} className={`text-${accentColor}-500`} />
+              <h3 className="text-base font-black text-slate-800 dark:text-slate-100 tracking-tight">专属精准复建策略</h3>
+            </div>
+            <BookOpen size={18} className="text-slate-300 dark:text-slate-600" />
           </div>
-          {recoveryStrategies.map((strategy, idx) => (
-             <div key={idx} className={`bg-slate-900 dark:bg-slate-800 flex flex-col p-6 rounded-[32px] text-left relative overflow-hidden group border-l-4 border-${accentColor}-500`}>
-               <div className="flex justify-between items-start mb-3">
-                 <span className={`text-[9px] font-black tracking-widest uppercase py-1 px-2.5 bg-${accentColor}-500 text-white rounded-lg`}>{strategy.tag}</span>
-                 <BookOpen size={16} className="text-white/20" />
+
+          <div className="grid gap-5">
+            {recoveryStrategies.map((strategy, idx) => (
+               <div 
+                 key={idx} 
+                 className={`group bg-white dark:bg-slate-900 flex flex-col p-7 rounded-[40px] text-left relative overflow-hidden border border-slate-100 dark:border-white/5 shadow-sm hover:shadow-xl transition-all duration-500 active:scale-[0.98] ${
+                   idx === 0 ? `border-l-4 border-l-${accentColor}-500` : ''
+                 }`}
+               >
+                 <div className="flex justify-between items-start mb-4 relative z-10">
+                   <div className={`px-4 py-1.5 bg-${accentColor}-50/50 dark:bg-${accentColor}-500/10 rounded-xl`}>
+                     <span className={`text-[10px] font-black tracking-widest uppercase text-${accentColor}-600 dark:text-${accentColor}-400`}>{strategy.tag}</span>
+                   </div>
+                   <div className="w-10 h-10 rounded-2xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-600 group-hover:rotate-12 transition-transform">
+                     {idx === 0 ? <Target size={18} /> : <Info size={18} />}
+                   </div>
+                 </div>
+                 <h4 className="text-slate-900 dark:text-white font-black text-lg mb-2.5 relative z-10">{strategy.title}</h4>
+                 <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed font-bold relative z-10">{strategy.desc}</p>
+                 
+                 {/* Decorative background element */}
+                 <div className={`absolute top-0 right-0 w-32 h-32 bg-${accentColor}-500/5 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-700 -mr-16 -mt-16`}></div>
                </div>
-               <h4 className="text-white font-bold text-base mb-2">{strategy.title}</h4>
-               <p className="text-slate-400 text-xs leading-relaxed font-medium">{strategy.desc}</p>
-               <div className="absolute top-0 right-0 w-24 h-24 bg-white/5 rounded-full blur-2xl -mr-10 -mt-10 group-hover:scale-150 transition-transform duration-700"></div>
-             </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </section>
       </div>
     </div>
   );
 };
 
-const GuidelineCard: React.FC<{ title: string; desc: string; icon: React.ReactNode; color: string }> = ({ title, desc, icon, color }) => (
-  <button className="bg-white dark:bg-slate-900 p-6 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm text-left group active:scale-95 transition-all">
-    <div className={`p-2.5 rounded-xl w-fit mb-4 transition-transform group-hover:scale-110 ${
-      color === 'emerald' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-500'
-    }`}>
-      {icon}
-    </div>
-    <div className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-0.5">{title}</div>
-    <div className="text-sm font-black text-slate-800 dark:text-slate-100">{desc}</div>
-  </button>
-);
-
-const StrategyItem: React.FC<{ title: string; desc: string; tag: string }> = ({ title, desc, tag }) => (
-  <div className="bg-white dark:bg-slate-900 p-6 rounded-[32px] border border-slate-100 dark:border-slate-800 shadow-sm flex items-start space-x-4 group active:bg-slate-50 dark:active:bg-slate-800/50 transition-all cursor-pointer">
-    <div className="flex-1 text-left">
-      <div className="flex items-center justify-between mb-1.5">
-        <h4 className="text-base font-black text-slate-800 dark:text-slate-100 tracking-tight">{title}</h4>
-        <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-md uppercase tracking-widest">{tag}</span>
-      </div>
-      <p className="text-[12px] text-slate-500 dark:text-slate-400 leading-relaxed font-medium pr-4">{desc}</p>
-    </div>
-    <ChevronRight size={18} className="text-slate-200 mt-1 transition-transform group-hover:translate-x-1" />
-  </div>
-);
-
+// Simplified export to match the rest of the app's pattern
 export default NursingDetail;

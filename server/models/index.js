@@ -42,6 +42,7 @@ const Plan = mongoose.model('Plan', new mongoose.Schema({}, { strict: false }), 
 
 const voiceLogSchema = new mongoose.Schema({
     userId: { type: String, index: true },
+    date: { type: String, index: true },
     timestamp: { type: Date, default: Date.now },
     summary: String,
     impact: {
@@ -62,6 +63,8 @@ const dailyTaskSchema = new mongoose.Schema({
 }, { strict: false });
 const DailyTask = mongoose.models.DailyTask || mongoose.model('DailyTask', dailyTaskSchema, 'daily_tasks');
 
+const TaskTemplate = require('./TaskTemplate');
+
 const diaryEntrySchema = new mongoose.Schema({
     userId: { type: String, index: true },
     date: { type: String, index: true },
@@ -69,6 +72,14 @@ const diaryEntrySchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now }
 }, { strict: false });
 const DiaryEntry = mongoose.models.DiaryEntry || mongoose.model('DiaryEntry', diaryEntrySchema, 'diary_entries');
+
+const dailySymptomSchema = new mongoose.Schema({
+    userId: { type: String, index: true },
+    date: { type: String, index: true },
+    symptoms: [String],
+    updatedAt: { type: Date, default: Date.now }
+}, { strict: false });
+const DailySymptom = mongoose.models.DailySymptom || mongoose.model('DailySymptom', dailySymptomSchema, 'daily_symptoms');
 
 module.exports = {
     User,
@@ -80,5 +91,7 @@ module.exports = {
     Plan,
     VoiceLog,
     DailyTask,
-    DiaryEntry
+    DiaryEntry,
+    TaskTemplate,
+    DailySymptom
 };

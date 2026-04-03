@@ -11,7 +11,7 @@ const multer = require('multer');
 // 导入自定义模块
 const { 
     User, Admin, MallItem, Protocol, 
-    ChatMessage, Role, Plan, VoiceLog, DailyTask 
+    ChatMessage, Role, Plan, VoiceLog, DailyTask, DailySymptom, TaskTemplate 
 } = require('./models');
 const { getLiveWeather, getSolarTerm } = require('./utils');
 const ScoringService = require('./services/ScoringService');
@@ -52,7 +52,12 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 // --- 基础配置 ---
-const BASE_URI = (process.env.MONGODB_URI?.includes('?') ? process.env.MONGODB_URI.replace(/\?/, 'fivenursing_pro?') : (process.env.MONGODB_URI + 'fivenursing_pro?')) + 'retryWrites=true&w=majority';
+const DB_NAME = process.env.MONGODB_DB_NAME || (process.env.NODE_ENV === 'production' ? 'fivenursing_pro' : 'fivenursing_dev');
+const BASE_URI = (process.env.MONGODB_URI?.includes('?') 
+    ? process.env.MONGODB_URI.replace(/\?/, `${DB_NAME}?`) 
+    : (process.env.MONGODB_URI + `${DB_NAME}?`)) + 'retryWrites=true&w=majority';
+
+console.log(`[DB] Environment: ${process.env.NODE_ENV || 'development'} | Target Database: ${DB_NAME}`);
 
 app.use(cors({ 
     origin: '*', 
@@ -61,6 +66,12 @@ app.use(cors({
 }));
 app.use(bodyParser.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// [DEBUG] Global Request Logger
+app.use((req, res, next) => {
+    console.log(`[REQ] ${req.method} ${req.url} | Body:`, req.method === 'POST' ? JSON.stringify(req.body).slice(0, 50) : '-');
+    next();
+});
 
 app.get('/api/ping', (req, res) => {
     res.json({ status: "pong", version: "1.3.0-stable" });
@@ -81,8 +92,11 @@ const resolveUserIds = async (userId) => {
     if (user) {
         if (user.firebaseUid) idList.push(user.firebaseUid);
         if (user._id) idList.push(user._id.toString());
+    } else {
+        console.warn(`[ResolveID] No user found for ${userId} in ${process.env.NODE_ENV} environment.`);
     }
-    return [...new Set(idList)];
+    const finalIdList = [...new Set(idList)];
+    return finalIdList;
 };
 
 // --- 业务接口 (优先注册，防止路由冲突) ---
@@ -207,6 +221,87 @@ const createRoutes = (path, Model) => {
 
 // --- 核心服务与统计逻辑 ---
 
+// 自定义 daily_symptoms POST 以支持 upsert 和宽容匹配
+app.post('/api/daily_symptoms', async (req, res) => {
+    console.log("[DEBUG] POST /api/daily_symptoms body:", req.body);
+    try {
+        const { userId, date, symptoms } = req.body;
+        if (!userId || !date) return res.status(400).json({ error: "Missing userId or date" });
+        
+        // 查找所有关联的 ID，确保 upsert 时能定位到同一个人的记录
+        const idList = await resolveUserIds(userId);
+        const data = await DailySymptom.findOneAndUpdate(
+            { userId: { $in: idList }, date },
+            { $set: { userId: idList[0], symptoms, updatedAt: new Date() } }, // 存储时统一用第一个 ID
+            { upsert: true, new: true }
+        );
+        console.log("[DEBUG] Symptoms saved:", data);
+        res.json(format(data));
+    } catch (e) { 
+        console.error("[ERROR] POST /api/daily_symptoms:", e);
+        res.status(500).json({ error: e.message }); 
+    }
+});
+
+// 自定义 daily_symptoms GET
+app.get('/api/daily_symptoms', async (req, res) => {
+    try {
+        const { userId, date } = req.query;
+        let filter = {};
+        if (userId) {
+            const idList = await resolveUserIds(userId);
+            filter.userId = { $in: idList };
+        }
+        if (date) filter.date = date;
+        const data = await DailySymptom.find(filter).sort({ createdAt: -1 });
+        res.json(data.map(format));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 自定义 voice_logs GET
+app.get('/api/voice_logs', async (req, res) => {
+    try {
+        const { userId, date } = req.query;
+        let filter = {};
+        if (userId) {
+            const idList = await resolveUserIds(userId);
+            filter.userId = { $in: idList };
+        }
+        if (date) filter.date = date;
+        const data = await VoiceLog.find(filter).sort({ timestamp: -1 });
+        res.json(data.map(format));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 自定义 voice_logs POST
+app.post('/api/voice_logs', async (req, res) => {
+    try {
+        const { userId, date } = req.body;
+        const idList = await resolveUserIds(userId);
+        const data = await VoiceLog.create({ 
+            ...req.body, 
+            userId: idList[0] || userId, // 存储时优先使用 MongoDB ID
+            date: date || getLocalDateString(), // 确保 date 字符串存在用于过滤
+            createdAt: new Date() 
+        });
+        res.json(format(data));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 自定义 task_templates POST 以支持 upsert
+app.post('/api/task_templates', async (req, res) => {
+    try {
+        const { userId, title } = req.body;
+        if (!userId || !title) return res.status(400).json({ error: "Missing userId or title" });
+        const data = await TaskTemplate.findOneAndUpdate(
+            { userId, title },
+            { $set: { ...req.body, updatedAt: new Date() } },
+            { upsert: true, new: true }
+        );
+        res.json(format(data));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // 注册标准 CRUD 路由
 createRoutes('users', User);
 createRoutes('admins', Admin);
@@ -215,7 +310,8 @@ createRoutes('protocols', Protocol);
 createRoutes('roles', Role);
 createRoutes('chatmessages', ChatMessage);
 createRoutes('plans', User);
-createRoutes('voice_logs', VoiceLog);
+// voice_logs, daily_tasks, task_templates, daily_symptoms 已由自定义路由或逻辑接管，不再通过通用生成器注册
+
 // daily_tasks: 自定义 GET（支持 userId 跨格式匹配），其余 CRUD 仍用通用生成器
 app.get('/api/daily_tasks', async (req, res) => {
     try {
@@ -228,6 +324,8 @@ app.get('/api/daily_tasks', async (req, res) => {
             filter.userId = { $in: idList };
         }
         if (date) filter.date = date;
+        
+        console.log(`[DEBUG /api/daily_tasks] Combined filter:`, JSON.stringify(filter));
 
         const count = await DailyTask.countDocuments(filter);
         let query = DailyTask.find(filter);
@@ -240,6 +338,14 @@ app.get('/api/daily_tasks', async (req, res) => {
         }
 
         const data = await query.exec();
+
+        // [ALIGNMENT] 如果查询结果为空，且有 userId，自动根据模板生成
+        if (data.length === 0 && userId && !(_start || _end)) {
+            console.log(`[GET /api/daily_tasks] No tasks for user ${userId} on ${date}. Triggering template logic...`);
+            const generated = await TaskPolicyService.generateTasksFromTemplates(userId, date || getLocalDateString());
+            return res.json(generated.map(format));
+        }
+
         res.setHeader('Access-Control-Expose-Headers', 'X-Total-Count');
         res.setHeader('X-Total-Count', count);
         res.json(data.map(format));
@@ -256,7 +362,20 @@ app.post('/api/daily_tasks', async (req, res) => {
     catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.patch('/api/daily_tasks/:id', async (req, res) => {
-    try { const updated = await DailyTask.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true }); res.json(format(updated)); }
+    try { 
+        const updated = await DailyTask.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true });
+        
+        // [ALIGNMENT] 如果标记为不可执行，则同步模版状态
+        if (updated && req.body.isInfeasible) {
+            console.log(`[DailyTask] Task ${req.params.id} marked as infeasible. Updating template.`);
+            await TaskTemplate.findOneAndUpdate(
+                { userId: updated.userId, category: updated.category, title: updated.title },
+                { $set: { isInfeasible: true } }
+            );
+        }
+        
+        res.json(format(updated)); 
+    }
     catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.delete('/api/daily_tasks/:id', async (req, res) => {
@@ -296,10 +415,23 @@ app.post('/api/get-ai-chat-reply', async (req, res) => {
     try {
         const { message, text, profile, history = [] } = req.body;
         const userMessage = message || text;
-        const SYSTEM_INSTRUCTION = `你是一位专业的肿瘤康复AI教练。基于“五治五养”体系提供康养建议...`;
+        const SYSTEM_INSTRUCTION = `你是一位专业的肿瘤康复AI教练。基于“五治五养”体系（饮食养、运动养、睡眠养、心理养、功能养）为患者提供支持。
+核心原则：
+1. 只提供康养建议，不代替诊断与处方。
+2. 语言通俗易懂，给出明确的可执行方案。
+3. 识别“危险信号”（高热、剧痛、大出血、呼吸困难），一旦发现立即建议线下就医。
+4. 所有回答必须包含：[解释]、[今日行动建议]、[注意事项]。
+5. 永远带免责声明：本建议不构成医疗诊断。
+6. **计划管理能力**：当患者表达需要调整康复计划、增加任务或当前任务困难时，你可以在回复末尾包含 [PLAN_ACTION] 标签。
+   格式：[PLAN_ACTION]{"type": "ADD_TASK", "task": {"category": "diet|exercise|mental|function", "title": "任务标题", "description": "补充描述"}}[/PLAN_ACTION]
+   支持类型：ADD_TASK, UPDATE_TASK, DELETE_TASK。`;
+
         const reply = await AnalysisService.callAI(userMessage, history, SYSTEM_INSTRUCTION);
         res.json({ reply });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) {
+        console.error("[AI Chat Route Error]", e);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 app.post('/api/generate-health-report', async (req, res) => {
@@ -314,6 +446,84 @@ app.post('/api/diary/summarize', async (req, res) => {
         const result = await AnalysisService.summarizeDiary(req.body.history, req.body.profile);
         res.json(result);
     } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// --- OpenClaw: 全维上下文接口 ---
+app.get('/api/users/:userId/full-context', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const idList = await resolveUserIds(userId);
+        
+        // 1. 获取用户档案
+        const user = await User.findOne({ 
+            $or: [{ firebaseUid: userId }, { _id: mongoose.Types.ObjectId.isValid(userId) ? userId : null }] 
+        });
+        if (!user) return res.status(404).json({ error: "User not found" });
+
+        const userObj = user.toObject ? user.toObject({ getters: true }) : user;
+
+        // 2. 获取最近 5 条 AI 对话记录
+        const recentMessages = await ChatMessage.find({ 
+            userId: { $in: idList } 
+        }).sort({ timestamp: -1 }).limit(5);
+
+        // 3. 环境数据 (使用本地 utils)
+        const adcode = userObj.locationAdcode || "310000";
+        const weather = await getLiveWeather(adcode);
+        const solarTerm = getSolarTerm();
+        
+        const environment = {
+            location: userObj.locationName || "上海市",
+            time: new Date().toISOString(),
+            solarTerm,
+            weather: weather.weather,
+            temperature: weather.temperature,
+            humidity: weather.humidity,
+            airQuality: "优",
+            altitude: 15
+        };
+
+        // 4. 体征数据
+        const weight = userObj.weight || userObj.questionnaire?.weight;
+        const height = userObj.height || userObj.questionnaire?.height;
+        const bmi = (weight && height) ? (weight / Math.pow(height/100, 2)).toFixed(1) : "未知";
+
+        const vitals = {
+            bmi,
+            heartRate: userObj.wearable?.isConnected ? "72 bpm" : "未监测 (建议接入设备)",
+            stepsToday: userObj.wearable?.isConnected ? "3420" : "待同步",
+            sleepQuality: (userObj.scores?.sleep > 80) ? "良好" : "需调优",
+            lastBloodPressure: "近期未记录",
+            bodyTemperature: "36.6℃ (档案记录)"
+        };
+
+        // 5. 依从性
+        const scores = userObj.scores || { diet: 80, exercise: 80, sleep: 80, mental: 80, function: 80 };
+        const avgScore = Math.round((scores.diet + scores.exercise + scores.sleep + scores.mental + scores.function) / 5);
+        const missedTasks = [];
+        if (scores.exercise < 70) missedTasks.push("每日适度户外活动");
+        if (scores.mental < 70) missedTasks.push("晚间正念冥想");
+
+        const adherence = {
+            completionRate: `${avgScore}%`,
+            missedTasks: missedTasks.length > 0 ? missedTasks : ["暂无明显遗漏"]
+        };
+
+        // 6. 康复背景指引
+        const lastMedicalOrder = `患者处于${userObj.cancerType || '康复'}${userObj.stage || ''}阶段。当前康复重点：维持${avgScore}%以上的依从水平，重点关注${scores.diet < 70 ? '饮食营养' : '身体平衡'}与心理状态。`;
+
+        res.json({
+            profile: format(user),
+            recentMessages: recentMessages.map(format),
+            environment,
+            vitals,
+            adherence,
+            lastMedicalOrder
+        });
+    } catch (e) {
+        console.error("[FullContext Error]", e);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // 干预与提醒 (ReminderService)

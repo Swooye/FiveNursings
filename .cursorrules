@@ -1,0 +1,16 @@
+# Project Architecture Rules
+
+> [!IMPORTANT]
+> This project follows a **Hybrid Architecture** (Firebase Hosting + Cloud Run).
+> Detailed rules and deployment instructions are maintained in: [DEVELOPMENT_GUIDE.md](file:///Users/wayne/FiveNursings/RESOURCES/DEVELOPMENT_GUIDE.md#L105-L131)
+
+## Core Deployment
+- **Backend (API)**: `gcloud run deploy api --source . --project fivenursings-73917017-a0dfd`
+- **Frontend**: `firebase deploy --only hosting`
+
+## Safety Guidelines
+- **DO NOT** migrate backend logic from Cloud Run back to Firebase Functions.
+- Ensure `gcloud` points to **Project B (fivenursings-73917017-a0dfd)**.
+- For all API paths, ensure they match the Hosting rewrites (`/api/**`).
+- **User ID Standard**: ALWAYS use `resolveUserIds` on the backend for logic involving `userId` (symptoms, logs, tasks). NEVER assume a single ID format (Firebase UID vs MongoDB ID).
+- **Database Isolation**: NEVER hardcode `fivenursing_pro`. Use `process.env.NODE_ENV` or `MONGODB_DB_NAME` to determine the database name dynamically. Default to `fivenursing_dev` in development.

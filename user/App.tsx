@@ -116,6 +116,10 @@ const App: React.FC = () => {
     todaySymptoms: [], lastSymptomUpdate: new Date().toISOString()
   });
 
+  const [selectedDaySymptoms, setSelectedDaySymptoms] = useState<string[]>([]);
+  const profileRef = useRef(profile);
+  useEffect(() => { profileRef.current = profile; }, [profile]);
+
   const [favorites, setFavorites] = useState<SKU[]>(() => {
     const saved = localStorage.getItem('user_favorites');
     return saved ? JSON.parse(saved) : [];
@@ -229,9 +233,9 @@ const App: React.FC = () => {
     } catch (e) { console.error("Failed to check unread:", e); }
   }, [user]);
 
-  const fetchVoiceLogs = useCallback(async (userId: string) => {
+  const fetchVoiceLogs = useCallback(async (userId: string, date: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/voice_logs?userId=${userId}`);
+      const res = await fetch(`${API_URL}/api/voice_logs?userId=${userId}&date=${date}`);
       if (res.ok) {
         const data = await res.json();
         setVoiceLogs(data);
@@ -239,16 +243,54 @@ const App: React.FC = () => {
     } catch (e) { console.error("Failed to fetch voice logs:", e); }
   }, []);
 
-  const fetchDailyTasks = useCallback(async (userId: string, dateStr?: string) => {
+  const fetchDailyTasks = useCallback(async (userId: string, date: string) => {
+    console.log(`[DEBUG] fetchDailyTasks called for date: ${date}`);
     try {
-      const targetDate = dateStr || selectedDate;
-      const res = await fetch(`${API_URL}/api/daily_tasks?userId=${userId}&date=${targetDate}`);
-      if (res.ok) {
-        const data = await res.json();
-        setDailyTasks(data);
-      }
-    } catch (e) { console.error("Failed to fetch tasks:", e); }
-  }, []);
+        const [tasksRes, symptomsRes] = await Promise.all([
+            fetch(`${API_URL}/api/daily_tasks?userId=${userId}&date=${date}`),
+            fetch(`${API_URL}/api/daily_symptoms?userId=${userId}&date=${date}`)
+        ]);
+        
+        if (tasksRes.ok) {
+            const data = await tasksRes.json();
+            setDailyTasks(data);
+        }
+
+        if (symptomsRes.ok) {
+            const symptomsData = await symptomsRes.json();
+            console.log(`[DEBUG] Symptoms data for ${date}:`, symptomsData);
+            
+            let finalSymptoms: string[] = [];
+            if (Array.isArray(symptomsData) && symptomsData.length > 0) {
+                finalSymptoms = symptomsData[0].symptoms || [];
+            } else if (symptomsData && symptomsData.symptoms) {
+                finalSymptoms = symptomsData.symptoms;
+            } else {
+                // 如果是今天且没有保存记录，则从 profile (ref) 中取
+                const isToday = date === toLocalDateString();
+                finalSymptoms = isToday ? (profileRef.current.todaySymptoms || []) : [];
+            }
+            console.log(`[DEBUG] Setting selectedDaySymptoms for ${date} to:`, finalSymptoms);
+            setSelectedDaySymptoms(finalSymptoms);
+        }
+    } catch (e) {
+        console.error("Failed to fetch daily data:", e);
+    }
+  }, []); // 移除 profile.todaySymptoms 依赖
+
+  const handleUpdateSymptoms = useCallback(async (symptoms: string[]) => {
+    setSelectedDaySymptoms(symptoms);
+    if (selectedDate === toLocalDateString()) {
+        setProfile(prev => ({ ...prev, todaySymptoms: symptoms }));
+    }
+    try {
+        await fetch(`${API_URL}/api/daily_symptoms`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: profile.id, date: selectedDate, symptoms })
+        });
+    } catch (e) { console.error("Failed to update symptoms:", e); }
+  }, [profile.id, selectedDate]);
 
   const triggerTaskGeneration = useCallback(async (userId: string, profile: PatientProfile, dateStr?: string) => {
     try {
@@ -269,12 +311,12 @@ const App: React.FC = () => {
   useEffect(() => {
     checkUnread();
     if (profile.id) {
-        fetchVoiceLogs(profile.id);
+        fetchVoiceLogs(profile.id, selectedDate);
         fetchDailyTasks(profile.id, selectedDate);
     }
     const timer = setInterval(checkUnread, 30000); 
     return () => clearInterval(timer);
-  }, [checkUnread, profile.id, fetchVoiceLogs, fetchDailyTasks]);
+  }, [checkUnread, profile.id, fetchVoiceLogs, fetchDailyTasks, selectedDate]);
 
   // 已读权交给 AIChat 组件处理，此处移除自动标记逻辑
 
@@ -414,6 +456,7 @@ const App: React.FC = () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 userId: profile.id,
+                date: selectedDate,
                 summary,
                 impact,
                 timestamp: new Date().toISOString()
@@ -432,14 +475,34 @@ const App: React.FC = () => {
     const task = dailyTasks.find(t => (t as any).id === taskId || (t as any)._id === taskId);
     if (!task) return;
     
-    const newCompleted = !task.completed;
-    setDailyTasks(prev => prev.map(t => ((t as any).id === taskId || (t as any)._id === taskId) ? { ...t, completed: newCompleted } : t));
+    let newCompleted = task.completed;
+    let newCount = task.currentCount || 0;
+    const targetCount = task.targetCount || 1;
+
+    if (targetCount > 1) {
+      if (newCompleted) {
+        // If already done, toggle back to 0
+        newCount = 0;
+        newCompleted = false;
+      } else {
+        newCount += 1;
+        if (newCount >= targetCount) {
+          newCompleted = true;
+        }
+      }
+    } else {
+      newCompleted = !task.completed;
+      newCount = newCompleted ? 1 : 0;
+    }
+
+    const updates = { completed: newCompleted, currentCount: newCount };
+    setDailyTasks(prev => prev.map(t => ((t as any).id === taskId || (t as any)._id === taskId) ? { ...t, ...updates } : t));
     
     try {
         await fetch(`${API_URL}/api/daily_tasks/${taskId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ completed: newCompleted })
+            body: JSON.stringify(updates)
         });
     } catch (e) { console.error("Failed to toggle task:", e); }
   };
@@ -471,7 +534,7 @@ const App: React.FC = () => {
   const handlePlanAction = async (action: any) => {
     if (!profile.id) return;
     try {
-        const today = new Date().toISOString().split('T')[0];
+        const today = toLocalDateString();
         if (action.type === 'ADD_TASK') {
             const newTask = {
                 userId: profile.id,
@@ -547,6 +610,7 @@ const App: React.FC = () => {
           setActiveTab('chat');
           setSelectedNursing(null);
         }}
+        isDark={isDarkEffective}
       />
     );
     if (showHumanCoach) return <HumanCoachChat onBack={() => setShowHumanCoach(false)} profile={profile} onUpdateProfile={handleUpdateProfile} />;
@@ -565,12 +629,14 @@ const App: React.FC = () => {
           selectedDate={selectedDate}
           onSelectDate={(d) => {
             setSelectedDate(d);
-            if (profile.id) fetchDailyTasks(profile.id, d);
+            // 移除这里的冗余 fetchDailyTasks，交由 useEffect(selectedDate) 处理
           }}
           onToggleTask={handleToggleTask}
           onUpdateTask={handleUpdateTask}
           onGeneratePlan={() => setShowPlanCustomizer(true)}
           onUpdateProfile={handleUpdateProfile} 
+          onUpdateSymptoms={handleUpdateSymptoms}
+          currentDateSymptoms={selectedDaySymptoms}
           onStartVoice={() => setAssistantMode('logging')} 
           recentLogs={voiceLogs} 
           onViewJournal={() => setShowJournal(true)} 

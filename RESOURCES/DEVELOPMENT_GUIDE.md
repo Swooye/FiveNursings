@@ -101,5 +101,30 @@ generateResponse(promptMsg, nextMsgs);
 
 ---
 
+## 7. 核心架构与部署规则 (Hybrid Architecture & Deployment)
+
+> [!IMPORTANT]
+> 项目采用 **“混合架构” (Hybrid Architecture)**：前端由 Firebase Hosting 托管，后端 API 由 Cloud Run 独立容器运行。
+
+### 7.1 分层架构
+- **前端 (Frontend)**: 基于 Firebase Hosting，负责静态资源交付与客户端逻辑。
+- **后端 (Backend API)**: 基于 Google Cloud Run (独立 Express 容器)，负责业务逻辑、数据库交互与 AI 服务接入。
+- **路由转发**: `firebase.json` 中的 `rewrites` 规则将所有 `/api/**` 的请求转发至 Cloud Run 服务 `api` (`us-central1`)。
+
+### 7.2 部署 指令 (Deployment Commands)
+- **后端部署 (Cloud Run)**:
+  `gcloud run deploy api --source . --project fivenursings-73917017-a0dfd`
+- **前端部署 (Firebase Hosting)**:
+  `firebase deploy --only hosting`
+
+### 7.3 稳定性与安全禁止项 (Safety Guidelines)
+- **!!! 二级严禁事项 !!!**:
+  - **严禁**尝试将后端逻辑（API 路由、控制器、中间件）从独立的 Cloud Run 容器合并回 Firebase Functions。Cloud Run 是当前且唯一的生产 API 源。
+  - **严禁**擅自修改 `firebase.json` 中的 API rewrite 路径，除非后端网关架构发生重大调整。
+- **账号授权**:
+  - 始终确保 `gcloud` 当前激活项目为 **账号 B (fivenursings-73917017-a0dfd)**。
+
+---
+
 > [!TIP]
 > 遵守以上规范将极大减少命名冲突和逻辑冲突带来的神秘 Bug。

@@ -12,7 +12,7 @@
         {
           "source": "/api/**",
           "run": {
-            "serviceId": "api",
+            "serviceId": "fivenursings-backend",
             "region": "us-central1"
           }
         },
@@ -34,7 +34,7 @@
         {
           "source": "/api/**",
           "run": {
-            "serviceId": "api",
+            "serviceId": "fivenursings-backend",
             "region": "us-central1"
           }
         },
