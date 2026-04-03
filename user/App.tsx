@@ -48,6 +48,14 @@ import {
 // 动态识别环境
 const API_URL = import.meta.env.DEV ? "" : "https://api-u46fik5vcq-uc.a.run.app";
 
+const toLocalDateString = (date = new Date()) => {
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [dbUser, setDbUser] = useState<any>(null);
@@ -55,6 +63,7 @@ const App: React.FC = () => {
   const [_, setForceUpdate] = useState(0);
 
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [selectedDate, setSelectedDate] = useState(toLocalDateString());
   const [previousTab, setPreviousTab] = useState('dashboard');
   const [initialCoachMessage, setInitialCoachMessage] = useState<string | null>(null);
   const [assistantMode, setAssistantMode] = useState<'chat' | 'logging' | null>(null);
@@ -126,8 +135,8 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (dbUser) {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const lastUpdateStr = dbUser.lastSymptomUpdate ? dbUser.lastSymptomUpdate.split('T')[0] : '';
+      const todayStr = toLocalDateString();
+      const lastUpdateStr = dbUser.lastSymptomUpdate ? toLocalDateString(new Date(dbUser.lastSymptomUpdate)) : '';
       
       let todaySymptoms = dbUser.todaySymptoms || [];
       if (lastUpdateStr && lastUpdateStr !== todayStr) {
@@ -230,10 +239,10 @@ const App: React.FC = () => {
     } catch (e) { console.error("Failed to fetch voice logs:", e); }
   }, []);
 
-  const fetchDailyTasks = useCallback(async (userId: string) => {
+  const fetchDailyTasks = useCallback(async (userId: string, dateStr?: string) => {
     try {
-      const today = new Date().toISOString().split('T')[0];
-      const res = await fetch(`${API_URL}/api/daily_tasks?userId=${userId}&date=${today}`);
+      const targetDate = dateStr || selectedDate;
+      const res = await fetch(`${API_URL}/api/daily_tasks?userId=${userId}&date=${targetDate}`);
       if (res.ok) {
         const data = await res.json();
         setDailyTasks(data);
@@ -241,13 +250,13 @@ const App: React.FC = () => {
     } catch (e) { console.error("Failed to fetch tasks:", e); }
   }, []);
 
-  const triggerTaskGeneration = useCallback(async (userId: string, profile: PatientProfile) => {
+  const triggerTaskGeneration = useCallback(async (userId: string, profile: PatientProfile, dateStr?: string) => {
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const targetDate = dateStr || selectedDate;
       const res = await fetch(`${API_URL}/api/daily_tasks/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId, profile, date: today })
+          body: JSON.stringify({ userId, profile, date: targetDate })
       });
       if (res.ok) {
           const data = await res.json();
@@ -261,7 +270,7 @@ const App: React.FC = () => {
     checkUnread();
     if (profile.id) {
         fetchVoiceLogs(profile.id);
-        fetchDailyTasks(profile.id);
+        fetchDailyTasks(profile.id, selectedDate);
     }
     const timer = setInterval(checkUnread, 30000); 
     return () => clearInterval(timer);
@@ -451,10 +460,10 @@ const App: React.FC = () => {
         const res = await fetch(`${API_URL}/api/daily_tasks/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: profile.id, profile, date: new Date().toISOString().split('T')[0], commit: true })
+            body: JSON.stringify({ userId: profile.id, profile, date: selectedDate, commit: true })
         });
         if (res.ok) {
-            fetchDailyTasks(profile.id);
+            fetchDailyTasks(profile.id, selectedDate);
         }
     } catch (e) { console.error("Failed to generate plan:", e); }
   };
@@ -467,7 +476,7 @@ const App: React.FC = () => {
             const newTask = {
                 userId: profile.id,
                 ...action.task,
-                date: today,
+                date: selectedDate,
                 completed: false,
                 isManual: true,
                 source: 'AI_COACH'
@@ -478,7 +487,7 @@ const App: React.FC = () => {
                 body: JSON.stringify(newTask)
             });
             if (res.ok) {
-                fetchDailyTasks(profile.id);
+                fetchDailyTasks(profile.id, selectedDate);
                 setChatRefreshTrigger(prev => prev + 1);
             }
         }
@@ -553,6 +562,11 @@ const App: React.FC = () => {
         <Program 
           profile={profile} 
           tasks={dailyTasks}
+          selectedDate={selectedDate}
+          onSelectDate={(d) => {
+            setSelectedDate(d);
+            if (profile.id) fetchDailyTasks(profile.id, d);
+          }}
           onToggleTask={handleToggleTask}
           onUpdateTask={handleUpdateTask}
           onGeneratePlan={() => setShowPlanCustomizer(true)}
@@ -707,10 +721,11 @@ const App: React.FC = () => {
         <PlanCustomizer 
           profile={profile}
           existingTasks={dailyTasks}
+          selectedDate={selectedDate}
           onBack={() => setShowPlanCustomizer(false)}
           onConfirm={() => {
             setShowPlanCustomizer(false);
-            fetchDailyTasks(profile.id);
+            fetchDailyTasks(profile.id, selectedDate);
           }}
           isDark={isDarkEffective}
         />

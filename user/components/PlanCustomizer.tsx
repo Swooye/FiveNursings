@@ -145,12 +145,21 @@ const AddTaskModal: React.FC<{
 interface PlanCustomizerProps {
   profile: PatientProfile;
   existingTasks?: DailyTask[];
+  selectedDate: string;
   onBack: () => void;
   onConfirm: () => void;
   isDark?: boolean;
 }
 
-const PlanCustomizer: React.FC<PlanCustomizerProps> = ({ profile, existingTasks, onBack, onConfirm, isDark }) => {
+const PlanCustomizer: React.FC<PlanCustomizerProps> = ({ profile, existingTasks, selectedDate, onBack, onConfirm, isDark }) => {
+  const toLocalDateString = (date = new Date()) => {
+    const d = new Date(date);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   const [isGenerating, setIsGenerating] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   // Tasks split by source
@@ -163,7 +172,7 @@ const PlanCustomizer: React.FC<PlanCustomizerProps> = ({ profile, existingTasks,
   const [addingSource, setAddingSource] = useState<'doctor' | 'custom' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const API_URL = import.meta.env.DEV ? "http://localhost:3002" : "https://api-u46fik5vcq-uc.a.run.app";
+  const API_URL = import.meta.env.DEV ? "" : "https://api-u46fik5vcq-uc.a.run.app";
 
   // Merged task list for submission
   const planProposal = [...aiTasks, ...doctorTasks, ...customTasks];
@@ -191,7 +200,7 @@ const PlanCustomizer: React.FC<PlanCustomizerProps> = ({ profile, existingTasks,
         const res = await fetch(`${API_URL}/api/daily_tasks/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: profile.id, profile, date: new Date().toISOString().split('T')[0], commit: false })
+            body: JSON.stringify({ userId: profile.id, profile, date: selectedDate, commit: false })
         });
         if (res.ok) {
             const tasks: DailyTask[] = await res.json();
@@ -215,16 +224,16 @@ const PlanCustomizer: React.FC<PlanCustomizerProps> = ({ profile, existingTasks,
             const res = await fetch(`${API_URL}/api/daily_tasks/generate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: profile.id, profile, date: new Date().toISOString().split('T')[0], commit: true })
+                body: JSON.stringify({ userId: profile.id, profile, date: selectedDate, commit: true })
             });
             if (!res.ok) { setError("确认计划失败，请重试"); return; }
             // Also commit doctor & custom tasks
-            const today = new Date().toISOString().split('T')[0];
+            const targetDate = selectedDate;
             for (const t of [...doctorTasks, ...customTasks]) {
               await fetch(`${API_URL}/api/daily_tasks`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ...t, userId: profile.id, date: today })
+                body: JSON.stringify({ ...t, userId: profile.id, date: targetDate })
               });
             }
             onConfirm();
@@ -240,11 +249,11 @@ const PlanCustomizer: React.FC<PlanCustomizerProps> = ({ profile, existingTasks,
                   });
                 } else {
                   // New tasks (doctor/custom added in this session)
-                  const today = new Date().toISOString().split('T')[0];
+                  const targetDate = selectedDate;
                   await fetch(`${API_URL}/api/daily_tasks`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ ...t, userId: profile.id, date: today })
+                    body: JSON.stringify({ ...t, userId: profile.id, date: targetDate })
                   });
                 }
             }

@@ -19,8 +19,24 @@ const AnalysisService = require('./services/AnalysisService');
 const ReminderService = require('./services/ReminderService');
 const TaskPolicyService = require('./services/TaskPolicyService');
 
+const getLocalDateString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 const app = express();
-const port = 3002;
+
+// 公共健康检查接口 (用于部署验证)
+app.get('/api/health', (req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+app.get('/health', (req, res) => {
+    res.sendStatus(200);
+});
+const port = process.env.PORT || 3002;
 
 // --- Multer 配置 (用于图片上传) ---
 const storage = multer.diskStorage({
@@ -101,7 +117,7 @@ app.post('/api/daily_tasks/generate', async (req, res) => {
         const tasks = await TaskPolicyService.generateTasksFromProfile(
             userId, 
             profile, 
-            date || new Date().toISOString().split('T')[0],
+            date || getLocalDateString(),
             commit
         );
         res.json(tasks);
@@ -402,10 +418,12 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
 });
 
 // 服务启动
+console.log("\n>>> [ALIGNMENT V1.3] DailyTask Hub Active <<<");
+console.log(`Modular Dev Server running on port ${port}\n`);
+app.listen(port);
+
 mongoose.connect(BASE_URI, { useNewUrlParser: true, useUnifiedTopology: true }).then(() => {
-    console.log("\n>>> [ALIGNMENT V1.3] DailyTask Hub Active <<<");
-    console.log(`Modular Dev Server running on port ${port}\n`);
-    app.listen(port);
+    console.log("MongoDB connected successfully");
 }).catch(err => {
     console.error("MongoDB connection error:", err);
 });

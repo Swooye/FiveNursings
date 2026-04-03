@@ -1,3 +1,4 @@
+const fetch = require('node-fetch');
 const { Solar } = require('lunar-javascript');
 
 /**

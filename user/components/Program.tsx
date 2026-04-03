@@ -16,17 +16,22 @@ interface ProgramProps {
   recentLogs: VoiceLog[];
   onViewJournal: () => void;
   onAddDiary: () => void;
+  selectedDate: string;
+  onSelectDate: (date: string) => void;
   isDark?: boolean;
 }
 
-const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdateTask, onGeneratePlan, onUpdateProfile, onStartVoice, recentLogs, onViewJournal, onAddDiary, isDark }) => {
-  const today = useMemo(() => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, []);
+const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdateTask, onGeneratePlan, onUpdateProfile, onStartVoice, recentLogs, onViewJournal, onAddDiary, selectedDate, onSelectDate, isDark }) => {
+  const toLocalDateString = (date = new Date()) => {
+    const d = new Date(date);
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
-  const [selectedDate, setSelectedDate] = useState<Date>(today);
+  const todayStr = useMemo(() => toLocalDateString(), []);
+
   const [showCalendar, setShowCalendar] = useState(false);
   const [editingTask, setEditingTask] = useState<DailyTask | null>(null);
   const [showInfeasible, setShowInfeasible] = useState(false);
@@ -36,8 +41,7 @@ const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdat
     return Array.from({ length: 14 }, (_, i) => {
       const d = new Date();
       d.setDate(d.getDate() - (13 - i));
-      d.setHours(0, 0, 0, 0);
-      return d;
+      return toLocalDateString(d);
     });
   }, []);
 
@@ -55,15 +59,14 @@ const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdat
   }, [selectedDate]);
 
   const toggleTask = (id: string) => {
-    if (selectedDate.getTime() !== today.getTime()) return;
+    if (selectedDate !== todayStr) return;
     onToggleTask(id);
   };
 
   const filteredLogs = useMemo(() => {
     return recentLogs.filter(log => {
-      const logDate = new Date(log.timestamp);
-      logDate.setHours(0, 0, 0, 0);
-      return logDate.getTime() === selectedDate.getTime();
+      const logDateStr = toLocalDateString(new Date(log.timestamp));
+      return logDateStr === selectedDate;
     });
   }, [recentLogs, selectedDate]);
 
@@ -73,11 +76,12 @@ const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdat
 
   const completedCount = visibleTasks.filter(t => t.completed).length;
   const progressPercent = Math.round((completedCount / (visibleTasks.length || 1)) * 100);
-  const isToday = selectedDate.getTime() === today.getTime();
+  const isToday = selectedDate === todayStr;
 
-  const getDayName = (date: Date) => {
+  const getDayName = (dateStr: string) => {
     const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-    if (date.getTime() === today.getTime()) return '今日';
+    if (dateStr === todayStr) return '今日';
+    const date = new Date(dateStr);
     return days[date.getDay()];
   };
 
@@ -86,33 +90,34 @@ const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdat
       {showCalendar && (
         <CalendarPicker 
           selectedDate={selectedDate} 
-          onSelect={(d) => { setSelectedDate(d); setShowCalendar(false); }} 
+          onSelect={(d) => { onSelectDate(toLocalDateString(d)); setShowCalendar(false); }} 
           onClose={() => setShowCalendar(false)}
-          today={today}
+          todayStr={todayStr}
         />
       )}
 
       {/* Date Navigation Header */}
       <div className="flex items-center space-x-3">
         <div ref={scrollRef} className="flex-1 flex space-x-2.5 overflow-x-auto no-scrollbar py-2 pr-2">
-          {dateStrip.map((date) => {
-            const isSelected = date.getTime() === selectedDate.getTime();
-            const isTodayItem = date.getTime() === today.getTime();
+          {dateStrip.map((dateStr) => {
+            const isSelected = dateStr === selectedDate;
+            const isTodayItem = dateStr === todayStr;
+            const displayDate = new Date(dateStr).getDate();
             return (
               <button
-                key={date.toISOString()}
+                key={dateStr}
                 data-selected={isSelected}
-                onClick={() => setSelectedDate(date)}
-                className={`flex flex-col items-center justify-center min-w-[54px] h-20 rounded-[24px] transition-all duration-300 shrink-0 border-2 ${
+                onClick={() => onSelectDate(dateStr)}
+              className={`flex flex-col items-center justify-center min-w-[54px] h-20 rounded-[24px] transition-all duration-300 shrink-0 border-2 ${
                   isSelected 
                   ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500 shadow-lg scale-105' 
                   : 'bg-white dark:bg-[#111827] text-slate-400 dark:text-slate-500 border-slate-100 dark:border-white/5 hover:border-emerald-200'
                 }`}
               >
                 <span className={`text-[9px] font-black mb-1.5 uppercase tracking-tighter ${isSelected ? 'text-emerald-600 dark:text-emerald-400' : 'opacity-60'}`}>
-                  {getDayName(date)}
+                  {getDayName(dateStr)}
                 </span>
-                <span className="text-lg font-black">{date.getDate()}</span>
+                <span className="text-lg font-black">{displayDate}</span>
                 {isTodayItem && (
                   <div className={`w-1 h-1 rounded-full mt-1 ${isSelected ? 'bg-emerald-500' : 'bg-emerald-500'}`}></div>
                 )}
@@ -133,7 +138,9 @@ const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdat
         <div className="flex justify-between items-end mb-4 relative z-10">
           <div>
             <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tight">
-              {isToday ? '今日康复进度' : `${selectedDate.getMonth() + 1}月${selectedDate.getDate()}日回顾`}
+            {isToday ? '今日康复进度' : (
+              `${new Date(selectedDate).getMonth() + 1}月${new Date(selectedDate).getDate()}日回顾`
+            )}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest mt-1">
               {isToday ? `已完成 ${completedCount}/${visibleTasks.length} 项任务` : '历史康复数据已归档'}
@@ -337,12 +344,13 @@ const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdat
 };
 
 const CalendarPicker: React.FC<{ 
-  selectedDate: Date; 
-  today: Date;
+  selectedDate: string; 
+  todayStr: string;
   onSelect: (date: Date) => void; 
   onClose: () => void 
-}> = ({ selectedDate, today, onSelect, onClose }) => {
-  const [viewMonth, setViewMonth] = useState(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1));
+}> = ({ selectedDate, todayStr, onSelect, onClose }) => {
+  const selectedDateObj = useMemo(() => new Date(selectedDate), [selectedDate]);
+  const [viewMonth, setViewMonth] = useState(new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), 1));
 
   const daysInMonth = useMemo(() => {
     const d = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0);
@@ -381,9 +389,10 @@ const CalendarPicker: React.FC<{
           ))}
           {Array.from({ length: daysInMonth }).map((_, i) => {
             const date = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), i + 1);
-            const isSelected = date.getTime() === selectedDate.getTime();
-            const isToday = date.getTime() === today.getTime();
-            const isFuture = date.getTime() > today.getTime();
+            const dStr = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0');
+            const isSelected = dStr === selectedDate;
+            const isToday = dStr === todayStr;
+            const isFuture = dStr > todayStr;
 
             return (
               <button
@@ -407,7 +416,7 @@ const CalendarPicker: React.FC<{
         </div>
 
         <button 
-          onClick={() => onSelect(today)}
+          onClick={() => onSelect(new Date())}
           className="w-full bg-slate-100 dark:bg-slate-800 py-4 rounded-2xl text-xs font-black text-slate-600 dark:text-slate-400 uppercase tracking-widest hover:bg-slate-200 transition-colors"
         >
           回到今天

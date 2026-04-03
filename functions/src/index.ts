@@ -69,7 +69,7 @@ const chatSchema = new mongoose.Schema({
     category: { type: String },                     // e.g. '饮食养', '运动养'
     timestamp: { type: Date, default: Date.now },
     isRead: { type: Boolean, default: false }
-}, { strict: false, collection: 'chatmessages' });
+}, { strict: false, collection: 'chat_messages' });
 const adminSchema = new mongoose.Schema({}, { strict: false, collection: 'admins' });
 const protocolSchema = new mongoose.Schema({
     key: { type: String, index: true },
@@ -200,7 +200,7 @@ const MODEL_MAP: Record<string, any> = {
     mall_items: MallItem,
     protocols: Protocol,
     roles: Role,
-    chatmessages: ChatMessage,
+    chat_messages: ChatMessage,
     plans: Plan
 };
 

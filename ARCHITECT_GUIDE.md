@@ -20,30 +20,21 @@
     - 订单与物流管理：处理商城订单。
     - 专家方案定制。
 
-## 2. 技术架构
-- **前端**：React + TypeScript + Tailwind CSS (Vite 驱动)。
-- **后端**：
-  - **开发环境**：Node.js + Express (本地 `server/index.js`，运行在 3002 端口)。
-  - **生产环境**：Firebase Cloud Functions (云端无服务器架构，Node.js 20)。
+## 2. 技术架构 (Hybrid Architecture)
+本系统采用**混合架构**，以平衡静态资源托管的便捷性与后端计算的高性能需求。
+
+- **前端 (User/Admin)**：React + TypeScript + Tailwind CSS (部署于 **Firebase Hosting**)。
+- **后端 (API/AI Server)**：
+  - **容器化部署 (生产环境)**：Node.js + Express + Docker (部署于 **Google Cloud Run**)。
+  - **开发环境**：本地 `server/index.js` (端口 3002)。
 - **数据库**：MongoDB (Atlas 云数据库)。
   - **开发库**：`fivenursing_dev`
   - **生产库**：`fivenursing_pro`
-- **认证**：Firebase Authentication (统一用户身份ID)。
+- **认证**：Firebase Authentication (统一用户内部 ID)。
 
-## 3. 后端接口规范
-**Base URL**: 
-- Dev: `/api` (通过 Vite Proxy 代理至 `localhost:3002`)
-- Pro: `https://api-u46fik5vcq-uc.a.run.app` (Firebase Function URL)
-
-**核心路由**:
-- `/users/sync` (POST): **关键接口**。用户登录后必须调用，用于同步/创建数据库档案并回显信息。
-- `/users/:userId/full-context` (GET): **OpenClaw 专用**。获取用户全维数据（档案、对话、模拟体征等）。
-- `/interventions` (POST): **OpenClaw 专用**。推送干预建议，写入 ChatMessage 并触发红点。
-- `/messages/unread-count/:userId` (GET): 获取未读计数。
-- `/messages/read-all/:userId` (PATCH): 标记所有消息为已读。
-- `/user/:id` (PATCH): 个人资料更新。
-- `/login` (POST): 管理后台登录。
-- `/mall_items` (GET/POST/PATCH): 商城商品管理。
+## 3. 开发规范与稳定性
+详细的命名规范（Database/API/Variables）、React 状态管理准则以及 CI/CD 流程，请参阅：
+👉 [DEVELOPMENT_GUIDE.md](file:///Users/wayne/FiveNursings/RESOURCES/DEVELOPMENT_GUIDE.md)
 
 ## 4. 关键开发经验与避坑指南 (必读)
 
@@ -66,8 +57,19 @@
 
 ### D. 部署与构建
 - **依赖兼容性**：云函数（Functions）对依赖版本敏感。如遇到 TypeScript 类型报错，可在 `tsconfig.json` 中开启 `skipLibCheck: true`。
-- **冷启动**：云函数存在冷启动延迟，首次请求可能较慢，前端需做好 Loading 状态管理。
-- **管理员初始化**：生产环境部署后，数据库是空的。务必在后端代码中加入“自动检测并创建超级管理员”的逻辑，防止部署后无法登录后台。
+- **冷启动**：Cloud Run 虽然存在冷启动，但通过预留实例或高性能基础镜像可缓解。
+- **管理员初始化**：生产环境部署后，数据库是空的。务必在后端代码中加入“自动检测并创建超级管理员”的逻辑。
+
+## 5. 架构稳定性与部署准则 (System Instructions)
+
+### 5.1 后端部署准则 (Cloud Run Only)
+- **容器化优先**：核心后端业务（神农大脑、B2B2C 调度等）必须基于 Dockerfile 结构，严禁转换为单一的 Firebase Functions。
+- **一致性**：核心后端逻辑使用 `gcloud run deploy` 部署。
+
+### 1.2 环境隔离与防回滚 (Isolation & Rollback)
+- **Dev vs Pro**：部署前必须确认 `gcloud config get-value project` 指向。生产环境严禁用于测试。
+- **原子化修改**：禁止在未运行本地模拟器 (Firebase Emulator) 的情况下直接向云端推送修改。
+- **回滚策略**：若连续三次修复未能解决一致性问题，立即回滚至上一个稳定的 Git Commit。
 
 ### E. 环境配置 (Env Vars)
 - **单一真理来源**：项目采用根目录 `.env` 作为唯一配置源。

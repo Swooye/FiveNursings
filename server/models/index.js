@@ -31,7 +31,7 @@ chatMessageSchema.index({ userId: 1, timestamp: -1 });
 chatMessageSchema.index({ sessionId: 1, timestamp: -1 });
 chatMessageSchema.index({ userId: 1, isRead: 1 });
 
-const ChatMessage = mongoose.models.ChatMessage || mongoose.model('ChatMessage', chatMessageSchema, 'chatmessages');
+const ChatMessage = mongoose.models.ChatMessage || mongoose.model('ChatMessage', chatMessageSchema, 'chat_messages');
 
 const Role = mongoose.model('Role', new mongoose.Schema({
     name: { type: String, required: true },
@@ -49,7 +49,7 @@ const voiceLogSchema = new mongoose.Schema({
         change: Number
     }
 }, { strict: false });
-const VoiceLog = mongoose.models.VoiceLog || mongoose.model('VoiceLog', voiceLogSchema, 'voicelogs');
+const VoiceLog = mongoose.models.VoiceLog || mongoose.model('VoiceLog', voiceLogSchema, 'voice_logs');
 
 const dailyTaskSchema = new mongoose.Schema({
     userId: { type: String, index: true },
@@ -60,7 +60,15 @@ const dailyTaskSchema = new mongoose.Schema({
     isInfeasible: { type: Boolean, default: false },
     suggestedTimes: [String]
 }, { strict: false });
-const DailyTask = mongoose.models.DailyTask || mongoose.model('DailyTask', dailyTaskSchema, 'dailytasks');
+const DailyTask = mongoose.models.DailyTask || mongoose.model('DailyTask', dailyTaskSchema, 'daily_tasks');
+
+const diaryEntrySchema = new mongoose.Schema({
+    userId: { type: String, index: true },
+    date: { type: String, index: true },
+    content: String,
+    timestamp: { type: Date, default: Date.now }
+}, { strict: false });
+const DiaryEntry = mongoose.models.DiaryEntry || mongoose.model('DiaryEntry', diaryEntrySchema, 'diary_entries');
 
 module.exports = {
     User,
@@ -71,5 +79,6 @@ module.exports = {
     Role,
     Plan,
     VoiceLog,
-    DailyTask
+    DailyTask,
+    DiaryEntry
 };
