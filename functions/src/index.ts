@@ -82,9 +82,11 @@ let isConnected = false;
 const connectDb = async () => {
     if (isConnected && mongoose.connection.readyState === 1) return;
     try {
-        const config = process.env.FIREBASE_CONFIG ? JSON.parse(process.env.FIREBASE_CONFIG) : {};
-        const projectId = config.projectId || admin.app().options.projectId || "";
-        const dbName = (projectId === PROD_PROJECT_ID) ? "fivenursing_pro" : "fivenursing_dev";
+        const projectId = process.env.GCLOUD_PROJECT || process.env.PROJECT_ID || admin.app().options.projectId || "";
+        const isProd = projectId === PROD_PROJECT_ID;
+        const dbName = isProd ? "fivenursing_pro" : "fivenursing_dev";
+        console.log(`[DB_SELECT] Project: ${projectId}, Using DB: ${dbName}`);
+        
         const envUri = process.env.MONGODB_URI || "mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net/";
         const parsedUrl = new URL(envUri);
         parsedUrl.pathname = `/${dbName}`;
@@ -286,7 +288,9 @@ apiRouter.post(['/daily_tasks/generate', '/daily_task/generate'], async (req: an
         const prompt = `请为以下患者生成今日康复清单：\n${JSON.stringify(profile)}\n要求：返回纯 JSON 数组格式 [{}, {}, ...]。`;
         
         const content = await callAI(prompt, [], instruction, true);
-        const cleanContent = content.replace(/```json|```/g, '').trim();
+        const jsonStart = content.indexOf('[');
+        const jsonEnd = content.lastIndexOf(']') + 1;
+        const cleanContent = jsonStart !== -1 ? content.substring(jsonStart, jsonEnd) : content.replace(/```json|```/g, '').trim();
         let tasks = JSON.parse(cleanContent);
         
         if (!Array.isArray(tasks) && tasks.tasks) tasks = tasks.tasks;

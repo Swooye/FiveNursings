@@ -195,7 +195,7 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
     setAiResponse('教练正在思考...');
     try {
       console.log("[Voice] Sending to backend:", text);
-      const res = await fetch(`${API_URL}/api/get-ai-chat-reply`, {
+      const res = await fetch(`${API_URL}/get-ai-chat-reply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
