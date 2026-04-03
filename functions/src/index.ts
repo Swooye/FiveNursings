@@ -9,7 +9,7 @@ import * as dotenv from "dotenv";
 dotenv.config();
 admin.initializeApp();
 
-const PROD_PROJECT_ID = "fivenursings-73917017-a0dfd";
+// const PROD_PROJECT_ID = "fivenursings-73917017-a0dfd"; // No longer needed, using FUNCTIONS_EMULATOR detection
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const AMAP_KEY = "ce237825915cd4d2837264fdcf0298bc";
 
@@ -82,10 +82,11 @@ let isConnected = false;
 const connectDb = async () => {
     if (isConnected && mongoose.connection.readyState === 1) return;
     try {
-        const projectId = process.env.GCLOUD_PROJECT || process.env.PROJECT_ID || admin.app().options.projectId || "";
-        const isProd = projectId === PROD_PROJECT_ID;
-        const dbName = isProd ? "fivenursing_pro" : "fivenursing_dev";
-        console.log(`[DB_SELECT] Project: ${projectId}, Using DB: ${dbName}`);
+        // FUNCTIONS_EMULATOR is "true" ONLY in local Firebase emulator. Absent in production.
+        const isEmulator = process.env.FUNCTIONS_EMULATOR === "true";
+        const dbName = isEmulator ? "fivenursing_dev" : "fivenursing_pro";
+        const projectId = process.env.GCLOUD_PROJECT || process.env.FIREBASE_CONFIG && JSON.parse(process.env.FIREBASE_CONFIG).projectId || "unknown";
+        console.log(`[DB_SELECT] Emulator=${isEmulator}, Project=${projectId}, DB=${dbName}`);
         
         const envUri = process.env.MONGODB_URI || "mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net/";
         const parsedUrl = new URL(envUri);
@@ -94,7 +95,8 @@ const connectDb = async () => {
         if (!parsedUrl.searchParams.has('w')) parsedUrl.searchParams.set('w', 'majority');
         await mongoose.connect(parsedUrl.toString());
         isConnected = true;
-    } catch (err) { throw err; }
+        console.log(`[DB_SELECT] Connected to ${dbName} successfully`);
+    } catch (err) { console.error('[DB_SELECT] Connection FAILED:', err); throw err; }
 };
 
 // --- Helpers ---
