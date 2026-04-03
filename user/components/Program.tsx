@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { DailyTask, VoiceLog, PatientProfile } from '../types';
 import { NURSING_ICONS } from '../constants';
-import { Check, Calendar as CalendarIcon, Mic, Sparkles, ChevronRight, History, Info, X, ChevronLeft, Plus, TrendingUp, Clock, ShieldOff, Eye, EyeOff, Trash2, Wand2, Bell } from 'lucide-react';
+import { Check, Calendar as CalendarIcon, Mic, Sparkles, ChevronRight, History, Info, X, ChevronLeft, Plus, TrendingUp, Clock, ShieldOff, Eye, EyeOff, Trash2, Wand2, Bell, Activity } from 'lucide-react';
 import TodaySymptoms from './TodaySymptoms';
 
 interface ProgramProps {
@@ -281,7 +281,7 @@ const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdat
                   task.completed ? 'bg-emerald-500 text-white shadow-xl shadow-emerald-500/20 scale-105' : 'bg-slate-50 dark:bg-slate-800 text-emerald-600'
                 }`}
               >
-                {task.completed ? <Check size={26} strokeWidth={4} /> : NURSING_ICONS[task.category]}
+                {task.completed ? <Check size={26} strokeWidth={4} /> : (NURSING_ICONS[task.category] || <Activity className="w-5 h-5" />)}
               </div>
               <div className="flex-1 min-w-0" onClick={() => setEditingTask(task)}>
                 <div className="flex justify-between items-start mb-0.5">

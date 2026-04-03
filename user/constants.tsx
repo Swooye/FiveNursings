@@ -22,13 +22,15 @@ export const RISK_SIGNALS = [
   "骨折部位剧痛"
 ];
 
-export const NURSING_ICONS = {
+export const NURSING_ICONS: Record<string, React.ReactNode> = {
   diet: <Utensils className="w-5 h-5" />,
   exercise: <Activity className="w-5 h-5" />,
   sleep: <Moon className="w-5 h-5" />,
   mental: <Heart className="w-5 h-5" />,
   function: <Zap className="w-5 h-5" />,
   environment: <Wind className="w-5 h-5" />,
+  diet_herbal: <Utensils className="w-5 h-5 text-amber-600" />,
+  custom: <Activity className="w-5 h-5" />,
 };
 
 export const NAV_ITEMS = [

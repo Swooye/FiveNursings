@@ -229,7 +229,18 @@ const PlanCustomizer: React.FC<PlanCustomizerProps> = ({ profile, existingTasks,
         }
         onConfirm();
       } else {
-        // Sync all tasks
+        // Identify deleted tasks (present in existingTasks but absent in planProposal)
+        const currentIds = new Set(planProposal.map(t => (t as any).id || (t as any)._id).filter(Boolean));
+        if (existingTasks) {
+          for (const ext of existingTasks) {
+            const id = (ext as any).id || (ext as any)._id;
+            if (id && !currentIds.has(id)) {
+              await fetch(`${API_URL}/daily_tasks/${id}`, { method: 'DELETE' });
+            }
+          }
+        }
+
+        // Sync all remaining tasks (Update or Create)
         for (const t of planProposal) {
           const id = (t as any)._id || (t as any).id;
           if (id && id.length > 10) {
