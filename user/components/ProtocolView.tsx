@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, FileText, ShieldCheck, Loader2 } from 'lucide-react';
 
-const API_URL = import.meta.env.DEV ? "" : "https://api-u46fik5vcq-uc.a.run.app";
+const API_URL = import.meta.env.DEV ? "" : "https://us-central1-fivenursings-73917017-a0dfd.cloudfunctions.net/api";
 
 interface ProtocolViewProps {
   onBack?: () => void;

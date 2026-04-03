@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Check, Plus, Mic, Image as ImageIcon, Camera, PhoneCall, MapPin, X, Trash2, Send, Loader2, MicVocal, AudioLines } from 'lucide-react';
 import { PatientProfile, ChatMessage } from '../types';
 
-const API_URL = import.meta.env.DEV ? "" : "https://api-u46fik5vcq-uc.a.run.app";
+const API_URL = import.meta.env.DEV ? "" : "https://us-central1-fivenursings-73917017-a0dfd.cloudfunctions.net/api";
 
 interface DiaryChatProps {
     profile: PatientProfile;

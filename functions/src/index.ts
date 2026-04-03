@@ -261,7 +261,7 @@ apiRouter.post('/users/:userId/location', async (req: any, res: any) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// 4. Scoring Logic (Simplified ScoringService)
+// 4. Scoring logic (Simplified ScoringService)
 apiRouter.post('/user/:id/calculate-index', async (req: any, res: any) => {
     try {
         const user: any = await (User as any).findById(req.params.id) || await (User as any).findOne({ firebaseUid: req.params.id });
@@ -273,25 +273,63 @@ apiRouter.post('/user/:id/calculate-index', async (req: any, res: any) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// 5. Daily Tasks Logic
+// 5. Daily Tasks Generation (Improved for consistency)
 apiRouter.post(['/daily_tasks/generate', '/daily_task/generate'], async (req: any, res: any) => {
     try {
         const { userId, profile, date, commit = false } = req.body;
         const targetDate = date || new Date().toISOString().split('T')[0];
-        const content = await callAI(`请根据档案生成康复任务：${JSON.stringify(profile)}`, [], "你是一位康复AI教练。", true);
-        let tasks = JSON.parse(content.replace(/```json|```/g, ''));
-        if (!Array.isArray(tasks)) tasks = [ { category: 'diet', title: '健康饮食', description: '保持清淡', time: '08:00' } ];
-        const finalTasks = tasks.map((t: any) => ({ ...t, userId, date: targetDate, completed: false, source: 'ai' }));
-        if (commit) {
-            for (const t of finalTasks) await (DailyTask as any).findOneAndUpdate({ userId, date: t.date, category: t.category, title: t.title }, { $set: t }, { upsert: true, new: true });
+        const instruction = "你是一位专业的康复AI教练。请返回一个 JSON 数组，包含今日康复任务。每个任务包含 fields: category, title, description, time。";
+        const prompt = `请为以下患者生成今日康复清单：\n${JSON.stringify(profile)}\n要求：返回纯 JSON 数组格式 [{}, {}, ...]。`;
+        
+        const content = await callAI(prompt, [], instruction, true);
+        const cleanContent = content.replace(/```json|```/g, '').trim();
+        let tasks = JSON.parse(cleanContent);
+        
+        // Ensure tasks is an array and pluck if it's wrapped in an object
+        if (!Array.isArray(tasks) && tasks.tasks) tasks = tasks.tasks;
+        if (!Array.isArray(tasks)) tasks = [];
+
+        const finalTasks = tasks.map((t: any) => ({
+            userId,
+            date: targetDate,
+            category: t.category || "diet",
+            title: t.title || "健康建议",
+            description: t.description || "",
+            time: t.time || "08:00",
+            completed: false,
+            source: 'ai'
+        }));
+
+        if (commit && finalTasks.length > 0) {
+            for (const t of finalTasks) {
+                await (DailyTask as any).findOneAndUpdate(
+                    { userId, date: t.date, category: t.category, title: t.title },
+                    { $set: t },
+                    { upsert: true, new: true }
+                );
+            }
             const saved = await (DailyTask as any).find({ userId, date: targetDate });
             return res.json(saved.map(format));
         }
-        res.json(finalTasks);
-    } catch (e: any) { res.status(500).json({ error: "AI logic fallback used" }); }
+        res.json(finalTasks.map(format));
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// 6. Generic CRUD (Legacy support)
+// 6. Diary Summary logic
+apiRouter.post('/diary/summarize', async (req: any, res: any) => {
+    try {
+        const { history, profile } = req.body;
+        const instruction = "你是一位康复日志助理。请将以下对话总结为一条康复日志（20字内），并评估对康复指标的影响。返回 JSON: { summary, impact: { category, change } }。";
+        const prompt = `患者背景：${JSON.stringify(profile)}。\n对话记录：\n${history.map((h:any)=>h.text).join('\n')}`;
+        
+        const content = await callAI(prompt, [], instruction, true);
+        const cleanContent = content.replace(/```json|```/g, '').trim();
+        const result = JSON.parse(cleanContent);
+        res.json(result);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// 7. Generic CRUD
 const MODEL_MAP: Record<string, any> = { users: User, admins: Admin, mall_items: MallItem, protocols: Protocol, chatmessages: ChatMessage, plans: Plan, daily_tasks: DailyTask, daily_task: DailyTask, voice_logs: VoiceLog };
 Object.keys(MODEL_MAP).forEach(resourceName => {
     const Model = MODEL_MAP[resourceName];
@@ -319,6 +357,10 @@ Object.keys(MODEL_MAP).forEach(resourceName => {
     });
     apiRouter.patch(`/${resourceName}/:id`, async (req: any, res: any) => {
         try { const data = await (Model as any).findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true }); res.json(format(data)); }
+        catch (e: any) { res.status(500).json({ error: e.message }); }
+    });
+    apiRouter.delete(`/${resourceName}/:id`, async (req: any, res: any) => {
+        try { await (Model as any).findByIdAndDelete(req.params.id); res.json({ success: true }); }
         catch (e: any) { res.status(500).json({ error: e.message }); }
     });
 });
