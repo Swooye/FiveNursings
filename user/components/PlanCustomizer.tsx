@@ -188,7 +188,7 @@ const PlanCustomizer: React.FC<PlanCustomizerProps> = ({ profile, existingTasks,
     setIsManuallyEdited(false);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/api/daily_tasks/generate`, {
+      const res = await fetch(`${API_URL}/daily_tasks/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: profile.id, profile, date: new Date().toISOString().split('T')[0], commit: false })
@@ -212,7 +212,7 @@ const PlanCustomizer: React.FC<PlanCustomizerProps> = ({ profile, existingTasks,
     try {
       if (!isManuallyEdited && (!existingTasks || existingTasks.length === 0)) {
         // New Plan via AI Commit + manual additions
-        const res = await fetch(`${API_URL}/api/daily_tasks/generate`, {
+        const res = await fetch(`${API_URL}/daily_tasks/generate`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: profile.id, profile, date: new Date().toISOString().split('T')[0], commit: true })
@@ -221,7 +221,7 @@ const PlanCustomizer: React.FC<PlanCustomizerProps> = ({ profile, existingTasks,
         // Also commit doctor & custom tasks
         const today = new Date().toISOString().split('T')[0];
         for (const t of [...doctorTasks, ...customTasks]) {
-          await fetch(`${API_URL}/api/daily_tasks`, {
+          await fetch(`${API_URL}/daily_tasks`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ...t, userId: profile.id, date: today })
@@ -233,7 +233,7 @@ const PlanCustomizer: React.FC<PlanCustomizerProps> = ({ profile, existingTasks,
         for (const t of planProposal) {
           const id = (t as any)._id || (t as any).id;
           if (id && id.length > 10) {
-            await fetch(`${API_URL}/api/daily_tasks/${id}`, {
+            await fetch(`${API_URL}/daily_tasks/${id}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ time: t.time, isInfeasible: t.isInfeasible, source: t.source })
@@ -241,7 +241,7 @@ const PlanCustomizer: React.FC<PlanCustomizerProps> = ({ profile, existingTasks,
           } else {
             // New tasks (doctor/custom added in this session)
             const today = new Date().toISOString().split('T')[0];
-            await fetch(`${API_URL}/api/daily_tasks`, {
+            await fetch(`${API_URL}/daily_tasks`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ ...t, userId: profile.id, date: today })

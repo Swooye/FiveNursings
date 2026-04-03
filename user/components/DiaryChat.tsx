@@ -48,7 +48,7 @@ const DiaryChat: React.FC<DiaryChatProps> = ({ profile, onBack, onComplete, isDa
         }
         setLoading(true);
         try {
-            const res = await fetch(`${API_URL}/api/diary/summarize`, {
+            const res = await fetch(`${API_URL}/diary/summarize`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ history: messages, profile })

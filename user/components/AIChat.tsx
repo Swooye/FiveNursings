@@ -660,7 +660,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
 
   const deleteSession = async (sid: string) => {
     try {
-      await fetch(`${API_URL}/api/chat/sessions/${sid}`, { method: 'DELETE' });
+      await fetch(`${API_URL}/chat/sessions/${sid}`, { method: 'DELETE' });
       setSessions(prev => prev.filter(s => s.id !== sid));
       if (currentSessionId === sid) {
         startNewChat();
@@ -670,7 +670,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
 
   useEffect(() => {
     if (showHistory && auth.currentUser) {
-      fetch(`${API_URL}/api/chat/sessions/${auth.currentUser.uid}`)
+      fetch(`${API_URL}/chat/sessions/${auth.currentUser.uid}`)
         .then(res => res.json())
         .then(data => setSessions(data))
         .catch(e => console.error("Fetch sessions failed", e));

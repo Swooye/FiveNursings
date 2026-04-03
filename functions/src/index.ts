@@ -47,18 +47,21 @@ const dailyTaskSchema = new mongoose.Schema({
     time: String,
     completed: { type: Boolean, default: false },
     source: { type: String, default: 'ai' }
-}, { strict: false, collection: 'daily_tasks' });
+}, { strict: false, collection: 'dailytasks' }); // Corrected to 'dailytasks'
 
 const voiceLogSchema = new mongoose.Schema({
     userId: { type: String, index: true },
-    timestamp: { type: Date, default: Date.now }
-}, { strict: false, collection: 'voice_logs' });
+    timestamp: { type: Date, default: Date.now },
+    summary: String,
+    impact: { category: String, change: Number }
+}, { strict: false, collection: 'voicelogs' }); // Corrected to 'voicelogs'
 
 const adminSchema = new mongoose.Schema({
     email: { type: String, index: true },
     password: { type: String }
 }, { strict: false, collection: 'admins' });
 
+const roleSchema = new mongoose.Schema({ key: String }, { strict: false, collection: 'roles' });
 const protocolSchema = new mongoose.Schema({ key: String }, { strict: false, collection: 'protocols' });
 const mallItemSchema = new mongoose.Schema({}, { strict: false, collection: 'mall_items' });
 const planSchema = new mongoose.Schema({}, { strict: false, collection: 'plans' });
@@ -69,6 +72,7 @@ const ChatMessage = mongoose.models.ChatMessage || mongoose.model('ChatMessage',
 const DailyTask = mongoose.models.DailyTask || mongoose.model('DailyTask', dailyTaskSchema);
 const VoiceLog = mongoose.models.VoiceLog || mongoose.model('VoiceLog', voiceLogSchema);
 const Admin = mongoose.models.Admin || mongoose.model('Admin', adminSchema);
+const Role = mongoose.models.Role || mongoose.model('Role', roleSchema);
 const Protocol = mongoose.models.Protocol || mongoose.model('Protocol', protocolSchema);
 const MallItem = mongoose.models.MallItem || mongoose.model('MallItem', mallItemSchema, 'mall_items');
 const Plan = mongoose.models.Plan || mongoose.model('Plan', planSchema);
@@ -273,7 +277,7 @@ apiRouter.post('/user/:id/calculate-index', async (req: any, res: any) => {
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// 5. Daily Tasks Generation (Improved for consistency)
+// 5. Daily Tasks Generation
 apiRouter.post(['/daily_tasks/generate', '/daily_task/generate'], async (req: any, res: any) => {
     try {
         const { userId, profile, date, commit = false } = req.body;
@@ -285,29 +289,16 @@ apiRouter.post(['/daily_tasks/generate', '/daily_task/generate'], async (req: an
         const cleanContent = content.replace(/```json|```/g, '').trim();
         let tasks = JSON.parse(cleanContent);
         
-        // Ensure tasks is an array and pluck if it's wrapped in an object
         if (!Array.isArray(tasks) && tasks.tasks) tasks = tasks.tasks;
         if (!Array.isArray(tasks)) tasks = [];
 
         const finalTasks = tasks.map((t: any) => ({
-            userId,
-            date: targetDate,
-            category: t.category || "diet",
-            title: t.title || "健康建议",
-            description: t.description || "",
-            time: t.time || "08:00",
-            completed: false,
-            source: 'ai'
+            userId, date: targetDate, category: t.category || "diet", title: t.title || "健康建议",
+            description: t.description || "", time: t.time || "08:00", completed: false, source: 'ai'
         }));
 
         if (commit && finalTasks.length > 0) {
-            for (const t of finalTasks) {
-                await (DailyTask as any).findOneAndUpdate(
-                    { userId, date: t.date, category: t.category, title: t.title },
-                    { $set: t },
-                    { upsert: true, new: true }
-                );
-            }
+            for (const t of finalTasks) await (DailyTask as any).findOneAndUpdate({ userId, date: t.date, category: t.category, title: t.title }, { $set: t }, { upsert: true, new: true });
             const saved = await (DailyTask as any).find({ userId, date: targetDate });
             return res.json(saved.map(format));
         }
@@ -315,22 +306,49 @@ apiRouter.post(['/daily_tasks/generate', '/daily_task/generate'], async (req: an
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
-// 6. Diary Summary logic
+// 6. Diary Summary & OpenClaw full-context logic
 apiRouter.post('/diary/summarize', async (req: any, res: any) => {
     try {
         const { history, profile } = req.body;
         const instruction = "你是一位康复日志助理。请将以下对话总结为一条康复日志（20字内），并评估对康复指标的影响。返回 JSON: { summary, impact: { category, change } }。";
         const prompt = `患者背景：${JSON.stringify(profile)}。\n对话记录：\n${history.map((h:any)=>h.text).join('\n')}`;
-        
         const content = await callAI(prompt, [], instruction, true);
-        const cleanContent = content.replace(/```json|```/g, '').trim();
-        const result = JSON.parse(cleanContent);
+        const result = JSON.parse(content.replace(/```json|```/g, '').trim());
         res.json(result);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+apiRouter.get('/users/:userId/full-context', async (req: any, res: any) => {
+    try {
+        const userId = req.params.userId;
+        const idList = await resolveUserIds(userId);
+        const today = new Date().toISOString().split('T')[0];
+
+        const [user, chatMsgs, tasks, logs] = await Promise.all([
+            (User as any).findOne({ $or: [{ firebaseUid: userId }, { _id: mongoose.isValidObjectId(userId) ? userId : null }] }).lean(),
+            (ChatMessage as any).find({ userId: { $in: idList } }).sort({ timestamp: -1 }).limit(20).lean(),
+            (DailyTask as any).find({ userId: { $in: idList }, date: today }).lean(),
+            (VoiceLog as any).find({ userId: { $in: idList } }).sort({ timestamp: -1 }).limit(5).lean()
+        ]);
+
+        if (!user) return res.status(404).json({ error: "User not found" });
+
+        res.json({
+            profile: format(user),
+            chatHistory: chatMsgs.map(format),
+            todayTasks: tasks.map(format),
+            recentVoiceLogs: logs.map(format)
+        });
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 // 7. Generic CRUD
-const MODEL_MAP: Record<string, any> = { users: User, admins: Admin, mall_items: MallItem, protocols: Protocol, chatmessages: ChatMessage, plans: Plan, daily_tasks: DailyTask, daily_task: DailyTask, voice_logs: VoiceLog };
+const MODEL_MAP: Record<string, any> = { 
+    users: User, admins: Admin, mall_items: MallItem, protocols: Protocol, 
+    chatmessages: ChatMessage, plans: Plan, daily_tasks: DailyTask, 
+    daily_task: DailyTask, dailytasks: DailyTask, voice_logs: VoiceLog, 
+    voicelogs: VoiceLog, roles: Role 
+};
 Object.keys(MODEL_MAP).forEach(resourceName => {
     const Model = MODEL_MAP[resourceName];
     apiRouter.get(`/${resourceName}`, async (req: any, res: any) => {
