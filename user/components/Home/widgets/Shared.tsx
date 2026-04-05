@@ -109,7 +109,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({ title, score, baseline, 
           <div className="flex items-end space-x-2 h-16 ml-8 pb-1 shrink-0">
             {[40, 55, 48, 62, 58, 70, score].map((h, i) => (
               <div key={i} className={`w-2 rounded-full transition-all duration-1000 ${
-                i === 6 ? `bg-${accentColor}-500 shadow-[0_0_15px_${accentHex}bb]` : 'bg-slate-100 dark:bg-slate-800'
+                i === 6 ? `bg-${accentColor}-500 shadow-[0_0_15px_${accentHex}cc]` : `bg-${accentColor}-500 opacity-20`
               }`} style={{ height: `${(h / 100) * 100}%` }}></div>
             ))}
           </div>

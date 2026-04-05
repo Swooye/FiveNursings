@@ -23,7 +23,7 @@ const UsersPage = () => {
   const [newPassword, setNewPassword] = useState('');
   const [originalPassword, setOriginalPassword] = useState(''); // State for original password
 
-  const API_URL = '/api/users';
+  const API_URL = '/api/admins';
 
   useEffect(() => {
     fetchUsers();

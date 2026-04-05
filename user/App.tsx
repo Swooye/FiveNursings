@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth } from './src/firebase';
@@ -28,21 +27,31 @@ import ProductDetail from './components/ProductDetail';
 import DiaryChat from './components/DiaryChat';
 import { NAV_ITEMS } from './constants';
 import { 
-  Mic, 
-  Moon, 
-  Sun, 
-  ChevronRight, 
-  LogOut, 
-  FileText, 
-  ShieldCheck, 
-  ClipboardEdit, 
-  ShoppingBag, 
+  Calendar,
+  ChevronRight,
+  Plus,
+  Activity,
+  Heart,
+  Brain,
+  Droplets,
+  Sparkles,
+  History,
+  User as UserIcon,
   Settings,
   Headset,
+  Mic,
+  Moon,
+  Sun,
+  LogOut,
+  FileText,
+  ShieldCheck,
+  ClipboardEdit,
+  ShoppingBag,
   Crown,
   Gift,
   Loader2,
-  Heart
+  TrendingUp,
+  ChevronLeft
 } from 'lucide-react';
 
 // 动态识别环境
@@ -93,6 +102,9 @@ const App: React.FC = () => {
   const [lastUpdatedCategory, setLastUpdatedCategory] = useState<keyof NursingScores | null>(null);
   const [reportCache, setReportCache] = useState<{ date: string; profileJSON: string; text: string } | null>(null);
   const [autoNavigateSessionId, setAutoNavigateSessionId] = useState<string | null>(null);
+   const [diarySessionId, setDiarySessionId] = useState<string | null>(null);
+   const [diaryMode, setDiaryMode] = useState<'chat' | 'history'>('chat');
+   const [editingDiaryId, setEditingDiaryId] = useState<string | null>(null);
 
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -455,26 +467,35 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDiaryComplete = async (summary: string, impact: any) => {
+  const handleDiaryComplete = async (summary: string, impact: any, sessionId?: string) => {
     try {
         const res = await fetch(`${API_URL}/api/voice_logs`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                userId: profile.id,
-                date: selectedDate,
+                userId: dbUser.id || dbUser.firebaseUid,
+                id: editingDiaryId || undefined,
                 summary,
                 impact,
+                sessionId,
                 timestamp: new Date().toISOString()
             })
         });
         if (res.ok) {
             const savedLog = await res.json();
-            setVoiceLogs(prev => [savedLog, ...prev]);
+            setVoiceLogs(prev => {
+              const idx = prev.findIndex(l => (savedLog.id && l.id === savedLog.id) || (savedLog.sessionId && l.sessionId === savedLog.sessionId));
+              if (idx >= 0) {
+                const copy = [...prev];
+                copy[idx] = savedLog;
+                return copy;
+              }
+              return [savedLog, ...prev];
+            });
         }
-    } catch (e) { console.error("Failed to save diary log:", e); }
-    
-    setShowDiaryChat(false);
+    } catch (e) {
+        console.error("Failed to complete diary:", e);
+    }
   };
   
   const handleToggleTask = async (taskId: string) => {
@@ -647,7 +668,18 @@ const App: React.FC = () => {
           onStartVoice={() => setAssistantMode('logging')} 
           recentLogs={voiceLogs} 
           onViewJournal={() => setShowJournal(true)} 
-          onAddDiary={() => setShowDiaryChat(true)}
+          onAddDiary={() => {
+            setDiarySessionId(`diary_${Date.now()}`);
+            setEditingDiaryId(null);
+            setDiaryMode('chat');
+            setShowDiaryChat(true);
+          }}
+          onViewDiaryDetail={(log) => {
+            setDiarySessionId(log.sessionId || null);
+            setEditingDiaryId(log.id || null);
+            setDiaryMode('history');
+            setShowDiaryChat(true);
+          }}
           isDark={isDarkEffective} 
         />
       );
@@ -805,7 +837,12 @@ const App: React.FC = () => {
         <DiaryChat 
           profile={profile} 
           onBack={() => setShowDiaryChat(false)} 
-          onComplete={handleDiaryComplete} 
+          sessionId={diarySessionId || undefined}
+          mode={diaryMode}
+          onComplete={(summary, impact) => {
+            handleDiaryComplete(summary, impact, diarySessionId || undefined);
+            setShowDiaryChat(false);
+          }}
           isDark={isDarkEffective} 
         />
       )}

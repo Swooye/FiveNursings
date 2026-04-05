@@ -34,12 +34,9 @@ export const NURSING_ICONS: Record<string, React.ReactNode> = {
   function: <Zap className="w-5 h-5" />,
   '机能': <Zap className="w-5 h-5" />,
   environment: <Wind className="w-5 h-5" />,
-<<<<<<< HEAD
   '环境': <Wind className="w-5 h-5" />,
-=======
   diet_herbal: <Utensils className="w-5 h-5 text-amber-600" />,
   custom: <Activity className="w-5 h-5" />,
->>>>>>> origin/main
 };
 
 export const NAV_ITEMS = [

@@ -1,7 +1,10 @@
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
-    firebaseUid: { type: String, index: true, unique: true }
+    firebaseUid: { type: String, index: true, unique: true },
+    coreRecoveryIndex: Number,
+    dailyChange: String,
+    scores: { type: Object, default: {} }
 }, { strict: false, collection: 'users', timestamps: true });
 const User = mongoose.models.User || mongoose.model('User', userSchema);
 
@@ -10,6 +13,13 @@ const adminSchema = new mongoose.Schema({
     password: { type: String, required: true },
     username: String
 }, { strict: false });
+
+adminSchema.pre('save', async function(next) {
+    if (!this.isModified('password')) return next();
+    this.password = await bcrypt.hash(this.password, 10);
+    next();
+});
+
 const Admin = mongoose.models.Admin || mongoose.model('Admin', adminSchema, 'admins');
 
 const MallItem = mongoose.model('MallItem', new mongoose.Schema({}, { strict: false }), 'mall_items');
@@ -42,6 +52,7 @@ const Plan = mongoose.model('Plan', new mongoose.Schema({}, { strict: false }), 
 
 const voiceLogSchema = new mongoose.Schema({
     userId: { type: String, index: true },
+    sessionId: { type: String, index: true },
     date: { type: String, index: true },
     timestamp: { type: Date, default: Date.now },
     summary: String,

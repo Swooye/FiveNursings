@@ -1,6 +1,6 @@
 import React from 'react';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, ResponsiveContainer } from 'recharts';
-import { RefreshCw, TrendingUp } from 'lucide-react';
+import { RefreshCw, TrendingUp, TrendingDown } from 'lucide-react';
 import { PatientProfile } from '../../../types';
 
 interface RadarWidgetProps {
@@ -24,7 +24,7 @@ const RadarWidget: React.FC<RadarWidgetProps> = ({ profile, onSync, isSyncing, i
   const chartData = [
     { subject: '饮食', A: profile.scores.diet, B: baselines.diet },
     { subject: '运动', A: profile.scores.exercise, B: baselines.exercise },
-    { subject: '睡眠', A: profile.scores.sleep, B: baselines.sleep },
+    { subject: '膏方', A: profile.scores.sleep, B: baselines.sleep },
     { subject: '心理', A: profile.scores.mental, B: baselines.mental },
     { subject: '功能', A: profile.scores.function, B: baselines.function },
   ];
@@ -35,6 +35,10 @@ const RadarWidget: React.FC<RadarWidgetProps> = ({ profile, onSync, isSyncing, i
 
   // 使用动态下发的康复变动率，或显示默认
   const dailyChange = profile.dailyChange || "0.0%";
+  const isNegative = dailyChange.startsWith('-');
+  const changeColorClass = isNegative 
+    ? "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 border-rose-100/50 dark:border-rose-800"
+    : "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100/50 dark:border-emerald-800";
 
   return (
     <div className="bg-white dark:bg-[#111827] rounded-[48px] p-8 shadow-sm border border-slate-100 dark:border-white/5 relative overflow-hidden backdrop-blur-xl">
@@ -50,8 +54,9 @@ const RadarWidget: React.FC<RadarWidgetProps> = ({ profile, onSync, isSyncing, i
             <span className="font-black text-slate-800 dark:text-slate-100 tracking-tighter leading-none" style={{ fontSize: '3.2rem' }}>
                 {avgScore}
             </span>
-            <div className="flex items-center text-emerald-600 dark:text-emerald-400 text-sm font-black bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5 rounded-full border border-emerald-100/50 dark:border-emerald-800">
-              <TrendingUp size={16} className="mr-1" />{dailyChange}
+            <div className={`flex items-center text-sm font-black px-3 py-1.5 rounded-full border ${changeColorClass}`}>
+              {isNegative ? <TrendingDown size={16} className="mr-1" /> : <TrendingUp size={16} className="mr-1" />}
+              {dailyChange}
             </div>
           </div>
         </div>

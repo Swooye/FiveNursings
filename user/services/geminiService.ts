@@ -9,7 +9,7 @@ if (!apiKey) {
   console.warn("VITE_GEMINI_API_KEY is missing. AI features will be disabled.");
 }
 
-const SYSTEM_INSTRUCTION = `你是一位专业的肿瘤康复AI教练。基于“五治五养”体系（饮食养、运动养、睡眠养、心理养、功能养）为患者提供支持。
+const SYSTEM_INSTRUCTION = `你是一位专业的肿瘤康复AI教练。基于“五治五养”体系（饮食养、运动养、膏方养、心理养、功能养）为患者提供支持。
 核心原则：
 1. 只提供康养建议，不代替诊断与处方。
 2. 语言通俗易懂，给出明确的可执行方案。
@@ -62,7 +62,7 @@ const callOpenRouter = async (messages: any[], systemPrompt: string, responseJso
  * Response Generation
  */
 export const generateHealthResponse = async (
-  message: string, 
+  message: string,
   profile: PatientProfile,
   history: { role: 'user' | 'model', content: string }[] = []
 ) => {
@@ -108,7 +108,7 @@ export const generateQuickReplies = async (
 export const analyzeHealthProfile = async (profile: PatientProfile): Promise<TCMAnalysisResult> => {
   const q = profile.questionnaire;
   const messages: any[] = [];
-  
+
   let textPrompt = `请基于以下患者档案进行综合康复分析：
   病种：${profile.cancerType}
   阶段：${profile.stage}

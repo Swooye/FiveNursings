@@ -34,7 +34,7 @@ export const MallItemCreate = () => {
                 <Form.Item label="商品名称" name="name" rules={[{ required: true }]}>
                     <Input placeholder="输入商品全名" />
                 </Form.Item>
-                
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
                     <Form.Item label="分类" name="category" rules={[{ required: true }]}>
                         <Select placeholder="选择分类">
@@ -48,7 +48,7 @@ export const MallItemCreate = () => {
                         <Select placeholder="对应五养类型">
                             <Select.Option value="diet">饮食养</Select.Option>
                             <Select.Option value="exercise">运动养</Select.Option>
-                            <Select.Option value="sleep">睡眠养</Select.Option>
+                            <Select.Option value="sleep">膏方养</Select.Option>
                             <Select.Option value="mental">心理养</Select.Option>
                             <Select.Option value="function">功能养</Select.Option>
                         </Select>
@@ -71,7 +71,7 @@ export const MallItemCreate = () => {
                 </div>
 
                 <Form.Item label="产品图片">
-                    <Upload 
+                    <Upload
                         customRequest={handleUpload}
                         listType="picture-card"
                         fileList={fileList}

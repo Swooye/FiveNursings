@@ -17,13 +17,15 @@ interface ProgramProps {
   onStartVoice: () => void;
   recentLogs: VoiceLog[];
   onViewJournal: () => void;
+  onViewDiaryDetail: (log: VoiceLog) => void;
   onAddDiary: () => void;
   selectedDate: string;
   onSelectDate: (date: string) => void;
   isDark?: boolean;
 }
 
-const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdateTask, onGeneratePlan, onUpdateProfile, onUpdateSymptoms, currentDateSymptoms, onStartVoice, recentLogs, onViewJournal, onAddDiary, selectedDate, onSelectDate, isDark }) => {
+const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdateTask, onGeneratePlan, onUpdateProfile, onUpdateSymptoms, currentDateSymptoms, onStartVoice, recentLogs, onViewJournal, onViewDiaryDetail, onAddDiary, selectedDate, onSelectDate, isDark }) => {
+  const [showAllLogs, setShowAllLogs] = useState(false);
   const toLocalDateString = (date = new Date()) => {
     const d = new Date(date);
     const year = d.getFullYear();
@@ -181,12 +183,21 @@ const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdat
               <Plus size={18} />
             </button>
           </div>
-          <button 
-            onClick={onViewJournal}
-            className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/10 px-4 py-2 rounded-full border border-emerald-100 dark:border-emerald-500/10 uppercase tracking-widest hover:bg-emerald-100 transition-colors"
-          >
-            查看全部
-          </button>
+          {filteredLogs.length > 3 ? (
+            <button 
+              onClick={() => setShowAllLogs(!showAllLogs)}
+              className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/10 px-4 py-2 rounded-full border border-emerald-100 dark:border-emerald-500/10 uppercase tracking-widest hover:bg-emerald-100 transition-colors"
+            >
+              {showAllLogs ? '收起记录' : '查看全部'}
+            </button>
+          ) : (
+            <button 
+              onClick={onViewJournal}
+              className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/10 px-4 py-2 rounded-full border border-emerald-100 dark:border-emerald-500/10 uppercase tracking-widest hover:bg-emerald-100 transition-colors"
+            >
+              日记记录
+            </button>
+          )}
         </div>
 
         {filteredLogs.length > 0 ? (
@@ -199,6 +210,7 @@ const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdat
             <div className="space-y-6 relative z-10">
               {[...filteredLogs]
                 .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                .slice(0, showAllLogs ? undefined : 3)
                 .map((log, index) => (
                 <div key={log.id} className="relative pl-11 group">
                   {/* 时间轴节点 (图标) */}
@@ -209,7 +221,10 @@ const Program: React.FC<ProgramProps> = ({ profile, tasks, onToggleTask, onUpdat
                   </div>
 
                   {/* 记录卡片 */}
-                  <div className="bg-white dark:bg-[#111827] p-5 rounded-[28px] border border-slate-100 dark:border-white/5 shadow-sm group-hover:shadow-md transition-all">
+                  <div 
+                    onClick={() => onViewDiaryDetail(log)}
+                    className="bg-white dark:bg-[#111827] p-5 rounded-[28px] border border-slate-100 dark:border-white/5 shadow-sm group-hover:shadow-md transition-all cursor-pointer active:scale-[0.98]"
+                  >
                     <div className="flex justify-between items-center mb-3">
                       <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest bg-slate-50 dark:bg-slate-800 px-2 py-0.5 rounded-full">
                         {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

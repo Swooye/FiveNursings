@@ -37,7 +37,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const response = await fetch(`${API_URL}/mall_items`);
+        const response = await fetch(`${API_URL}/api/mall_items`);
         const data = await response.json();
         
         const onSaleProducts = data

@@ -94,7 +94,7 @@ const connectDb = async () => {
         const dbName = isEmulator ? "fivenursing_dev" : "fivenursing_pro";
         const projectId = process.env.GCLOUD_PROJECT || process.env.FIREBASE_CONFIG && JSON.parse(process.env.FIREBASE_CONFIG).projectId || "unknown";
         console.log(`[DB_SELECT] Emulator=${isEmulator}, Project=${projectId}, DB=${dbName}`);
-        
+
         const envUri = process.env.MONGODB_URI || "mongodb+srv://admin:5Nursings%2BA@cluster0.k2sadls.mongodb.net/";
         const parsedUrl = new URL(envUri);
         parsedUrl.pathname = `/${dbName}`;
@@ -108,9 +108,9 @@ const connectDb = async () => {
 
 // --- Helpers ---
 
-const format = (doc: any) => { 
-    if (!doc) return null; 
-    let obj = doc.toObject ? doc.toObject({ getters: true, versionKey: false }) : doc; 
+const format = (doc: any) => {
+    if (!doc) return null;
+    let obj = doc.toObject ? doc.toObject({ getters: true, versionKey: false }) : doc;
     const idStr = obj._id ? obj._id.toString() : (obj.id ? obj.id.toString() : null);
     const sanitize = (v: any): any => {
         if (typeof v === 'string') return v.replace(/[, ]+$/, '').trim();
@@ -122,7 +122,7 @@ const format = (doc: any) => {
         return v;
     };
     const cleaned = sanitize(obj);
-    return { ...cleaned, id: idStr, _id: idStr }; 
+    return { ...cleaned, id: idStr, _id: idStr };
 };
 
 const resolveUserIds = async (userId: string) => {
@@ -211,7 +211,7 @@ const MODEL_MAP: Record<string, any> = {
 
 Object.keys(MODEL_MAP).forEach(resourceName => {
     const Model = MODEL_MAP[resourceName];
-    
+
     apiRouter.get(`/${resourceName}`, async (req: any, res: any) => {
         try {
             const data = await Model.find().sort({ createdAt: -1 });
@@ -258,9 +258,9 @@ apiRouter.get('/user/:id', async (req: any, res: any) => {
         }
         console.log(`[GET] User found: ${user._id}`);
         res.json(format(user));
-    } catch (e: any) { 
+    } catch (e: any) {
         console.error(`[GET] User lookup error: ${e.message}`);
-        res.status(500).json({ error: e.message }); 
+        res.status(500).json({ error: e.message });
     }
 });
 
@@ -278,9 +278,9 @@ apiRouter.patch('/user/:id', async (req: any, res: any) => {
         }
         console.log(`[PATCH] User updated: ${user._id}`);
         res.json(format(user));
-    } catch (e: any) { 
+    } catch (e: any) {
         console.error(`[PATCH] User update error: ${e.message}`);
-        res.status(500).json({ error: e.message }); 
+        res.status(500).json({ error: e.message });
     }
 });
 
@@ -290,7 +290,7 @@ apiRouter.post('/login', async (req: any, res: any) => {
         const { email, password } = req.body;
         const adminUser: any = await Admin.findOne({ email } as any);
         if (!adminUser) return res.status(401).json({ error: '用户不存在' });
-        
+
         // 支持明文或 bcrypt 校验
         let isMatch = false;
         if (adminUser.password === password) {
@@ -393,11 +393,11 @@ apiRouter.get('/users/:userId/full-context', async (req: any, res: any) => {
             adherence: adherence,
             lastMedicalOrder: lastMedicalOrder
 =======
-        user = await (User as any).create({ 
-            firebaseUid: uid, 
-            phoneNumber: req.body.phoneNumber || "", 
-            nickname: '新用户', 
-            isProfileComplete: false, 
+        user = await (User as any).create({
+            firebaseUid: uid,
+            phoneNumber: req.body.phoneNumber || "",
+            nickname: '新用户',
+            isProfileComplete: false,
             createdAt: new Date(),
             scores: { diet: 60, exercise: 40, sleep: 70, mental: 80, function: 100, environment: 85 }
 >>>>>>> origin/main
@@ -437,7 +437,7 @@ apiRouter.get('/messages/:userId', async (req: any, res: any) => {
 
 apiRouter.post('/messages', async (req: any, res: any) => {
     try {
-        const isRead = req.body.role === 'user'; 
+        const isRead = req.body.role === 'user';
         const msg = await (ChatMessage as any).create({ ...req.body, timestamp: new Date(), isRead });
         res.json(format(msg));
     } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -495,7 +495,7 @@ apiRouter.post('/get-ai-chat-reply', async (req: any, res: any) => {
 
         if (!apiKey) return res.status(400).json({ error: "API Key not configured" });
 
-        const SYSTEM_INSTRUCTION = `你是一位专业的肿瘤康复AI教练。基于“五治五养”体系（饮食养、运动养、睡眠养、心理养、功能养）为患者提供支持。
+        const SYSTEM_INSTRUCTION = `你是一位专业的肿瘤康复AI教练。基于“五治五养”体系（饮食养、运动养、膏方养、心理养、功能养）为患者提供支持。
 核心原则：
 1. 只提供康养建议，不代替诊断与处方。
 2. 语言通俗易懂，给出明确的可执行方案。
@@ -567,13 +567,13 @@ apiRouter.post(['/daily_tasks/generate', '/daily_task/generate'], async (req: an
         const targetDate = date || new Date().toISOString().split('T')[0];
         const instruction = "你是一位专业的康复AI教练。请返回一个 JSON 数组，包含今日康复任务。每个任务包含 fields: category, title, description, time。";
         const prompt = `请为以下患者生成今日康复清单：\n${JSON.stringify(profile)}\n要求：返回纯 JSON 数组格式 [{}, {}, ...]。`;
-        
+
         const content = await callAI(prompt, [], instruction, true);
         const jsonStart = content.indexOf('[');
         const jsonEnd = content.lastIndexOf(']') + 1;
         const cleanContent = jsonStart !== -1 ? content.substring(jsonStart, jsonEnd) : content.replace(/```json|```/g, '').trim();
         let tasks = JSON.parse(cleanContent);
-        
+
         if (!Array.isArray(tasks) && tasks.tasks) tasks = tasks.tasks;
         if (!Array.isArray(tasks)) tasks = [];
 
@@ -596,7 +596,7 @@ apiRouter.post('/diary/summarize', async (req: any, res: any) => {
     try {
         const { history, profile } = req.body;
         const instruction = "你是一位康复日志助理。请将以下对话总结为一条康复日志（20字内），并评估对康复指标的影响。返回 JSON: { summary, impact: { category, change } }。";
-        const prompt = `患者背景：${JSON.stringify(profile)}。\n对话记录：\n${history.map((h:any)=>h.text).join('\n')}`;
+        const prompt = `患者背景：${JSON.stringify(profile)}。\n对话记录：\n${history.map((h: any) => h.text).join('\n')}`;
         const content = await callAI(prompt, [], instruction, true);
         const result = JSON.parse(content.replace(/```json|```/g, '').trim());
         res.json(result);
@@ -628,11 +628,11 @@ apiRouter.get('/users/:userId/full-context', async (req: any, res: any) => {
 });
 
 // 7. Generic CRUD
-const MODEL_MAP: Record<string, any> = { 
-    users: User, admins: Admin, mall_items: MallItem, protocols: Protocol, 
-    chatmessages: ChatMessage, plans: Plan, daily_tasks: DailyTask, 
-    daily_task: DailyTask, dailytasks: DailyTask, voice_logs: VoiceLog, 
-    voicelogs: VoiceLog, roles: Role 
+const MODEL_MAP: Record<string, any> = {
+    users: User, admins: Admin, mall_items: MallItem, protocols: Protocol,
+    chatmessages: ChatMessage, plans: Plan, daily_tasks: DailyTask,
+    daily_task: DailyTask, dailytasks: DailyTask, voice_logs: VoiceLog,
+    voicelogs: VoiceLog, roles: Role
 };
 Object.keys(MODEL_MAP).forEach(resourceName => {
     const Model = MODEL_MAP[resourceName];

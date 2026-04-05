@@ -1,6 +1,5 @@
-
 import React, { useState, useRef, useEffect } from 'react';
-import { ArrowLeft, Check, Plus, Mic, Image as ImageIcon, Camera, PhoneCall, MapPin, X, Trash2, Send, Loader2, MicVocal, AudioLines } from 'lucide-react';
+import { ChevronLeft, ArrowLeft, Check, Plus, Mic, Image as ImageIcon, Camera, PhoneCall, MapPin, X, Trash2, Send, Loader2, MicVocal, AudioLines, TrendingUp, Sparkles } from 'lucide-react';
 import { PatientProfile, ChatMessage } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "" : "http://localhost:3002");
@@ -9,53 +8,114 @@ interface DiaryChatProps {
     profile: PatientProfile;
     onBack: () => void;
     onComplete: (summary: string, impact: any) => void;
+    sessionId?: string;
+    mode?: 'chat' | 'history';
     isDark?: boolean;
 }
 
-const DiaryChat: React.FC<DiaryChatProps> = ({ profile, onBack, onComplete, isDark }) => {
+const DiaryChat: React.FC<DiaryChatProps> = ({ profile, onBack, onComplete, sessionId, mode = 'chat', isDark }) => {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
     const [inputMode, setInputMode] = useState<'text' | 'voice'>('text');
     const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [currentSummary, setCurrentSummary] = useState<string | null>(null);
+    const [currentImpact, setCurrentImpact] = useState<any>(null);
+    const [isSummarizing, setIsSummarizing] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
 
-    // Initial Greeting
     useEffect(() => {
-        const name = profile.nickname || profile.name || '朋友';
-        const greeting = `您好，**${name}**。我是您的日记助手，专门为您记录康复的点滴。\n\n您今天过得怎么样？午餐吃了些什么呢？也可以上传照片，我会帮您自动同步到计划中。`;
-        setMessages([{ role: 'model', text: greeting, timestamp: new Date().toISOString() }]);
-    }, [profile]);
+        if (mode === 'history' && sessionId) {
+            setLoading(true);
+            const fetchHistoryAndSummary = async () => {
+                try {
+                    // 1. Fetch Chat History
+                    const msgRes = await fetch(`${API_URL}/api/messages/${profile.id}?sessionId=${sessionId}`);
+                    if (msgRes.ok) {
+                        const data = await msgRes.json();
+                        if (data.length > 0) setMessages(data);
+                    }
+                    
+                    // 2. Fetch Existing Summary
+                    const logRes = await fetch(`${API_URL}/api/voice_logs?userId=${profile.id}&sessionId=${sessionId}`);
+                    if (logRes.ok) {
+                        const logs = await logRes.json();
+                        if (logs.length > 0) {
+                            setCurrentSummary(logs[0].summary);
+                            setCurrentImpact(logs[0].impact);
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to load history", e);
+                } finally {
+                    setLoading(false);
+                }
+            };
+            fetchHistoryAndSummary();
+        } else if (messages.length === 0) {
+            // Initial Greeting for new chat
+            const name = profile.nickname || profile.name || '朋友';
+            const greeting = `您好，**${name}**。我是您的日记助手，专门为您记录康复的点滴。\n\n您今天过得怎么样？午餐吃了些什么呢？也可以上传照片，我会帮您自动同步到计划中。`;
+            setMessages([{ role: 'model', text: greeting, timestamp: new Date().toISOString() }]);
+        }
+    }, [sessionId, mode, profile]);
 
     useEffect(() => {
         if (scrollRef.current) {
             scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
         }
-    }, [messages]);
+    }, [messages, currentSummary]);
 
-    const handleSend = () => {
+    const handleSend = async () => {
         if (!input.trim()) return;
-        const userMsg: ChatMessage = { role: 'user', text: input.trim(), timestamp: new Date().toISOString() };
+        const userMsg: ChatMessage = { 
+            role: 'user', 
+            text: input.trim(), 
+            timestamp: new Date().toISOString(),
+            sessionId: sessionId || undefined 
+        };
         setMessages(prev => [...prev, userMsg]);
         setInput('');
+
+        // [PERSISTENCE] Save to DB immediately if sessionId exists
+                fetch(`${API_URL}/api/chatmessages`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    ...userMsg, 
+                    userId: profile.id 
+                })
+            }).catch(console.error);
     };
 
     const handleFinish = async () => {
-        if (messages.length <= 1) { // Only greeting
+        if (messages.length <= 1 && !currentSummary) { // Only greeting
             onBack();
             return;
         }
-        setLoading(true);
+
+        if (currentSummary && mode === 'history') {
+            // If we have a summary and we are in history mode, just close or save if modified
+            onComplete(currentSummary, currentImpact);
+            return;
+        }
+
+        setIsSummarizing(true);
         try {
-            const res = await fetch(`${API_URL}/diary/summarize`, {
+            const res = await fetch(`${API_URL}/api/diary/summarize`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ history: messages, profile })
+                body: JSON.stringify({ history: messages, profile, sessionId })
             });
             if (res.ok) {
                 const data = await res.json();
-                onComplete(data.summary, data.impact);
+                setCurrentSummary(data.summary);
+                setCurrentImpact(data.impact);
+                // In a new chat, auto-complete after first summary
+                if (mode === 'chat') {
+                    onComplete(data.summary, data.impact);
+                }
             } else {
                 alert("总结失败，请稍后重试");
             }
@@ -63,8 +123,25 @@ const DiaryChat: React.FC<DiaryChatProps> = ({ profile, onBack, onComplete, isDa
             console.error("Diary summary failed", e);
             alert("网络异常，总结失败");
         } finally {
-            setLoading(false);
+            setIsSummarizing(false);
         }
+    };
+
+    const handleRegenerate = async () => {
+        setIsSummarizing(true);
+        try {
+            const res = await fetch(`${API_URL}/api/diary/summarize`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ history: messages, profile, sessionId })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setCurrentSummary(data.summary);
+                setCurrentImpact(data.impact);
+            }
+        } catch (e) { console.error(e); }
+        finally { setIsSummarizing(false); }
     };
 
     return (
@@ -84,12 +161,12 @@ const DiaryChat: React.FC<DiaryChatProps> = ({ profile, onBack, onComplete, isDa
                     </div>
                 </div>
                 <button
-                    disabled={loading}
+                    disabled={isSummarizing}
                     onClick={handleFinish}
                     className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full flex items-center space-x-2 shadow-lg shadow-emerald-600/20 active:scale-95 transition-all text-sm font-black disabled:opacity-50"
                 >
-                    {loading ? <Loader2 size={16} className="animate-spin" /> : <Check size={18} />}
-                    <span>完成记录</span>
+                    {isSummarizing ? <Loader2 size={16} className="animate-spin" /> : <Check size={18} />}
+                    <span>{isSummarizing ? '专家对策总结中...' : (currentSummary ? '完成保存' : '完成记录')}</span>
                 </button>
             </header>
 
@@ -97,11 +174,11 @@ const DiaryChat: React.FC<DiaryChatProps> = ({ profile, onBack, onComplete, isDa
             <main ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-8 space-y-6 custom-scrollbar">
                 {messages.map((msg, i) => (
                     <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'} mb-8 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-                        <div className={`max-w-[85%] inline-block w-fit px-5 py-4 rounded-[28px] shadow-sm relative group ${msg.role === 'user'
+                        <div className={`max-w-[85%] inline-block w-fit px-5 py-4 rounded-[28px] shadow-sm relative group select-text touch-auto ${msg.role === 'user'
                             ? 'bg-emerald-600 text-white font-black rounded-tr-none'
                             : 'bg-white dark:bg-[#111827] text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-white/5 rounded-tl-none'
                             }`}>
-                            <p className="text-sm leading-relaxed whitespace-pre-wrap break-keep inline-block">
+                            <p className="text-sm leading-relaxed whitespace-pre-wrap break-keep inline-block select-text">
                                 {msg.text?.split(/(\*\*.*?\*\*)/g).map((part, index) => {
                                     if (part.startsWith('**') && part.endsWith('**')) {
                                         return <strong key={index} className={msg.role === 'user' ? 'text-white underline' : 'text-emerald-600 dark:text-emerald-400'}>{part.slice(2, -2)}</strong>;
@@ -117,6 +194,51 @@ const DiaryChat: React.FC<DiaryChatProps> = ({ profile, onBack, onComplete, isDa
                         </div>
                     </div>
                 ))}
+
+                {/* AI Summary Panel */}
+                {currentSummary && (
+                    <div className="mt-12 animate-in slide-in-from-bottom-4 duration-500">
+                        <div className={`p-6 rounded-[32px] border-2 border-emerald-500/20 bg-emerald-500/5 backdrop-blur-md relative overflow-hidden group`}>
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center space-x-2">
+                                    <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center text-white">
+                                        <Sparkles size={16} />
+                                    </div>
+                                    <h4 className="text-xs font-black text-emerald-600 uppercase tracking-widest">AI 康复对策总结</h4>
+                                </div>
+                                <button 
+                                    onClick={handleRegenerate}
+                                    disabled={isSummarizing}
+                                    className="p-2 bg-white dark:bg-slate-800 rounded-xl text-emerald-600 shadow-sm active:rotate-180 transition-transform duration-500"
+                                >
+                                    <Loader2 size={16} className={isSummarizing ? "animate-spin" : ""} />
+                                </button>
+                            </div>
+                            <div className="relative">
+                                <textarea 
+                                    value={currentSummary}
+                                    onChange={(e) => setCurrentSummary(e.target.value)}
+                                    className="w-full bg-transparent border-none focus:ring-0 text-sm font-bold text-slate-700 dark:text-slate-300 leading-relaxed min-h-[80px] p-0 resize-none italic"
+                                />
+                                <div className="mt-4 flex items-center space-x-2">
+                                    <div className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-500/10 text-[9px] font-black text-emerald-600 uppercase">
+                                        {currentImpact?.category || 'mental'}
+                                    </div>
+                                    <div className="text-[9px] font-black text-emerald-500">
+                                        +{currentImpact?.change || 2} 指标提升
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <p className="text-center text-[10px] text-slate-400 mt-4 font-bold">您可以修改以上总结内容，点击“完成保存”进行归档</p>
+                    </div>
+                )}
+
+                {loading && (
+                    <div className="flex items-center justify-center py-12">
+                        <Loader2 className="animate-spin text-emerald-500" size={32} />
+                    </div>
+                )}
             </main>
 
             {/* Input Bar */}

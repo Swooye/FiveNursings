@@ -23,17 +23,17 @@ export const UserShow = () => {
         <Show isLoading={isLoading}>
             <Card bordered={false}>
                 <div style={{ display: 'flex', alignItems: 'center', marginBottom: '24px' }}>
-                    <Avatar 
-                        size={80} 
-                        src={record?.avatar} 
-                        icon={<UserOutlined />} 
+                    <Avatar
+                        size={80}
+                        src={record?.avatar}
+                        icon={<UserOutlined />}
                         style={{ marginRight: '24px', border: '2px solid #f0f0f0' }}
                     />
                     <div>
                         <Title level={3} style={{ margin: 0 }}>{record?.nickname || record?.name || "新用户"}</Title>
                         <Space split={<Divider type="vertical" />}>
                             <Text type="secondary">
-                                {record?.gender || "未知"} 
+                                {record?.gender || "未知"}
                                 {record?.age ? ` · ${record.age} 岁` : ""}
                             </Text>
                             <Tag color="blue">{record?.role}</Tag>
@@ -80,7 +80,7 @@ export const UserShow = () => {
                     <Descriptions.Item label="运动养 (Exercise)">
                         {renderScoreTag(record?.scores?.exercise || 0)}
                     </Descriptions.Item>
-                    <Descriptions.Item label="睡眠养 (Sleep)">
+                    <Descriptions.Item label="膏方养 (Sleep)">
                         {renderScoreTag(record?.scores?.sleep || 0)}
                     </Descriptions.Item>
                     <Descriptions.Item label="心理养 (Mental)">
@@ -92,7 +92,7 @@ export const UserShow = () => {
                 </Descriptions>
 
                 <Divider />
-                
+
                 {record?.id && <UserPlanManager userId={record.id} />}
             </Card>
         </Show>

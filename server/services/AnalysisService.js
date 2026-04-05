@@ -10,46 +10,56 @@ class AnalysisService {
      * @param {string} systemInstruction 
      * @param {boolean} jsonResponse 
      */
-    static async callAI(prompt, history = [], systemInstruction = "", jsonResponse = false) {
+    static async callAI(prompt, history = [], systemInstruction = "", jsonResponse = false, fallbackModels = ["google/gemini-2.0-flash-001", "qwen/qwen-2.5-72b-instruct"]) {
         const apiKey = process.env.OPENROUTER_API_KEY;
         if (!apiKey) throw new Error("API Key not configured");
 
         const messages = [];
         if (systemInstruction) messages.push({ role: "system", content: systemInstruction });
         
-        // 转换历史记录格式
         history.forEach(h => {
             if (h.text) messages.push({ role: h.role === 'model' ? 'assistant' : 'user', content: h.text });
         });
         
         messages.push({ role: "user", content: prompt });
 
-        try {
-            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-                method: "POST",
-                headers: { 
-                    "Authorization": `Bearer ${apiKey}`, 
-                    "Content-Type": "application/json",
-                    "X-Title": "FiveNursings-Module"
-                },
-                body: JSON.stringify({
-                    model: "google/gemini-2.0-flash-001",
-                    messages,
-                    response_format: jsonResponse ? { type: "json_object" } : undefined
-                }),
-            });
-            
-            if (!response.ok) {
-                const errText = await response.text();
-                throw new Error(`AI API Error: ${response.status} ${errText}`);
-            }
+        let lastError = null;
+        for (const model of fallbackModels) {
+            try {
+                console.log(`[Analysis AI] Attempting with model: ${model}`);
+                const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                    method: "POST",
+                    headers: { 
+                        "Authorization": `Bearer ${apiKey}`, 
+                        "Content-Type": "application/json",
+                        "X-Title": "FiveNursings-AnalysisService"
+                    },
+                    body: JSON.stringify({
+                        model,
+                        messages,
+                        response_format: jsonResponse ? { type: "json_object" } : undefined
+                    }),
+                });
+                
+                if (!response.ok) {
+                    const errText = await response.text();
+                    console.warn(`[Analysis AI] Model ${model} failed (${response.status}): ${errText}`);
+                    lastError = new Error(`AI API Error: ${response.status} ${errText}`);
+                    continue; // Try next model
+                }
 
-            const data = await response.json();
-            return data.choices?.[0]?.message?.content || "";
-        } catch (e) {
-            console.error("AI Service Error:", e);
-            throw e;
+                const data = await response.json();
+                const content = data.choices?.[0]?.message?.content;
+                if (content) return content;
+                
+                lastError = new Error("Empty response from AI model");
+            } catch (e) {
+                console.error(`[Analysis AI] Network error for model ${model}:`, e);
+                lastError = e;
+            }
         }
+        
+        throw lastError || new Error("All AI models failed");
     }
 
     /**
@@ -64,14 +74,16 @@ ${(history || []).map(h => `${h.role === 'model' ? '助手' : '患者'}: ${h.tex
 
 请将上述对话总结为一条极简的康复日志条目（20字以内，用第一人称“今日...”开头）。
 同时，请基于该记录为患者的核心指标打分增量（1-5分）。
-请务必返回 JSON 格式：{"summary": "今日...", "impact": {"category": "diet|exercise|sleep|mental|function", "change": 3}}`;
+请务必返回 JSON 格式：{"summary": "今日...", "impact": {"category": "diet|exercise|mental|function|tcm", "change": 3}}`;
 
-        const content = await this.callAI(context, [], "你是一位专业的康复助理。", true);
-        
         try {
-            const parsed = JSON.parse(content);
+            // Using high-performance models for summary
+            const content = await this.callAI(context, [], "你是一位专业的康复助理。", true, ["google/gemini-2.0-flash-001", "qwen/qwen-2.5-72b-instruct"]);
+            const cleanContent = content.replace(/```json|```/g, '').trim();
+            const parsed = JSON.parse(cleanContent);
             return Array.isArray(parsed) ? parsed[0] : parsed;
         } catch (e) {
+            console.error("[Summarize AI Error] Critical Failure:", e);
             return { summary: "今日顺利完成康复记录", impact: { category: "mental", change: 1 } };
         }
     }
@@ -123,7 +135,7 @@ ${knowledge}
 五养分数：饮食${profile.scores?.diet || 0}, 运动${profile.scores?.exercise || 0}, 睡眠${profile.scores?.sleep || 0}, 心理${profile.scores?.mental || 0}, 功能${profile.scores?.function || 0}
 
 要求：
-1. 必须覆盖“五养”维度：diet(饮食), exercise(运动), sleep(睡眠/膏方), mental(心理), function(机能)。
+1. 必须覆盖“五养”维度：diet(饮食), exercise(运动), tcm(膏方/睡眠), mental(心理), function(机能)。
 2. 生成 5-8 条任务。
 3. 任务必须具有极强的针对性。例如气虚者应包含补气饮食或温和运动。
 4. 返回严格的 JSON 数组格式，每个对象包含：

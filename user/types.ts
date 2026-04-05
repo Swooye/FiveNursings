@@ -197,6 +197,7 @@ export interface CartItem extends SKU {
 
 export interface VoiceLog {
   id: string;
+  sessionId?: string;
   timestamp: string;
   summary: string;
   impact: {

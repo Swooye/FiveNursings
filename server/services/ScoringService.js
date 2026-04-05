@@ -7,20 +7,15 @@ class ScoringService {
      */
     static getWeights(stage) {
         const DEFAULT_WEIGHTS = { 
-            diet: 0.25, 
-            exercise: 0.20, 
-            sleep: 0.20, 
-            mental: 0.20, 
-            function: 0.15, 
+            diet: 0.20,     // 饮食
+            exercise: 0.20, // 运动
+            sleep: 0.20,    // 膏方 (mapping sleep to tcm)
+            mental: 0.20,   // 心理
+            function: 0.20, // 功能
             environment: 0 
         };
         
-        if (['术后30天内', '化疗中', '放疗中', '术后/化疗期'].includes(stage)) {
-            return { diet: 0.30, function: 0.30, sleep: 0.15, mental: 0.15, exercise: 0.10, environment: 0 };
-        } else if (['稳定随访期', '康复巩固期'].includes(stage)) {
-            return { diet: 0.20, function: 0.15, sleep: 0.25, mental: 0.20, exercise: 0.20, environment: 0 };
-        }
-        
+        // Ensure even distribution for the Five Nursings standard
         return DEFAULT_WEIGHTS;
     }
 
@@ -43,14 +38,34 @@ class ScoringService {
      */
     static async calculateIndex(userId) {
         console.log(`[ScoringService] Starting index calculation for user: ${userId}`);
-        const user = await User.findById(userId) || await User.findOne({ firebaseUid: userId });
+        
+        let user;
+        // 尝试先按 Firebase UID 查找，如果不象 ObjectID 则跳过 findById 以防报错
+        if (userId.length === 24) {
+            try { user = await User.findById(userId); } catch (e) {}
+        }
+        if (!user) {
+            user = await User.findOne({ firebaseUid: userId });
+        }
+        
         if (!user) {
             console.error(`[ScoringService] User ${userId} not found`);
             throw new Error("User not found");
         }
 
         const today = new Date().toISOString().split('T')[0];
-        const tasks = await DailyTask.find({ userId: userId, date: today });
+        const { getLiveWeather } = require('../utils');
+        
+        // PERFORMANCE OPTIMIZATION: Concurrent data fetching
+        const [tasks, weather] = await Promise.all([
+            DailyTask.find({ userId: user._id.toString(), date: today }),
+            // Wrap weather in a defensive timeout (2s) to prevent blocking
+            Promise.race([
+                getLiveWeather(user.locationAdcode || "310000"),
+                new Promise(resolve => setTimeout(() => resolve({ weather: "未知", temperature: "--", humidity: "--" }), 2000))
+            ])
+        ]);
+        
         const baselines = this.getBaselines();
         
         const scores = { ...user.scores };
@@ -78,16 +93,17 @@ class ScoringService {
         }
         scores.exercise = Math.min(100, Math.max(0, baselines.exercise + exerciseDelta));
 
-        // 3. 膏方养 (Sleep/TCM): 基准 70
-        const sleepHours = user.wearable?.sleepHours || 7.0;
-        let sleepDelta = 0;
-        if (sleepHours >= 7 && sleepHours <= 9) sleepDelta = 20; // 奖励：优质睡眠
-        else if (sleepHours < 5) sleepDelta = -20; // 惩罚：严重睡眠不足
+        // 3. 膏方养 (TCM): 基准 70 (Mapped from sleep/tcm)
+        const tcmCategory = tasks.some(t => t.category === 'tcm') ? 'tcm' : 'sleep';
+        const tcmTasks = tasks.filter(t => (t.category === 'tcm' || t.category === 'sleep') && t.completed);
         
-        // 膏方任务奖励
-        const tcmTasks = tasks.filter(t => t.category === 'sleep' && t.completed);
-        sleepDelta += (tcmTasks.length * 10); 
-        scores.sleep = Math.min(100, Math.max(0, baselines.sleep + sleepDelta));
+        let tcmDelta = 0;
+        const sleepHours = user.wearable?.sleepHours || 7.0;
+        if (sleepHours >= 7 && sleepHours <= 9) tcmDelta = 20; 
+        else if (sleepHours < 5) tcmDelta = -20;
+        
+        tcmDelta += (tcmTasks.length * 10); 
+        scores.sleep = Math.min(100, Math.max(0, baselines.sleep + tcmDelta));
 
         // 4. 心理养 (Mental): 基准 80
         // 目前基于上一次记录或默认，未来可接入 AI 语义分析后的 Reward/Penalty
@@ -104,9 +120,7 @@ class ScoringService {
         
         scores.function = Math.min(100, Math.max(0, baselines.function + functionReward - symptomPenalty));
 
-        // 6. 环境养 (Environmental): 仅作为后台参考，不影响 CRI
-        const { getLiveWeather } = require('../utils');
-        const weather = await getLiveWeather(user.locationAdcode || "310000");
+        // 6. 环境养 (Environmental): 已经由 Promise.all 获取
         let envScore = 85; 
         if (weather.weather.includes('晴')) envScore += 8;
         if (weather.weather.includes('雨')) envScore -= 5;
@@ -128,20 +142,26 @@ class ScoringService {
         await ReminderService.checkAlerts(userId, user.scores, scores);
         
         // 9. 计算变动率 (Daily Change Calculation)
-        const prevCri = user.coreRecoveryIndex || cri;
+        const prevCri = user.coreRecoveryIndex; // 不再使用 || cri
         let dailyChange = "0.0%";
-        if (prevCri > 0) {
+        if (prevCri > 0 && cri > 0) {
             const change = cri - prevCri;
-            const sign = change >= 0 ? "+" : "";
-            // 基于原始分值的变动百分比
-            const percent = ((change / prevCri) * 100).toFixed(1);
-            dailyChange = `${sign}${percent}%`;
+            if (change === 0) {
+                dailyChange = "+0.0%";
+            } else {
+                const sign = change > 0 ? "+" : "";
+                const percent = ((change / prevCri) * 100).toFixed(1);
+                dailyChange = `${sign}${percent}%`;
+            }
         }
 
         // 10. 数据持久化
         user.scores = scores;
         user.coreRecoveryIndex = cri;
         user.dailyChange = dailyChange; // 存入数据库供前端展示
+        
+        // 核心修复：显式标记 scores 已修改，并保存
+        user.markModified('scores');
         await user.save();
         
         console.log(`[ScoringService] Calculation complete. Score: ${cri} (${dailyChange}), Scores:`, scores);
