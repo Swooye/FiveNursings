@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Popconfirm } from "antd";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 
-const API_URL = import.meta.env.DEV ? "/api" : "https://fivenursings-backend-604368704549.us-central1.run.app/api";
+const API_URL = import.meta.env.PROD ? "/api" : "http://localhost:3002/api";
 
 export const UserPlanManager = ({ userId }) => {
     const [tasks, setTasks] = useState([]);
@@ -41,7 +41,8 @@ export const UserPlanManager = ({ userId }) => {
                     date: today,
                     completed: false,
                     isManual: true,
-                    source: 'doctor'
+                    source: 'doctor',
+                    isPermanent: values.isPermanent !== false // 默认持久化
                 }),
             });
             if (response.ok) {
@@ -99,9 +100,14 @@ export const UserPlanManager = ({ userId }) => {
         },
         {
             title: "来源",
-            dataIndex: "isManual",
-            key: "isManual",
-            render: (manual, record) => manual ? <Tag color="blue">医护干预</Tag> : <Tag>系统AI</Tag>
+            dataIndex: "source",
+            key: "source",
+            render: (source, record) => {
+                if (source === 'doctor' || record.isManual) {
+                    return <Tag color="blue">医护干预</Tag>;
+                }
+                return <Tag>系统AI</Tag>;
+            }
         },
         {
             title: "操作",
@@ -169,6 +175,12 @@ export const UserPlanManager = ({ userId }) => {
                             </Select>
                         </Form.Item>
                     </Space>
+                    <Form.Item name="isPermanent" label="是否设为长期计划" initialValue={true}>
+                        <Select>
+                            <Select.Option value={true}>是（自动同步到每日清单）</Select.Option>
+                            <Select.Option value={false}>否（仅今日生效一次）</Select.Option>
+                        </Select>
+                    </Form.Item>
                     <Form.Item name="description" label="补充说明">
                         <Input.TextArea rows={2} placeholder="给患者的备注建议" />
                     </Form.Item>

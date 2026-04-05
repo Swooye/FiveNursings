@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Play, Square, Loader2, Sparkles } from 'lucide-react';
-import { httpsCallable } from 'firebase/functions';
-import { auth, functions } from '../src/firebase';
+import { auth } from '../src/firebase';
 import { PatientProfile } from '../types';
 import ReactMarkdown from 'react-markdown';
 
@@ -11,6 +10,8 @@ interface DailyHealthReportProps {
   onUpdateCache: (cache: { date: string, profileJSON: string, text: string }) => void;
   cache?: { date: string, profileJSON: string, text: string } | null;
 }
+
+const API_URL = import.meta.env.PROD ? "" : "http://localhost:3002";
 
 const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose, onUpdateCache, cache }) => {
   const [loading, setLoading] = useState(true);
@@ -55,34 +56,15 @@ const DailyHealthReport: React.FC<DailyHealthReportProps> = ({ profile, onClose,
       setLoading(true);
       setError(null);
       try {
-        let text = "";
-
-        if ((import.meta as any).env.DEV) {
-          try {
-            const res = await fetch("/api/generate-health-report", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ profile, userId: auth.currentUser?.uid || "dev_user" })
-            });
-            if (res.ok) {
-              const result = await res.json();
-              text = result.report;
-            }
-          } catch (localErr) {
-            console.warn("Local AI generation failed, falling back to Firebase:", localErr);
-          }
-        }
-
-        if (!text) {
-          const generateHealthReport = httpsCallable(functions, 'generateHealthReport');
-          const result = await generateHealthReport({ profile });
-          const data = result.data as { report: string };
-          if (data && data.report) {
-            text = data.report;
-          } else {
-            throw new Error("Invalid report data received from AI");
-          }
-        }
+        const res = await fetch(`${API_URL}/api/generate-health-report`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ profile, userId: auth.currentUser?.uid || "dev_user" })
+        });
+        if (!res.ok) throw new Error(`API Error: ${res.status}`);
+        const result = await res.json();
+        const text = result.report;
+        if (!text) throw new Error("Invalid report data received from AI");
 
         setReportText(text);
         onUpdateCache({ date: today, profileJSON: currentProfileJSON, text: text });

@@ -18,6 +18,8 @@ const ScoringService = require('./services/ScoringService');
 const AnalysisService = require('./services/AnalysisService');
 const ReminderService = require('./services/ReminderService');
 const TaskPolicyService = require('./services/TaskPolicyService');
+const ContextService = require('./services/ContextService');
+const MemoryService = require('./services/MemoryService');
 
 const getLocalDateString = () => {
     const d = new Date();
@@ -84,24 +86,69 @@ const format = (doc) => {
     return { ...obj, id: idStr, _id: idStr }; 
 };
 
-// --- Helper: Resolve User IDs ---
+// --- Simple In-Memory ID Mapping Cache (To prevent poll-induced DB overload) ---
+const idMappingCache = new Map();
+
 const resolveUserIds = async (userId) => {
     if (!userId) return [];
+    if (idMappingCache.has(userId)) return idMappingCache.get(userId);
+
     const idList = [userId];
-    const user = await User.findOne({ $or: [{ firebaseUid: userId }, { _id: mongoose.isValidObjectId(userId) ? userId : null }] }).select('_id firebaseUid').lean();
+    const user = await User.findOne({ 
+        $or: [
+            { firebaseUid: userId }, 
+            { _id: mongoose.isValidObjectId(userId) ? userId : null }
+        ] 
+    }).select('_id firebaseUid').lean();
+    
     if (user) {
         if (user.firebaseUid) idList.push(user.firebaseUid);
         if (user._id) idList.push(user._id.toString());
-    } else {
-        console.warn(`[ResolveID] No user found for ${userId} in ${process.env.NODE_ENV} environment.`);
     }
-    const finalIdList = [...new Set(idList)];
-    return finalIdList;
+    const uniqueIds = [...new Set(idList)];
+    
+    // Cache for 1 minute (simple cleanup or just limit map size if needed)
+    idMappingCache.set(userId, uniqueIds);
+    if (idMappingCache.size > 1000) idMappingCache.clear(); // Simple eviction
+    
+    return uniqueIds;
 };
 
-// --- 业务接口 (优先注册，防止路由冲突) ---
+// --- Helper: Resolve Primary ID (MongoDB _id) ---
+const resolvePrimaryId = async (userId) => {
+    const idList = await resolveUserIds(userId);
+    // Find the one that looks like a MongoDB ID, otherwise return first
+    return idList.find(id => mongoose.isValidObjectId(id)) || userId;
+};
 
-// 用户同步与基本 Profile
+// --- Helper: Standardize filtration for Generic Routes ---
+const normalizeUserIdFilter = async (query) => {
+    const filters = { ...query };
+    if (filters.userId) {
+        const idList = await resolveUserIds(filters.userId);
+        filters.userId = { $in: idList };
+    }
+    return filters;
+};
+
+
+// --- 管理员登录 ---
+app.post('/api/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        const admin = await Admin.findOne({ email });
+        if (!admin) return res.status(401).json({ error: "管理员不存在" });
+        
+        const isMatch = await bcrypt.compare(password, admin.password);
+        if (!isMatch) return res.status(401).json({ error: "密码错误" });
+        
+        const adminObj = format(admin);
+        delete adminObj.password;
+        res.json({ user: adminObj });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// --- 业务接口 (优先注册，防止路由冲突) ---
 app.post('/api/users/sync', async (req, res) => {
     try {
         const uid = req.body.firebaseUid.trim();
@@ -128,8 +175,9 @@ app.post('/api/daily_tasks/generate', async (req, res) => {
     try {
         const { userId, profile, date, commit = false } = req.body;
         if (!userId || !profile) return res.status(400).json({ error: "Missing parameters" });
+        const primaryId = await resolvePrimaryId(userId);
         const tasks = await TaskPolicyService.generateTasksFromProfile(
-            userId, 
+            primaryId, 
             profile, 
             date || getLocalDateString(),
             commit
@@ -167,7 +215,10 @@ app.post('/api/user/:id/calculate-index', async (req, res) => {
 const createRoutes = (path, Model) => {
   app.get(`/api/${path}`, async (req, res) => {
     try {
-      const { _start, _end, _sort, _order, ...filters } = req.query;
+      const { _start, _end, _sort, _order, ...rawFilters } = req.query;
+      // [STANDARD] 统一归一化 userId 查询，支持 Firebase UID 和 MongoDB ObjectId 跨格式匹配
+      const filters = await normalizeUserIdFilter(rawFilters);
+      
       const count = await Model.countDocuments(filters);
       let query = Model.find(filters);
       
@@ -223,22 +274,21 @@ const createRoutes = (path, Model) => {
 
 // 自定义 daily_symptoms POST 以支持 upsert 和宽容匹配
 app.post('/api/daily_symptoms', async (req, res) => {
-    console.log("[DEBUG] POST /api/daily_symptoms body:", req.body);
     try {
         const { userId, date, symptoms } = req.body;
         if (!userId || !date) return res.status(400).json({ error: "Missing userId or date" });
         
-        // 查找所有关联的 ID，确保 upsert 时能定位到同一个人的记录
+        // [STANDARD] 获取归一化 ID 列表，确保存储时统一使用 Primary ID
+        const primaryId = await resolvePrimaryId(userId);
         const idList = await resolveUserIds(userId);
+        
         const data = await DailySymptom.findOneAndUpdate(
             { userId: { $in: idList }, date },
-            { $set: { userId: idList[0], symptoms, updatedAt: new Date() } }, // 存储时统一用第一个 ID
+            { $set: { userId: primaryId, symptoms, updatedAt: new Date() } }, 
             { upsert: true, new: true }
         );
-        console.log("[DEBUG] Symptoms saved:", data);
         res.json(format(data));
     } catch (e) { 
-        console.error("[ERROR] POST /api/daily_symptoms:", e);
         res.status(500).json({ error: e.message }); 
     }
 });
@@ -315,37 +365,40 @@ createRoutes('plans', User);
 // daily_tasks: 自定义 GET（支持 userId 跨格式匹配），其余 CRUD 仍用通用生成器
 app.get('/api/daily_tasks', async (req, res) => {
     try {
-        const { userId, date, _start, _end, _sort, _order } = req.query;
-
+        const { userId, date, dates, _start, _end, _sort, _order } = req.query;
+        const primaryId = await resolvePrimaryId(userId);
+        const idList = await resolveUserIds(userId);
+        
         let filter = {};
         if (userId) {
-            // 宽容匹配：无论 admin 存入 _id 还是 firebaseUid，都能被找到
-            const idList = await resolveUserIds(userId);
             filter.userId = { $in: idList };
         }
         if (date) filter.date = date;
+        if (dates && Array.isArray(dates)) filter.date = { $in: dates };
         
-        console.log(`[DEBUG /api/daily_tasks] Combined filter:`, JSON.stringify(filter));
-
-        const count = await DailyTask.countDocuments(filter);
-        let query = DailyTask.find(filter);
-
         const sortField = _sort ? (_sort === 'id' ? '_id' : _sort) : 'date';
-        query = query.sort({ [sortField]: _order === 'ASC' ? 1 : -1 });
+        const sortOrder = _order === 'ASC' ? 1 : -1;
+
+        // [THROTTLED ALIGNMENT] Only trigger sync if necessary (no tasks found or cache expired)
+        const targetDate = date || getLocalDateString();
+        const isFutureOrToday = targetDate >= getLocalDateString();
+        
+        if (primaryId && isFutureOrToday && _start === undefined) {
+             const existingCount = await DailyTask.countDocuments({ userId: primaryId, date: targetDate });
+             if (existingCount < 2) { // 简单并发保护：若已有多个任务，暂不重复触发同步
+                 await TaskPolicyService.generateTasksFromTemplates(primaryId, targetDate);
+             }
+        }
+
+        // 最终执行查询
+        const count = await DailyTask.countDocuments(filter);
+        let query = DailyTask.find(filter).sort({ [sortField]: sortOrder });
 
         if (_start !== undefined && _end !== undefined) {
             query = query.skip(parseInt(_start)).limit(parseInt(_end) - parseInt(_start));
         }
 
         const data = await query.exec();
-
-        // [ALIGNMENT] 如果查询结果为空，且有 userId，自动根据模板生成
-        if (data.length === 0 && userId && !(_start || _end)) {
-            console.log(`[GET /api/daily_tasks] No tasks for user ${userId} on ${date}. Triggering template logic...`);
-            const generated = await TaskPolicyService.generateTasksFromTemplates(userId, date || getLocalDateString());
-            return res.json(generated.map(format));
-        }
-
         res.setHeader('Access-Control-Expose-Headers', 'X-Total-Count');
         res.setHeader('X-Total-Count', count);
         res.json(data.map(format));
@@ -358,7 +411,16 @@ app.get('/api/daily_tasks/:id', async (req, res) => {
     catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/daily_tasks', async (req, res) => {
-    try { const data = await DailyTask.create({ ...req.body, createdAt: new Date() }); res.json(format(data)); }
+    try { 
+        let data;
+        if (req.body.source === 'doctor' || req.body.isManual) {
+            // [SAFETY] 使用 Service 层逻辑，自动处理模板同步
+            data = await TaskPolicyService.addManualTask({ ...req.body, createdAt: new Date() });
+        } else {
+            data = await DailyTask.create({ ...req.body, createdAt: new Date() }); 
+        }
+        res.json(format(data)); 
+    }
     catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.patch('/api/daily_tasks/:id', async (req, res) => {
@@ -410,33 +472,123 @@ app.post('/api/users/:userId/location', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// AI 业务接口 (AnalysisService)
+// AI 业务接口 (从云函数迁移且已增强稳定性)
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+
 app.post('/api/get-ai-chat-reply', async (req, res) => {
     try {
-        const { message, text, profile, history = [] } = req.body;
-        const userMessage = message || text;
-        const SYSTEM_INSTRUCTION = `你是一位专业的肿瘤康复AI教练。基于“五治五养”体系（饮食养、运动养、睡眠养、心理养、功能养）为患者提供支持。
-核心原则：
-1. 只提供康养建议，不代替诊断与处方。
-2. 语言通俗易懂，给出明确的可执行方案。
-3. 识别“危险信号”（高热、剧痛、大出血、呼吸困难），一旦发现立即建议线下就医。
-4. 所有回答必须包含：[解释]、[今日行动建议]、[注意事项]。
-5. 永远带免责声明：本建议不构成医疗诊断。
-6. **计划管理能力**：当患者表达需要调整康复计划、增加任务或当前任务困难时，你可以在回复末尾包含 [PLAN_ACTION] 标签。
-   格式：[PLAN_ACTION]{"type": "ADD_TASK", "task": {"category": "diet|exercise|mental|function", "title": "任务标题", "description": "补充描述"}}[/PLAN_ACTION]
-   支持类型：ADD_TASK, UPDATE_TASK, DELETE_TASK。`;
+        const { message, text, profile, userId, history = [] } = req.body;
+        const userMessage = (message || text || "").trim();
+        const apiKey = process.env.OPENROUTER_API_KEY;
 
-        const reply = await AnalysisService.callAI(userMessage, history, SYSTEM_INSTRUCTION);
+        if (!apiKey) return res.status(400).json({ error: "API Key not configured" });
+
+        // 1. 获取增强上下文 (Expert Brain Context)
+        const effectiveUserId = userId || profile?.id || profile?.firebaseUid;
+        const bioProfile = await ContextService.getFullContext(effectiveUserId);
+        const contextFragment = ContextService.buildContextPrompt(bioProfile, userMessage);
+
+        const SYSTEM_INSTRUCTION = `你是一位专业的肿瘤康复AI教练。
+核心理论体系：林洪生“五养”体系（饮食养、运动养、睡眠养、心理养、功能养）。
+
+${contextFragment}
+
+回答要求：
+1. 严谨性：所有建议必须符合上述“五养”关联背景。
+2. 个性化：必须根据[患者全维画像]中的得分和今日执行状态进行精准回复。
+3. 交互引导：在回复正文结束时，必须添加 [SUGGESTIONS] 标签，生成 3 条用户可能想问的后续问题（用 | 分隔），例如：[SUGGESTIONS] 为什么建议我增加运动量？ | 我该如何改善睡眠质量？ | 给我的饮食建议。
+4. 安全守则：不代替诊断，发现危险信号建议就医，最后带免责声明。
+5. 所有回答必须包含：[解释]、[今日行动建议]、[注意事项]。`;
+
+        const messages = [
+            { role: "system", content: SYSTEM_INSTRUCTION },
+        ];
+
+        // 统一角色标签，并确保 user/assistant 交替出现
+        let lastRole = 'system';
+        history.filter(h => h.text && h.text.trim()).forEach(h => {
+            const role = h.role === 'model' ? 'assistant' : 'user';
+            if (role !== lastRole) {
+              messages.push({ role, content: h.text.trim() });
+              lastRole = role;
+            }
+        });
+
+        if (userMessage) {
+          if (lastRole === 'user') {
+            messages[messages.length-1].content += "\n" + userMessage;
+          } else {
+            messages.push({ role: "user", content: userMessage });
+          }
+        } else {
+          return res.status(400).json({ error: "Message content cannot be empty" });
+        }
+
+        const models = ["qwen/qwen3.6-plus:free", "google/gemini-2.0-flash-lite-preview-02-05:free"];
+        let reply = "";
+        let attemptError = null;
+
+        for (const model of models) {
+            try {
+                console.log(`[AI] Attempting with model: ${model}`);
+                const response = await fetch(OPENROUTER_URL, {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${apiKey}`,
+                        "Content-Type": "application/json",
+                        "X-Title": "FiveNursings-ExpertBrain"
+                    },
+                    body: JSON.stringify({ model, messages })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    reply = data.choices?.[0]?.message?.content;
+                    if (reply) break;
+                } else {
+                    const err = await response.json().catch(() => ({}));
+                    console.warn(`[AI] Model ${model} failed with ${response.status}`, err);
+                    attemptError = err;
+                }
+            } catch (e) {
+                console.error(`[AI] Network error for model ${model}`, e);
+                attemptError = e;
+            }
+        }
+
+        if (!reply) {
+            console.error("[AI] All models failed or rate limited.");
+            // 鲁棒性改进：如果所有模型都挂了，返回一个 200 的优雅道歉，避免客户端显示“网络错误”
+            return res.json({ 
+                reply: "抱歉，五养专家大脑目前正忙（由于访问量较大），请您稍等几分钟再试。在这期间，您可以先查看下方的今日康复建议。" 
+            });
+        }
+        
+        // 2. 异步执行画像提取 (AI gets to know you better)
+        if (effectiveUserId && bioProfile) {
+            MemoryService.extractNewInsights(userMessage, reply, bioProfile.aiInsights)
+                .then(newInsights => {
+                    if (newInsights.length !== bioProfile.aiInsights.length) {
+                        User.findOneAndUpdate(
+                            { $or: [{ firebaseUid: effectiveUserId }, { _id: mongoose.Types.ObjectId.isValid(effectiveUserId) ? effectiveUserId : null }] },
+                            { $set: { aiInsights: newInsights } }
+                        ).then(() => console.log(`[Memory] Insights updated for ${effectiveUserId}`));
+                    }
+                })
+                .catch(err => console.error("[Memory] Failed to extract insights:", err));
+        }
+
         res.json({ reply });
     } catch (e) {
-        console.error("[AI Chat Route Error]", e);
-        res.status(500).json({ error: e.message });
+        console.error("[AI Server Error]", e);
+        res.json({ reply: "抱歉，五养专家正在休息中，请稍后再试。" });
     }
 });
 
 app.post('/api/generate-health-report', async (req, res) => {
     try {
-        const report = await AnalysisService.generateHealthReport(req.body.profile);
+        const userId = req.body.userId || req.body.profile?.id;
+        const report = await AnalysisService.generateHealthReport(userId, req.body.profile);
         res.json({ report });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -536,6 +688,20 @@ app.post('/api/interventions', async (req, res) => {
 });
 
 // 基础消息接口 (获取历史) - 注意路由顺序：最具体的在前
+app.get('/api/messages/latest-unread-intervention/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const idList = await resolveUserIds(userId);
+        const latestIntervention = await ChatMessage.findOne({
+            userId: { $in: idList },
+            type: 'intervention',
+            isRead: false
+        }).sort({ timestamp: -1 }).lean();
+        
+        res.json({ sessionId: latestIntervention ? latestIntervention.sessionId : null });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/messages/unread-count/:userId', async (req, res) => {
     try {
         const idList = await resolveUserIds(req.params.userId);

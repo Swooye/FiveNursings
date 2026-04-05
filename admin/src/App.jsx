@@ -34,7 +34,7 @@ import { RoleEdit } from "./pages/roles/edit";
 
 import "@refinedev/antd/dist/reset.css";
 
-const API_URL = import.meta.env.DEV ? "/api" : "https://fivenursings-backend-604368704549.us-central1.run.app/api";
+const API_URL = import.meta.env.PROD ? "/api" : "http://localhost:3002/api";
 
 const authProvider = {
   login: async ({ email, password }) => {

@@ -6,7 +6,7 @@ import { SafetyCertificateOutlined, CalendarOutlined, HistoryOutlined } from "@a
 import { UserPlanManager } from "../../components/UserPlanManager";
 
 const { Title, Text } = Typography;
-const API_URL = import.meta.env.DEV ? "/api" : "https://fivenursings-backend-604368704549.us-central1.run.app/api";
+const API_URL = import.meta.env.PROD ? "/api" : "http://localhost:3002/api";
 
 export const PlanShow = () => {
     const { queryResult } = useShow();

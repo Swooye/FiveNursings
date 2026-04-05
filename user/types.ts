@@ -133,6 +133,7 @@ export interface PatientProfile {
   todaySymptoms?: string[];
   lastSymptomUpdate?: string;
   coreRecoveryIndex?: number;
+  dailyChange?: string;
   baselines?: NursingScores;
   dashboardConfig?: string[];
 }
@@ -220,6 +221,7 @@ export interface ChatMessage {
   category?: string;
   isRead?: boolean;
   sessionId?: string;
+  suggestions?: string[];
 }
 
 export interface ChatSession {

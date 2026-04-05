@@ -1,19 +1,27 @@
 import React from 'react';
 import { ChevronRight, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
 
-export const StatusPill: React.FC<{ score: number, baseline: number }> = ({ score, baseline }) => {
+export const StatusPill: React.FC<{ 
+  score: number, 
+  baseline: number, 
+  labelOverride?: string,
+  severity?: 'normal' | 'warning' | 'critical'
+}> = ({ score, baseline, labelOverride, severity }) => {
   const diff = score - baseline;
   
-  let label = '已达标';
+  let label = labelOverride || '已达标';
   let colorClass = 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800';
   let Icon = CheckCircle2;
 
-  if (diff < -20) {
-    label = '警示';
+  // Determine severity if not explicitly provided
+  const effectiveSeverity = severity || (diff < -20 ? 'critical' : diff < 0 ? 'warning' : 'normal');
+
+  if (effectiveSeverity === 'critical') {
+    label = labelOverride || '警示';
     colorClass = 'text-rose-600 bg-rose-50 dark:bg-rose-900/30 border-rose-200 dark:border-rose-800';
     Icon = XCircle;
-  } else if (diff < 0) {
-    label = '待提高';
+  } else if (effectiveSeverity === 'warning') {
+    label = labelOverride || '待提高';
     colorClass = 'text-amber-600 bg-amber-50 dark:bg-amber-900/30 border-amber-200 dark:border-amber-800';
     Icon = AlertCircle;
   }
@@ -35,15 +43,22 @@ interface MetricCardProps {
   onClick: () => void;
   isHighlighted?: boolean;
   horizontal?: boolean;
+  statusOverride?: string;
+  severity?: 'normal' | 'warning' | 'critical';
 }
 
-export const MetricCard: React.FC<MetricCardProps> = ({ title, score, baseline, label, icon, onClick, isHighlighted, horizontal }) => {
+export const MetricCard: React.FC<MetricCardProps> = ({ title, score, baseline, label, icon, onClick, isHighlighted, horizontal, statusOverride, severity }) => {
   const diff = score - baseline;
-  const isHealthy = diff >= 0;
-  const isWarning = diff < -20;
   
-  const accentColor = isWarning ? 'rose' : isHealthy ? 'emerald' : 'amber';
-  const accentHex = isWarning ? '#f43f5e' : isHealthy ? '#10b981' : '#f59e0b';
+  // Calculate effective severity for background colors
+  const effectiveSeverity = severity || (diff < -20 ? 'critical' : diff < 0 ? 'warning' : 'normal');
+  
+  const isHealthy = effectiveSeverity === 'normal';
+  const isCritical = effectiveSeverity === 'critical';
+  const isWarning = effectiveSeverity === 'warning';
+  
+  const accentColor = isCritical ? 'rose' : isWarning ? 'amber' : 'emerald';
+  const accentHex = isCritical ? '#f43f5e' : isWarning ? '#f59e0b' : '#10b981';
 
   const borderClasses: Record<string, string> = {
     rose: 'border-rose-200/50 dark:border-rose-500/20',
@@ -64,14 +79,14 @@ export const MetricCard: React.FC<MetricCardProps> = ({ title, score, baseline, 
       `bg-white dark:bg-[#111827] border-slate-50 dark:border-white/5 shadow-sm hover:border-emerald-200/50`
     }`}>
       <div className={`absolute top-0 right-0 w-48 h-48 blur-[80px] -mr-16 -mt-16 opacity-10 transition-colors ${
-        isWarning ? 'bg-rose-500' : isHealthy ? 'bg-emerald-500' : 'bg-amber-500'
+        isCritical ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500'
       }`}></div>
       
       <div className="flex w-full justify-between items-start relative z-10 mb-6">
         <div className={`p-2 rounded-2xl bg-slate-50 dark:bg-white/5 text-${accentColor}-500 dark:text-${accentColor}-400 transition-transform group-hover:scale-110 scale-125`}>
           {icon}
         </div>
-        <StatusPill score={score} baseline={baseline} />
+        <StatusPill score={score} baseline={baseline} labelOverride={statusOverride} severity={severity} />
       </div>
       
       <div className={`relative z-10 w-full text-left flex ${horizontal ? 'flex-row items-center justify-between' : 'flex-col'}`}>
@@ -80,7 +95,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({ title, score, baseline, 
           <div className="flex flex-col">
             <div className="flex items-center space-x-2">
               <span className={`text-6xl font-black tracking-tight leading-none ${
-                isWarning ? 'text-rose-600 dark:text-rose-400' : 
+                isCritical ? 'text-rose-600 dark:text-rose-400' : 
                 isHealthy ? 'text-slate-800 dark:text-white' : 
                 'text-amber-600 dark:text-amber-400'
               }`}>{score}</span>

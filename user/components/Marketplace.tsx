@@ -5,7 +5,7 @@ import { ShoppingCart, Star, Crown, Search, Plus, Heart, X, Flame } from 'lucide
 import ProductDetail from './ProductDetail';
 import { getAssetUrl } from '../src/utils/image';
 
-const API_URL = (import.meta as any).env.DEV ? "" : "https://fivenursings-backend-604368704549.us-central1.run.app";
+const API_URL = import.meta.env.PROD ? "" : "http://localhost:3002";
 
 const CATEGORIES = [
   { id: 'all', label: '全部' },

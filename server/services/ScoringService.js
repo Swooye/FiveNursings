@@ -126,13 +126,26 @@ class ScoringService {
         // 8. 干预触发 (Interventions)
         const ReminderService = require('./ReminderService');
         await ReminderService.checkAlerts(userId, user.scores, scores);
+        
+        // 9. 计算变动率 (Daily Change Calculation)
+        const prevCri = user.coreRecoveryIndex || cri;
+        let dailyChange = "0.0%";
+        if (prevCri > 0) {
+            const change = cri - prevCri;
+            const sign = change >= 0 ? "+" : "";
+            // 基于原始分值的变动百分比
+            const percent = ((change / prevCri) * 100).toFixed(1);
+            dailyChange = `${sign}${percent}%`;
+        }
 
-        // 9. 数据持久化
+        // 10. 数据持久化
         user.scores = scores;
         user.coreRecoveryIndex = cri;
+        user.dailyChange = dailyChange; // 存入数据库供前端展示
         await user.save();
-        console.log(`[ScoringService] Calculation complete. Score: ${cri}, Scores:`, scores);
-        return { scores, cri, baselines };
+        
+        console.log(`[ScoringService] Calculation complete. Score: ${cri} (${dailyChange}), Scores:`, scores);
+        return { scores, cri, dailyChange, baselines };
     }
 }
 

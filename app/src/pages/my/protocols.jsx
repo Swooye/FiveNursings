@@ -4,7 +4,7 @@ import { Spin, Result } from 'antd';
 import { NavBar } from 'antd-mobile';
 import { useNavigate } from 'react-router-dom';
 
-const API_URL = import.meta.env.DEV ? "/api" : "https://api-u46fik5vcq-uc.a.run.app/api";
+const API_URL = import.meta.env.PROD ? "" : "http://localhost:3002";
 
 const ProtocolPage = () => {
   const { key } = useParams();

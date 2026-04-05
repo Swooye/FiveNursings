@@ -33,8 +33,8 @@ const RadarWidget: React.FC<RadarWidgetProps> = ({ profile, onSync, isSyncing, i
     (profile.scores.diet + profile.scores.exercise + profile.scores.sleep + profile.scores.mental + profile.scores.function) / 5
   ) || 84.2;
 
-  // 计算今日变动（模拟或基于历史，此处用于视觉展示）
-  const dailyChange = "+2.1%";
+  // 使用动态下发的康复变动率，或显示默认
+  const dailyChange = profile.dailyChange || "0.0%";
 
   return (
     <div className="bg-white dark:bg-[#111827] rounded-[48px] p-8 shadow-sm border border-slate-100 dark:border-white/5 relative overflow-hidden backdrop-blur-xl">
@@ -61,7 +61,7 @@ const RadarWidget: React.FC<RadarWidgetProps> = ({ profile, onSync, isSyncing, i
       </div>
 
       <div className="h-80 min-h-[320px] w-full flex items-center justify-center relative z-10">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <RadarChart 
             cx="50%" 
             cy="50%" 

@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { ArrowLeft, Check, Plus, Mic, Image as ImageIcon, Camera, PhoneCall, MapPin, X, Trash2, Send, Loader2, MicVocal, AudioLines } from 'lucide-react';
 import { PatientProfile, ChatMessage } from '../types';
 
-const API_URL = import.meta.env.DEV ? "" : "https://fivenursings-backend-604368704549.us-central1.run.app";
+const API_URL = import.meta.env.PROD ? "" : "http://localhost:3002";
 
 interface DiaryChatProps {
     profile: PatientProfile;

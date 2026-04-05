@@ -1,4 +1,6 @@
 const fetch = require('node-fetch');
+const ContextService = require('./ContextService');
+const KnowledgeService = require('./KnowledgeService');
 
 class AnalysisService {
     /**
@@ -75,22 +77,37 @@ ${(history || []).map(h => `${h.role === 'model' ? '助手' : '患者'}: ${h.tex
     }
 
     /**
-     * 生成每日健康简报
+     * 生成每日健康简报 (Expert Brain Edition)
+     * @param {string} userId 
      * @param {Object} profile 
      */
-    static async generateHealthReport(profile) {
-        const prompt = `请基于以下患者档案生成一份【今日康复简报】。
-患者昵称：${profile.nickname || '用户'}
-诊断类型：${profile.cancerType}, 阶段：${profile.stage}
-五养评分：饮食${profile.scores?.diet || 0}, 运动${profile.scores?.exercise || 0}, 睡眠${profile.scores?.sleep || 0}, 心理${profile.scores?.mental || 0}, 功能${profile.scores?.function || 0}
+    static async generateHealthReport(userId, profile) {
+        // 1. 获取全维上下文
+        const contextData = await ContextService.getFullContext(userId, profile);
+        
+        // 2. 检索理论依据
+        const keywords = [profile.cancerType, ...contextData.currentSymptoms];
+        const knowledge = await KnowledgeService.getRelevantKnowledge(keywords);
+
+        const prompt = `请作为【林洪生五养专家大脑】，基于以下全维上下文为患者生成今日康复简报。
+
+[核心档案] 昵称：${profile.nickname || '用户'}, 类型：${profile.cancerType}, 阶段：${profile.stage}
+[中医辨证] ${profile.tcmAnalysisResult?.constitutionType || '待评估'} - ${profile.tcmAnalysisResult?.syndromeDifferentiation || '无'}
+[今日执行率] ${contextData.todayAdherence}% (目标：80%以上)
+[当前症状] ${contextData.currentSymptoms.join(', ') || '无明显不适'}
+[AI 长期洞察] ${contextData.aiInsights.join('; ') || '暂无'}
+
+[理论参考：林洪生五养]
+${knowledge}
 
 要求：
-1. 采用 Markdown 格式，层级清晰。
-2. 给出 1-2 条最核心的今日待办。
-语气要温暖、鼓励，字数控制在 200 字左右。
-3. 必须包含免责声明：本建议不构成医疗诊断。`;
+1. 模块化展示：【今日动态】、【专家点评】、【核心待办】。
+2. 评价今日执行情况，给予肯定或温和纠正。
+3. 结合“五养”理论，针对反馈的症状（如有）给出精准的干预建议。
+4. 语气专业且温暖。 Markdown 格式。
+5. 包含免责声明。`;
 
-        return await this.callAI(prompt, [], "你是一位专业的肿瘤康复AI教练。", false);
+        return await this.callAI(prompt, [], "你是一位深谙林洪生五养理论的顶级中医肿瘤康复专家。", false);
     }
 
     /**

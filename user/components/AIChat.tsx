@@ -1,18 +1,17 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { httpsCallable } from 'firebase/functions';
 import { PatientProfile, ChatMessage } from '../types';
 import { Send, Mic, X, Calendar, MessageSquare, ArrowLeft, PhoneCall, AlertTriangle, ChevronRight, Square, Sparkles, Loader2, History, StopCircle, Plus, Image as ImageIcon, Camera, MicVocal, MapPin, Keyboard, Trash2, Video, Target, AudioLines } from 'lucide-react';
-import { auth, functions } from '../src/firebase';
+import { auth } from '../src/firebase';
 import { ResponsiveContainer, LineChart, BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Line, Bar } from 'recharts';
 
-const API_URL = import.meta.env.DEV ? "" : "https://fivenursings-backend-604368704549.us-central1.run.app";
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "" : "http://localhost:3002"); // 恢复原来的配置，以便直接方位后端非代理路径 (/login)
 
 const ChartRenderer: React.FC<{ chartData: any }> = ({ chartData }) => {
   const { type, data, xAxisKey, grid, tooltip, lines, bars } = chartData;
   return (
-    <div className="w-full h-[350px]">
-      <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+    <div style={{ width: '100%', height: '350px', minHeight: '350px' }}>
+      <ResponsiveContainer width="100%" height="100%">
         {type === 'line' ? (
           <LineChart data={data}>
             {grid && <CartesianGrid strokeDasharray="3 3" className="dark:stroke-slate-700" />}
@@ -125,6 +124,7 @@ interface AIChatProps {
   initialPrompt?: string | null;
   onClearInitialPrompt?: () => void;
   onPlanAction?: (action: any) => void;
+  initialSessionId?: string | null;
 }
 
 // Default fallback suggestions
@@ -134,7 +134,7 @@ const DEFAULT_SUGGESTIONS = [
   "感觉压力大该如何调节？"
 ];
 
-const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartAssessment, onReadMessages, isDark, refreshTrigger, voiceSessionId, initialPrompt, onClearInitialPrompt, onPlanAction }) => {
+const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartAssessment, onReadMessages, isDark, refreshTrigger, voiceSessionId, initialPrompt, onClearInitialPrompt, onPlanAction, initialSessionId }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -153,7 +153,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
   // New features UI states
   const [showHistory, setShowHistory] = useState(false);
   const [sessions, setSessions] = useState<any[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(localStorage.getItem('currentAIChatSession'));
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(initialSessionId || localStorage.getItem('currentAIChatSession'));
   const [inputMode, setInputMode] = useState<'text' | 'voice'>('text');
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -161,6 +161,59 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
   const scrollRef = useRef<HTMLDivElement>(null);
   const streamIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const getDynamicSuggestions = (lastMsgText: string = "") => {
+    const suggestions: string[] = [];
+    const DEFAULT_SUGGESTIONS = [
+      "林主任的五养理论核心是什么？",
+      "我目前的康复分值正常吗？",
+      "今天有什么特别的康复提醒？",
+      "饮食和运动该如何平衡？"
+    ];
+
+    // 1. Context-based logic (last message keywords)
+    if (lastMsgText.includes('运动') || lastMsgText.includes('走') || lastMsgText.includes('锻炼')) {
+      suggestions.push("体力较弱时有哪些温和运动？", "如何判断当天的运动是否过量？");
+    }
+    if (lastMsgText.includes('饮食') || lastMsgText.includes('吃') || lastMsgText.includes('营养')) {
+      suggestions.push("化疗后没胃口该吃什么补营养？", "推荐几款适合我的康复食谱");
+    }
+    if (lastMsgText.includes('睡眠') || lastMsgText.includes('睡') || lastMsgText.includes('失眠')) {
+      suggestions.push("晚上容易醒有什么调理方法？", "睡前做哪些呼吸动作有助于入眠？");
+    }
+    if (lastMsgText.includes('心理') || lastMsgText.includes('焦虑') || lastMsgText.includes('心情')) {
+      suggestions.push("感觉压力大、没信心时该怎么调节？", "如何与家人沟通我的康复状态？");
+    }
+    if (lastMsgText.includes('机能') || lastMsgText.includes('恢复') || lastMsgText.includes('练') || lastMsgText.includes('功能')) {
+      suggestions.push("呼吸康复训练有什么动作要领？", "手脚发麻如何通过穴位按摩缓解？");
+    }
+
+    // 2. Profile-based logic (lowest scores or symptoms)
+    if (suggestions.length < 3 && profile) {
+      // Check symptoms
+      const symptoms = profile.todaySymptoms || [];
+      if (symptoms.includes('乏力')) suggestions.push("感觉浑身乏力，该如何科学休息？");
+      if (symptoms.includes('食欲不振')) suggestions.push("食欲不振时，有什么开胃的五养方案？");
+
+      // Check lowest CRI score
+      const scores = profile.scores || {};
+      const scoreEntries = Object.entries(scores)
+        .filter(([k]) => ['diet', 'exercise', 'sleep', 'mental', 'function'].includes(k))
+        .sort(([, a], [, b]) => (a as number) - (b as number));
+
+      if (scoreEntries.length > 0) {
+        const lowest = scoreEntries[0][0];
+        if (lowest === 'exercise' && !suggestions.includes("如何提高我的运动康复评分？")) suggestions.push("如何提高我的运动康复评分？");
+        if (lowest === 'diet' && !suggestions.includes("我的饮食分值较低，该怎么吃？")) suggestions.push("我的饮食分值较低，该怎么吃？");
+        if (lowest === 'sleep' && !suggestions.includes("睡眠质量不佳，五养有什么建议？")) suggestions.push("睡眠质量不佳，五养有什么建议？");
+      }
+    }
+
+    // 3. Combine and Shuffle
+    const combined = [...new Set([...suggestions, ...DEFAULT_SUGGESTIONS])];
+    const shuffled = combined.sort(() => 0.5 - Math.random());
+    return shuffled.slice(0, 3);
+  };
 
   useEffect(() => {
     return () => {
@@ -287,7 +340,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
     // 关键修复：确保 initialPrompt 只被消费一次，且作为 AI (model) 气泡发出，防止进入生成循环
     if (initialPrompt && !hasConsumedInitialPrompt && !isInitialLoading) {
       setHasConsumedInitialPrompt(true);
-      
+
       const insightMsg: ChatMessage = {
         role: 'model',
         text: initialPrompt,
@@ -300,6 +353,13 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
       onClearInitialPrompt?.();
     }
   }, [initialPrompt, hasConsumedInitialPrompt, isInitialLoading, currentSessionId]);
+
+  useEffect(() => {
+    if (initialSessionId && initialSessionId !== currentSessionId) {
+      setCurrentSessionId(initialSessionId);
+      localStorage.setItem('currentAIChatSession', initialSessionId);
+    }
+  }, [initialSessionId]);
 
   const handleShare = async (text: string) => {
     if (navigator.share) {
@@ -489,31 +549,29 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
     setLoading(true);
 
     try {
-      let responseText = '';
-      if ((import.meta as any).env.DEV) {
-        try {
-          const res = await fetch('/api/get-ai-chat-reply', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: userText, profile, history: currentMsgs.slice(0, -1).slice(-5) })
-          });
-          if (res.ok) {
-            const data = await res.json();
-            responseText = data.reply;
-          }
-        } catch (e) { console.warn("Local AI reply failed:", e); }
-      }
+      const res = await fetch(`${API_URL}/api/get-ai-chat-reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userText, profile, history: currentMsgs.slice(0, -1).slice(-5) })
+      });
+      if (!res.ok) throw new Error(`API Error: ${res.status}`);
+      const data = await res.json();
+      const rawResponse = data.reply;
 
-      if (!responseText) {
-        const getAIChatResponse = httpsCallable(functions, 'getAIChatResponse');
-        const response: any = await getAIChatResponse({ message: userText, profile, history: currentMsgs.slice(0, -1).slice(-5) });
-        responseText = response.data.reply;
+      // --- Expert Brain: 提前解析解析建议问题 ---
+      let aiSuggestions: string[] = [];
+      let cleanResponse = rawResponse;
+      const suggestionMatch = rawResponse.match(/\[SUGGESTIONS\](.*?)(\[\/SUGGESTIONS\]|$)/is);
+      if (suggestionMatch) {
+        const rawSugs = suggestionMatch[1];
+        aiSuggestions = rawSugs.split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+        cleanResponse = rawResponse.replace(/\[SUGGESTIONS\].*?(\[\/SUGGESTIONS\]|$)/is, '').trim();
       }
 
       let index = 0;
       streamIntervalRef.current = setInterval(() => {
-        if (index < responseText.length) {
-          const currentText = responseText.substring(0, index + 1);
+        if (index < cleanResponse.length) {
+          const currentText = cleanResponse.substring(0, index + 1);
           setMessages(prev => {
             const last = prev[prev.length - 1];
             return [...prev.slice(0, -1), { ...last, text: currentText }];
@@ -524,15 +582,16 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
           setLoading(false);
           const finalModelMsg = {
             role: 'model' as const,
-            text: responseText,
+            text: cleanResponse,
             timestamp: new Date().toISOString(),
-            sessionId: currentSessionId // Ensure sessionId is attached for persistence
+            sessionId: currentSessionId,
+            suggestions: aiSuggestions.length > 0 ? aiSuggestions : getDynamicSuggestions(cleanResponse)
           };
           persistMessage(finalModelMsg).then(savedModelMsg => {
             if (savedModelMsg && savedModelMsg.id) {
               setMessages(prev => {
                 const last = prev[prev.length - 1];
-                if (last.role === 'model' && last.text === responseText) {
+                if (last.role === 'model' && last.text === cleanResponse) {
                   return [...prev.slice(0, -1), { ...last, id: savedModelMsg.id }];
                 }
                 return prev;
@@ -540,7 +599,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
             }
           });
         }
-      }, 25);
+      }, 15);
     } catch (error: any) {
       setLoading(false);
       console.error("Chat Error:", error);
@@ -735,17 +794,16 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
                     onTouchStart={(e) => handlePressStart(e, msg)}
                     onTouchEnd={handlePressEnd}
                     onContextMenu={(e) => { e.preventDefault(); handlePressStart(e, msg, true); }}
-                    className={`max-w-[85%] transition-transform active:scale-[0.98] cursor-pointer backdrop-blur-md ${
-                      msg.role === 'user' 
-                        ? 'bg-emerald-600 text-white font-bold px-7 py-4 rounded-t-[28px] rounded-l-[28px] shadow-[0_8px_20px_rgba(16,185,129,0.2)] self-end' 
+                    className={`max-w-[85%] transition-transform active:scale-[0.98] cursor-pointer backdrop-blur-md ${msg.role === 'user'
+                        ? 'bg-emerald-600 text-white font-bold px-7 py-4 rounded-t-[28px] rounded-l-[28px] shadow-[0_8px_20px_rgba(16,185,129,0.2)] self-end'
                         : 'bg-white dark:bg-[#111827]/60 border border-slate-100 dark:border-emerald-500/10 px-6 py-4 rounded-t-[28px] rounded-r-[28px] self-start'
-                    }`}
+                      }`}
                   >
                     <div className="flex flex-col">
                       {(msg as any).type === 'intervention' && (
                         <div className="flex items-center space-x-1.5 mb-2 py-1 px-2 bg-emerald-500/10 rounded-lg w-fit">
                           <Sparkles size={10} className="text-emerald-500" />
-                          <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">干预建议</span>
+                          <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">AI五养教练 | 干预建议</span>
                         </div>
                       )}
                       {msg.role === 'model' ? (
@@ -771,64 +829,14 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
             {/* Dynamic Suggested Questions */}
             {messages.length > 0 && messages[messages.length - 1].role === 'model' && !loading && (() => {
               const lastMsg = messages[messages.length - 1].text || "";
-              
-              const getDynamicSuggestions = () => {
-                const suggestions: string[] = [];
-                
-                // 1. Context-based logic (last message keywords)
-                if (lastMsg.includes('运动') || lastMsg.includes('走') || lastMsg.includes('锻炼')) {
-                  suggestions.push("体力较弱时有哪些温和运动？", "如何判断当天的运动是否过量？");
-                }
-                if (lastMsg.includes('饮食') || lastMsg.includes('吃') || lastMsg.includes('营养')) {
-                  suggestions.push("化疗后没胃口该吃什么补营养？", "推荐几款适合我的康复食谱");
-                }
-                if (lastMsg.includes('睡眠') || lastMsg.includes('睡') || lastMsg.includes('失眠')) {
-                  suggestions.push("晚上容易醒有什么调理方法？", "睡前做哪些呼吸动作有助于入眠？");
-                }
-                if (lastMsg.includes('心理') || lastMsg.includes('焦虑') || lastMsg.includes('心情')) {
-                  suggestions.push("感觉压力大、没信心时该怎么调节？", "如何与家人沟通我的康复状态？");
-                }
-                if (lastMsg.includes('功能') || lastMsg.includes('恢复') || lastMsg.includes('练')) {
-                  suggestions.push("呼吸康复训练有什么动作要领？", "手脚发麻如何通过穴位按摩缓解？");
-                }
 
-                // 2. Profile-based logic (lowest scores or symptoms)
-                if (suggestions.length < 3) {
-                  // Check symptoms
-                  const symptoms = profile.todaySymptoms || [];
-                  if (symptoms.includes('乏力')) suggestions.push("感觉浑身乏力，该如何科学休息？");
-                  if (symptoms.includes('食欲不振')) suggestions.push("食欲不振时，有什么开胃的五养方案？");
-                  
-                  // Check lowest CRI score
-                  const scores = profile.scores || {};
-                  const scoreEntries = Object.entries(scores)
-                    .filter(([k]) => ['diet', 'exercise', 'sleep', 'mental', 'function'].includes(k))
-                    .sort(([, a], [, b]) => (a as number) - (b as number));
-                  
-                  if (scoreEntries.length > 0) {
-                    const lowest = scoreEntries[0][0];
-                    if (lowest === 'exercise' && !suggestions.includes("如何提高我的运动康复评分？")) suggestions.push("如何提高我的运动康复评分？");
-                    if (lowest === 'diet' && !suggestions.includes("我的饮食分值较低，该怎么吃？")) suggestions.push("我的饮食分值较低，该怎么吃？");
-                    if (lowest === 'sleep' && !suggestions.includes("睡眠质量不佳，五养有什么建议？")) suggestions.push("睡眠质量不佳，五养有什么建议？");
-                  }
-                }
-
-                // 3. Fallback to default
-                const finalSuggestions = [...new Set(suggestions)].slice(0, 3);
-                if (finalSuggestions.length < 3) {
-                  const combined = [...finalSuggestions, ...DEFAULT_SUGGESTIONS];
-                  return [...new Set(combined)].slice(0, 3);
-                }
-                return finalSuggestions;
-              };
-
-              const dynamicSuggestions = getDynamicSuggestions();
+              const dynamicSuggestions = messages[messages.length - 1].suggestions || getDynamicSuggestions(lastMsg);
 
               return (
                 <div className="flex flex-col space-y-3 pt-4 ml-[52px] animate-in fade-in slide-in-from-bottom-4 duration-500">
                   <div className="flex items-center space-x-2 text-slate-800 dark:text-slate-200">
                     <div className="w-1 h-5 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
-                    <span className="font-black text-sm">为您推荐的后续问题：</span>
+                    <span className="font-black text-sm">您是不是想问？</span>
                   </div>
                   <div className="flex flex-col space-y-3">
                     {dynamicSuggestions.map((s, idx) => (

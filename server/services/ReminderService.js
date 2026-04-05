@@ -1,29 +1,35 @@
 const { ChatMessage, User } = require('../models');
+const { resolveUserIds } = require('../utils/idResolver');
 
 class ReminderService {
     /**
-     * 发送健康干预消息
+     * 发送健康干预消息 (v1.5)
      * @param {string} userId 
      * @param {string} content 
      * @param {string} category 
      */
     static async sendIntervention(userId, content, category = '健康干预') {
-        let user = await User.findOne({ firebaseUid: userId });
-        if (!user) user = await User.findById(userId);
-        if (!user) throw new Error("User not found");
+        const idList = await resolveUserIds(userId, User);
+        const resolvedUserId = idList[0] || userId;
 
-        const targetUid = user.firebaseUid || userId;
+        // [SESSION_ISOLATION] 每一次干预都开启一个独立的新会话，避免内容混叠
+        const now = new Date();
+        const sessionId = `INT_${now.getTime()}_${Math.floor(Math.random() * 1000)}`;
+        const sessionTitle = `健康干预: ${category} (${now.getMonth()+1}/${now.getDate()})`;
 
         const message = await ChatMessage.create({
-            userId: targetUid,
+            userId: resolvedUserId,
             role: 'model',
             text: content,
             type: 'intervention',
             category: category,
+            sessionId: sessionId,
+            sessionTitle: sessionTitle,
             isRead: false,
-            timestamp: new Date()
+            timestamp: now
         });
 
+        console.log(`[ReminderService] Created isolated intervention session: ${sessionId}`);
         return message;
     }
 

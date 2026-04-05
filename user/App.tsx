@@ -46,7 +46,7 @@ import {
 } from 'lucide-react';
 
 // 动态识别环境
-const API_URL = import.meta.env.DEV ? "" : "https://api-u46fik5vcq-uc.a.run.app";
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "" : "http://localhost:3002");
 
 const toLocalDateString = (date = new Date()) => {
   const d = new Date(date);
@@ -92,6 +92,7 @@ const App: React.FC = () => {
   const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([]);
   const [lastUpdatedCategory, setLastUpdatedCategory] = useState<keyof NursingScores | null>(null);
   const [reportCache, setReportCache] = useState<{ date: string; profileJSON: string; text: string } | null>(null);
+  const [autoNavigateSessionId, setAutoNavigateSessionId] = useState<string | null>(null);
 
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -272,6 +273,11 @@ const App: React.FC = () => {
             }
             console.log(`[DEBUG] Setting selectedDaySymptoms for ${date} to:`, finalSymptoms);
             setSelectedDaySymptoms(finalSymptoms);
+            
+            //核心修复：确保 profile.todaySymptoms 与当前拉取的“今日”数据同步，从而实时驱动首页看板
+            if (date === toLocalDateString()) {
+                setProfile(prev => ({ ...prev, todaySymptoms: finalSymptoms }));
+            }
         }
     } catch (e) {
         console.error("Failed to fetch daily data:", e);
@@ -572,6 +578,7 @@ const App: React.FC = () => {
               ...prev, 
               scores: data.scores, 
               coreRecoveryIndex: data.cri,
+              dailyChange: data.dailyChange,
               baselines: data.baselines || prev.baselines
             }));
             return data;
@@ -644,7 +651,7 @@ const App: React.FC = () => {
           isDark={isDarkEffective} 
         />
       );
-      case 'chat': return <AIChat profile={profile} onStartVoice={(sid) => { setAssistantSessionId(sid || null); setAssistantMode('chat'); }} onBack={() => { setAssistantMode(null); setPreviousTab('dashboard'); setActiveTab('dashboard'); }} onStartAssessment={() => setShowQuestionnaire(true)} onReadMessages={() => setUnreadCount(0)} isDark={isDarkEffective} refreshTrigger={chatRefreshTrigger} voiceSessionId={lastVoiceSessionId} initialPrompt={initialCoachMessage} onClearInitialPrompt={() => setInitialCoachMessage(null)} onPlanAction={handlePlanAction} />;
+      case 'chat': return <AIChat profile={profile} onStartVoice={(sid) => { setAssistantSessionId(sid || null); setAssistantMode('chat'); }} onBack={() => { setAssistantMode(null); setPreviousTab('dashboard'); setActiveTab('dashboard'); setAutoNavigateSessionId(null); }} onStartAssessment={() => setShowQuestionnaire(true)} onReadMessages={() => setUnreadCount(0)} isDark={isDarkEffective} refreshTrigger={chatRefreshTrigger} voiceSessionId={lastVoiceSessionId} initialPrompt={initialCoachMessage} onClearInitialPrompt={() => setInitialCoachMessage(null)} onPlanAction={handlePlanAction} initialSessionId={autoNavigateSessionId} />;
       case 'mall': return <Marketplace profile={profile} cartCount={cart.length} favorites={favorites} onToggleFavorite={toggleFavorite} onOpenCart={() => setShowCart(true)} onAddToCart={(sku, q) => setCart(prev => [...prev, {...sku, quantity: q, selected: true}])} isDark={isDarkEffective} />;
       case 'profile':
         return (
@@ -756,10 +763,29 @@ const App: React.FC = () => {
       {!selectedNursing && !showJournal && !showOrders && !showCart && !showCompleteProfile && !showQuestionnaire && !showHealthRecord && !showSafetySettings && !protocolType && !showSettings && activeTab !== 'chat' && !showHumanCoach && !showMembership && !showFavorites && !viewingProduct && (
         <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[92%] max-w-[400px] bg-white/95 dark:bg-[#0B0F1A]/95 backdrop-blur-3xl border border-slate-100 dark:border-white/10 flex justify-around items-center py-4 px-2 shadow-[0_25px_60px_rgba(0,0,0,0.4)] z-50 rounded-[40px] mb-[var(--safe-area-bottom)] transition-all duration-700">
           {NAV_ITEMS.map((item) => (
-            <button key={item.id} onClick={() => { 
+            <button key={item.id} onClick={async () => { 
+                if (item.id === 'chat') {
+                  // [AUTO_NAVIGATION] 检查是否有未读干预，如果有则定位到该会话
+                  try {
+                    const res = await fetch(`${API_URL}/api/messages/latest-unread-intervention/${user?.uid}`);
+                    if (res.ok) {
+                      const data = await res.json();
+                      if (data.sessionId) {
+                        setAutoNavigateSessionId(data.sessionId);
+                      } else {
+                        setAutoNavigateSessionId(null);
+                      }
+                    }
+                  } catch (e) {
+                    console.error("Auto-navigation failed:", e);
+                    setAutoNavigateSessionId(null);
+                  }
+                  setUnreadCount(0);
+                } else {
+                  setAutoNavigateSessionId(null);
+                }
                 setPreviousTab(activeTab); 
                 setActiveTab(item.id); 
-                if (item.id === 'chat') setUnreadCount(0);
               }} className={`flex flex-col items-center justify-center min-w-[64px] transition-all duration-500 relative btn-active-scale ${activeTab === item.id ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`}>
               <div className={`p-2 rounded-2xl transition-all duration-300 ${activeTab === item.id ? 'bg-emerald-50 dark:bg-emerald-500/10 shadow-[0_0_20px_rgba(16,185,129,0.2)]' : ''}`}>
                 {item.icon}

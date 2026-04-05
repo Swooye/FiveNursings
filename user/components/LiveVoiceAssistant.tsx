@@ -4,7 +4,7 @@ import { PatientProfile } from '../types';
 import { Mic, X, Volume2, PhoneCall, Activity, AlertCircle } from 'lucide-react';
 import { createClient, LiveClient, LiveTranscriptionEvents } from '@deepgram/sdk';
 
-const API_URL = import.meta.env.DEV ? "" : "https://fivenursings-backend-604368704549.us-central1.run.app";
+const API_URL = import.meta.env.PROD ? "" : "http://localhost:3002";
 
 interface LiveVoiceAssistantProps {
   profile: PatientProfile;

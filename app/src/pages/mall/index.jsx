@@ -9,8 +9,9 @@ const fetcher = (url) => fetch(url).then((res) => res.json());
 
 const MallPage = () => {
   const navigate = useNavigate();
-  const { data: items, error } = useSWR('https://api-u46fik5vcq-uc.a.run.app/api/mall_items', fetcher);
-  const { data: cartData } = useSWR('https://api-u46fik5vcq-uc.a.run.app/api/cart', fetcher); // Assuming cart data endpoint
+  const API_URL = import.meta.env.PROD ? "" : "http://localhost:3002";
+  const { data: items, error } = useSWR(`${API_URL}/api/mall_items`, fetcher);
+  const { data: cartData } = useSWR(`${API_URL}/api/cart`, fetcher);
 
   const cartItemCount = cartData?.items?.length || 0;
 

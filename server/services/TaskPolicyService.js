@@ -14,29 +14,41 @@ class TaskPolicyService {
         try {
             const aiTasks = await AnalysisService.generateAITasks(profile, date);
             if (aiTasks && aiTasks.length > 0) {
-                const finalTasks = aiTasks.map(t => ({ ...t, userId, source: 'ai' }));
+                // [ALIGNMENT] 过滤掉已经存在的医生手动下发任务，防止 AI 覆盖医嘱
+                const existingDoctorTasks = await DailyTask.find({ userId, date, source: 'doctor' });
+                const doctorTaskTitles = new Set(existingDoctorTasks.map(t => t.title));
+                
+                const finalTasks = aiTasks
+                    .filter(t => !doctorTaskTitles.has(t.title))
+                    .map(t => ({ ...t, userId, source: 'ai', isManual: false }));
+                
                 if (commit) {
                     for (const t of finalTasks) {
+                        // AI 生成的任务，保存/更新到当日任务
                         await DailyTask.findOneAndUpdate(
-                            { userId, date: t.date, category: t.category, title: t.title },
-                            { $set: t }, // AI 生成的计划覆盖旧的
+                            { userId, date: t.date, title: t.title, $or: [{ source: { $ne: 'doctor' } }, { source: { $exists: false } }] },
+                            { $set: t },
                             { upsert: true, new: true }
                         );
                         // [ALIGNMENT] 同步保存为长期模板，确保未来日期可自动填充
                         await TaskTemplate.findOneAndUpdate(
-                            { userId, category: t.category, title: t.title },
+                            { userId, title: t.title, $or: [{ source: { $ne: 'doctor' } }, { source: { $exists: false } }] },
                             { 
                                 $set: { 
                                     ...t, 
                                     startDate: t.date,
-                                    frequency: t.frequency || 'daily',
+                                    frequency: 'daily', // [FIX] 强制设为每日任务，确保作为康复目标持久化
                                     isActive: true,
-                                    isInfeasible: false
+                                    isInfeasible: false,
+                                    source: 'ai',
+                                    isManual: false
                                 } 
                             },
                             { upsert: true }
                         );
                     }
+                    // [ALIGNMENT] 重要：在返回前同步一次模板，确保旧的长期任务也能出现在列表中
+                    await this.generateTasksFromTemplates(userId, date);
                     return await DailyTask.find({ userId, date });
                 }
                 return finalTasks;
@@ -150,7 +162,44 @@ class TaskPolicyService {
             isManual: true, // 标记为人工干预
             source: 'doctor' // 来源医生
         };
-        return await DailyTask.create(docTask);
+        const task = await DailyTask.create(docTask);
+        // [SAFETY] 如果标记为长期医嘱，则同步为模板，确保次日不会消失
+        if (taskData.isPermanent !== false) {
+            await this.syncTaskToTemplate(task);
+        }
+        return task;
+    }
+
+    /**
+     * 将特定任务同步为长期模板 (医生下发任务持久化核心)
+     * @param {Object} task 
+     */
+    static async syncTaskToTemplate(task) {
+        if (!task.userId || !task.title) return;
+        
+        console.log(`[TaskPolicy] Syncing task "${task.title}" to template for ${task.userId}`);
+        
+        return await TaskTemplate.findOneAndUpdate(
+            { userId: task.userId, title: task.title },
+            { 
+                $set: { 
+                    userId: task.userId,
+                    category: task.category,
+                    title: task.title,
+                    description: task.description,
+                    time: task.time,
+                    suggestedTimes: task.suggestedTimes,
+                    frequency: task.frequency || 'daily',
+                    targetCount: task.targetCount || 1,
+                    isActive: true,
+                    isInfeasible: false,
+                    source: task.source || 'doctor', // 默认为医生下发
+                    isManual: true, 
+                    startDate: task.date || new Date().toISOString().split('T')[0]
+                }
+            },
+            { upsert: true, new: true }
+        );
     }
 
     /**
@@ -160,6 +209,12 @@ class TaskPolicyService {
      */
     static async generateTasksFromTemplates(userId, date) {
         console.log(`[TaskPolicy] Auto-filling tasks from templates for user ${userId} on ${date}`);
+        // [SELF-HEALING] 自动修复：将所有活跃的 AI 'once' 模板升级为 'daily'，确保康复目标不丢失
+        await TaskTemplate.updateMany(
+            { userId, frequency: 'once', isActive: true, source: 'ai' },
+            { $set: { frequency: 'daily' } }
+        );
+
         const templates = await TaskTemplate.find({ 
             userId, 
             isActive: true,
@@ -228,7 +283,8 @@ class TaskPolicyService {
                     time: template.time || '全天',
                     completed: initialCount >= targetCount,
                     isInfeasible: false,
-                    source: template.source || 'ai',
+                    source: template.source || 'doctor', // 严格继承模板来源，模板缺失来源默认为 doctor（安全保守策略）
+                    isManual: (template.source === 'doctor' || template.isManual !== false),
                     suggestedTimes: template.suggestedTimes || [],
                     templateId: template._id, // 关联模板
                     currentCount: initialCount,
@@ -239,15 +295,20 @@ class TaskPolicyService {
         }
 
         if (instances.length > 0) {
-            for (const instance of instances) {
-                await DailyTask.findOneAndUpdate(
-                    { userId: instance.userId, date: instance.date, category: instance.category, title: instance.title },
-                    { $setOnInsert: instance },
-                    { upsert: true, new: true }
-                );
+            // [OPTIMIZATION] Batch check existing tasks to avoid parallel write overload
+            const existingTasks = await DailyTask.find({ 
+                userId: instances[0].userId, 
+                date: instances[0].date 
+            }).select('title').lean();
+            const existingTitles = new Set(existingTasks.map(t => t.title));
+
+            const newInstances = instances.filter(ins => !existingTitles.has(ins.title));
+            
+            if (newInstances.length > 0) {
+                console.log(`[TaskPolicy] Inserting ${newInstances.length} new instances.`);
+                await DailyTask.insertMany(newInstances);
             }
-            console.log(`[TaskPolicy] Generated ${instances.length} instances.`);
-        } else {
+        } else if (instances.length === 0) {
             console.log(`[TaskPolicy] No templates matched for this date.`);
         }
 
