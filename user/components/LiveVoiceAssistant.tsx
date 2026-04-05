@@ -4,7 +4,7 @@ import { PatientProfile } from '../types';
 import { Mic, X, Volume2, PhoneCall, Activity, AlertCircle } from 'lucide-react';
 import { createClient, LiveClient, LiveTranscriptionEvents } from '@deepgram/sdk';
 
-const API_URL = import.meta.env.PROD ? "" : "http://localhost:3002";
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "" : "http://localhost:3002");
 
 interface LiveVoiceAssistantProps {
   profile: PatientProfile;
@@ -46,6 +46,7 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
   // Ref-based transcript to avoid React state batching issues
   const transcriptRef = useRef('');
   const isProcessingRef = useRef(false);  // Mutex to prevent duplicate AI requests
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep refs in sync with state
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
@@ -98,6 +99,7 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
   };
 
   const startSession = async () => {
+    if (!isSessionActive.current) return; // Guard: don't restart after stopSession
     if (isListening || isProcessingRef.current || isAiSpeaking) return;
     try {
       // Stop any existing stream tracks before creating a new one
@@ -195,7 +197,7 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
     setAiResponse('教练正在思考...');
     try {
       console.log("[Voice] Sending to backend:", text);
-      const res = await fetch(`${API_URL}/api/get-ai-chat-reply`, {
+      const res = await fetch(`${API_URL}/get-ai-chat-reply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -234,9 +236,10 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
       setIsProcessing(false);
       isProcessingRef.current = false;
       setAiResponse('');
-      // Resume listening after error
+      // Resume listening after error (only if session is still active)
       if (isSessionActive.current) {
-        setTimeout(() => {
+        retryTimeoutRef.current = setTimeout(() => {
+          if (!isSessionActive.current) return;
           setError(null);
           startSession();
         }, 3000);
@@ -312,6 +315,11 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
 
   const stopSession = () => {
     isSessionActive.current = false;
+    // Cancel any pending retry timeout to prevent re-acquiring microphone
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
     try {
       if (microphone.current && microphone.current.state !== 'inactive') {
         microphone.current.stop();

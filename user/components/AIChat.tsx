@@ -5,7 +5,7 @@ import { Send, Mic, X, Calendar, MessageSquare, ArrowLeft, PhoneCall, AlertTrian
 import { auth } from '../src/firebase';
 import { ResponsiveContainer, LineChart, BarChart, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Line, Bar } from 'recharts';
 
-const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "" : "http://localhost:3002"); // 恢复原来的配置，以便直接方位后端非代理路径 (/login)
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "" : "http://localhost:3002");
 
 const ChartRenderer: React.FC<{ chartData: any }> = ({ chartData }) => {
   const { type, data, xAxisKey, grid, tooltip, lines, bars } = chartData;
@@ -552,7 +552,11 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
       const res = await fetch(`${API_URL}/api/get-ai-chat-reply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userText, profile, history: currentMsgs.slice(0, -1).slice(-5) })
+        body: JSON.stringify({ 
+          message: userText, 
+          profile, 
+          history: currentMsgs.slice(0, -1).slice(-5).map(m => ({ role: m.role, content: m.text })) 
+        })
       });
       if (!res.ok) throw new Error(`API Error: ${res.status}`);
       const data = await res.json();
@@ -565,7 +569,6 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
       if (suggestionMatch) {
         const rawSugs = suggestionMatch[1];
         aiSuggestions = rawSugs.split('|').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-        cleanResponse = rawResponse.replace(/\[SUGGESTIONS\].*?(\[\/SUGGESTIONS\]|$)/is, '').trim();
       }
 
       let index = 0;
@@ -730,7 +733,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
 
   const deleteSession = async (sid: string) => {
     try {
-      await fetch(`${API_URL}/api/chat/sessions/${sid}`, { method: 'DELETE' });
+      await fetch(`${API_URL}/chat/sessions/${sid}`, { method: 'DELETE' });
       setSessions(prev => prev.filter(s => s.id !== sid));
       if (currentSessionId === sid) {
         startNewChat();
@@ -740,7 +743,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
 
   useEffect(() => {
     if (showHistory && auth.currentUser) {
-      fetch(`${API_URL}/api/chat/sessions/${auth.currentUser.uid}`)
+      fetch(`${API_URL}/chat/sessions/${auth.currentUser.uid}`)
         .then(res => res.json())
         .then(data => setSessions(data))
         .catch(e => console.error("Fetch sessions failed", e));

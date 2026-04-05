@@ -5,7 +5,7 @@ import { ShoppingCart, Star, Crown, Search, Plus, Heart, X, Flame } from 'lucide
 import ProductDetail from './ProductDetail';
 import { getAssetUrl } from '../src/utils/image';
 
-const API_URL = import.meta.env.PROD ? "" : "http://localhost:3002";
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "" : "http://localhost:3002");
 
 const CATEGORIES = [
   { id: 'all', label: '全部' },
@@ -37,7 +37,7 @@ const Marketplace: React.FC<MarketplaceProps> = ({ cartCount, onOpenCart, onAddT
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/mall_items`);
+        const response = await fetch(`${API_URL}/mall_items`);
         const data = await response.json();
         
         const onSaleProducts = data

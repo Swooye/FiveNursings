@@ -367,10 +367,22 @@ const PlanCustomizer: React.FC<PlanCustomizerProps> = ({ profile, existingTasks,
         }
         onConfirm();
       } else {
-        // Sync all tasks
+        // Identify deleted tasks (present in existingTasks but absent in planProposal)
+        const currentIds = new Set(planProposal.map(t => (t as any).id || (t as any)._id).filter(Boolean));
+        if (existingTasks) {
+          for (const ext of existingTasks) {
+            const id = (ext as any).id || (ext as any)._id;
+            if (id && !currentIds.has(id)) {
+              await fetch(`${API_URL}/api/daily_tasks/${id}`, { method: 'DELETE' });
+            }
+          }
+        }
+
+        // Sync all remaining tasks (Update or Create) + Templates
         for (const t of planProposal) {
           const id = (t as any)._id || (t as any).id;
-          // [ALIGNMENT] 同步模板信息
+          
+          // [ALIGNMENT] 同步模板信息 (Templates ensure persistence across days)
           const templatePayload = {
             userId: profile.id,
             category: t.category,
@@ -386,14 +398,14 @@ const PlanCustomizer: React.FC<PlanCustomizerProps> = ({ profile, existingTasks,
             source: t.source || 'ai'
           };
 
-          // Upsert Template
           await fetch(`${API_URL}/api/task_templates`, {
-            method: 'POST', // 后端 createRoutes 支持通过 userId+title upsert 的逻辑需检查，如果不支持则手动查找 ID
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(templatePayload)
           });
 
-          if (id && id.length > 10 && id.indexOf('temp-') === -1) {
+          if (id && id.length > 20 && id.indexOf('temp-') === -1) {
+            // Update existing instance
             await fetch(`${API_URL}/api/daily_tasks/${id}`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
