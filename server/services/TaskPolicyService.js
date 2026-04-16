@@ -135,11 +135,13 @@ class TaskPolicyService {
                 await TaskTemplate.findOneAndUpdate(
                     { userId, category: t.category, title: t.title },
                     { 
-                        $setOnInsert: { 
+                        $set: { 
                             ...t, 
                             startDate: t.date,
                             frequency: 'daily',
-                            isActive: true
+                            isActive: true,
+                            isManual: false,
+                            source: 'ai'
                         } 
                     },
                     { upsert: true }
@@ -283,8 +285,8 @@ class TaskPolicyService {
                     time: template.time || '全天',
                     completed: initialCount >= targetCount,
                     isInfeasible: false,
-                    source: template.source || 'doctor', // 严格继承模板来源，模板缺失来源默认为 doctor（安全保守策略）
-                    isManual: (template.source === 'doctor' || template.isManual !== false),
+                    source: template.source || 'ai', // 默认来源为五养建议
+                    isManual: template.source === 'doctor' || template.isManual === true,
                     suggestedTimes: template.suggestedTimes || [],
                     templateId: template._id, // 关联模板
                     currentCount: initialCount,

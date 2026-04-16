@@ -35,7 +35,7 @@ class MemoryService {
                     "X-Title": "FiveNursings-Memory"
                 },
                 body: JSON.stringify({
-                    model: "google/gemini-2.0-flash-001", // 使用低成本高速模型进行背景提取
+                    model: "google/gemini-3-flash-preview", // 使用低成本高速模型进行背景提取
                     messages: [
                         { role: "system", content: systemPrompt },
                         { role: "user", content: prompt }

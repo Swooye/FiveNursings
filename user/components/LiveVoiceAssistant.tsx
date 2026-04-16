@@ -8,6 +8,8 @@ const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "" : "ht
 
 interface LiveVoiceAssistantProps {
   profile: PatientProfile;
+  mode?: 'chat' | 'logging';
+  initialHistory?: { role: 'user' | 'model'; text: string }[];
   onClose: () => void;
   onConfirmLog: (log: string) => void;
   sessionId?: string | null;
@@ -16,7 +18,7 @@ interface LiveVoiceAssistantProps {
 }
 
 const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
-  const { profile, onClose, onConfirmLog } = props;
+  const { profile, onClose, onConfirmLog, mode = 'chat', initialHistory = [] } = props;
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -33,24 +35,31 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
   // Use refs for values accessed in closures to avoid stale state
   const isMutedRef = useRef(false);
   const isAiSpeakingRef = useRef(false);
+  const isProcessingRef = useRef(false);  // Mutex to prevent duplicate AI requests
+  const isFetchingRef = useRef(false); // 防止并发请求
+  const hasInitializedRef = useRef(false); // 防止重复初始化
+  const audioContextLocked = useRef(true);
 
   const deepgramConnection = useRef<LiveClient | null>(null);
   const microphone = useRef<MediaRecorder | null>(null);
   const audioContext = useRef<AudioContext | null>(null);
   const analyser = useRef<AnalyserNode | null>(null);
-  const animationFrame = useRef<number | null>(null);
+  const volumeInterval = useRef<number | null>(null);
+  const lastFinalTranscriptRef = useRef('');
   const mediaStream = useRef<MediaStream | null>(null);
   const allStreams = useRef<MediaStream[]>([]);
   const isSessionActive = useRef<boolean>(false);
-  const conversationHistory = useRef<{ role: 'user' | 'model'; text: string }[]>([]);
+  const conversationHistory = useRef<{ role: 'user' | 'model'; text: string }[]>([...initialHistory]);
   // Ref-based transcript to avoid React state batching issues
   const transcriptRef = useRef('');
-  const isProcessingRef = useRef(false);  // Mutex to prevent duplicate AI requests
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep refs in sync with state
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
   useEffect(() => { isAiSpeakingRef.current = isAiSpeaking; }, [isAiSpeaking]);
+  
+  // Audio playback ref
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     isSessionActive.current = true;
@@ -58,8 +67,17 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
     const loadVoices = () => { window.speechSynthesis.getVoices(); };
     window.speechSynthesis.onvoiceschanged = loadVoices;
     loadVoices();
-    startSession();
-    return () => stopSession();
+    
+    // 只有在未初始化过时才启动
+    if (!hasInitializedRef.current) {
+      startSession();
+      hasInitializedRef.current = true;
+    }
+    
+    return () => {
+      isSessionActive.current = false;
+      stopSession();
+    };
   }, []);
 
   const updateVolume = () => {
@@ -70,7 +88,7 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
     for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
     const average = sum / dataArray.length;
     setVolumeLevel(Math.min(100, (average / 80) * 100));
-    animationFrame.current = requestAnimationFrame(updateVolume);
+    volumeInterval.current = requestAnimationFrame(updateVolume) as unknown as number;
   };
 
   const setupAudioAnalysis = (stream: MediaStream) => {
@@ -89,13 +107,15 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
 
   // Interrupt AI speech when user starts talking
   const interruptAiSpeech = () => {
-    if (isAiSpeakingRef.current) {
-      console.log("[Voice] User interrupted AI speech");
-      window.speechSynthesis.cancel();
-      setIsAiSpeaking(false);
-      isAiSpeakingRef.current = false;
-      setAiResponse('');
+    isAiSpeakingRef.current = false;
+    window.speechSynthesis.cancel();
+    if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.currentTime = 0;
+        currentAudioRef.current = null;
     }
+    setIsAiSpeaking(false);
+    setAiResponse('');
   };
 
   const startSession = async () => {
@@ -133,6 +153,11 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
         setupAudioAnalysis(stream);
         setIsListening(true);
         setError(null);
+        
+        // 主动发一条系统隐藏消息，触发AI先开口打招呼
+        if (conversationHistory.current.length === initialHistory.length) {
+            getAIResponse('[SYSTEM_START_VOICE]', true);
+        }
       });
 
       connection.on(LiveTranscriptionEvents.Transcript, (data) => {
@@ -144,7 +169,10 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
           if (isAiSpeakingRef.current && sentence.trim()) {
             interruptAiSpeech();
           }
-          transcriptRef.current = `${transcriptRef.current} ${sentence}`.trim();
+          if (lastFinalTranscriptRef.current !== sentence.trim()) {
+            transcriptRef.current = `${transcriptRef.current} ${sentence}`.trim();
+            lastFinalTranscriptRef.current = sentence.trim();
+          }
           setTranscript(transcriptRef.current);
           setInterimTranscript('');
         } else {
@@ -168,6 +196,7 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
 
         // Clear transcript immediately and acquire mutex
         transcriptRef.current = '';
+        lastFinalTranscriptRef.current = '';
         setTranscript('');
         isProcessingRef.current = true;
 
@@ -191,19 +220,36 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
     }
   };
 
-  const getAIResponse = async (text: string) => {
+  const getAIResponse = async (text: string, isSystemInit: boolean = false) => {
+    if (isFetchingRef.current) {
+        console.warn("[Voice] Already fetching response, skipping...");
+        return;
+    }
+    
+    isFetchingRef.current = true;
     setIsListening(false);
     setIsProcessing(true);
-    setAiResponse('教练正在思考...');
+    isProcessingRef.current = true;
+    
+    // 全局取消之前的语音合成，防止叠加
+    if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+    }
+    
+    const displayName = (props.mode || 'chat') === 'logging' ? '助手' : '教练';
+    setAiResponse(isSystemInit ? `${displayName}正在连线中...` : `${displayName}正在思考...`);
     try {
-      console.log("[Voice] Sending to backend:", text);
+      console.log(`[Voice] Mode: ${props.mode || 'chat'}, Sending to backend:`, text);
       const res = await fetch(`${API_URL}/api/get-ai-chat-reply`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
           profile,
-          history: conversationHistory.current.slice(-6)
+          mode: props.mode || 'chat',
+          isVoice: true,
+          voice: (!profile?.voicePreference || profile.voicePreference === 'default') ? 'Kore' : profile.voicePreference,
+          history: conversationHistory.current.slice(-10) // 增加传入历史的数量以便获取更好上下文
         })
       });
 
@@ -222,39 +268,91 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
 
       console.log("[Voice] AI replied:", aiText.substring(0, 80));
       setAiResponse(aiText);
-      const msg = { role: 'model' as const, text: aiText };
-      setSessionMessages(prev => [...prev, msg]);
-      conversationHistory.current.push(msg);
-      if (props.onMessageGenerated) props.onMessageGenerated(msg);
-
-      setIsProcessing(false);
       isProcessingRef.current = false;
-      speakResponse(aiText);
+
+      if (data.audio) {
+          playAudioBase64(data.audio);
+      } else {
+          speakResponseFallback(aiText);
+      }
     } catch (e: any) {
       console.error("[Voice] AI response error:", e);
       setError(`AI 回复失败: ${e.message}`);
       setIsProcessing(false);
       isProcessingRef.current = false;
       setAiResponse('');
-      // Resume listening after error (only if session is still active)
-      if (isSessionActive.current) {
-        retryTimeoutRef.current = setTimeout(() => {
-          if (!isSessionActive.current) return;
-          setError(null);
-          startSession();
-        }, 3000);
-      }
+      // ...
+    } finally {
+      isFetchingRef.current = false;
     }
   };
 
-  const speakResponse = (text: string) => {
+  const playAudioBase64 = (base64String: string) => {
+    // 播放高保真语音前，彻底取消系统自带语音，防止重叠
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+    }
+
+    try {
+      if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current.src = "";
+      }
+      
+      const audioUrl = `data:audio/wav;base64,${base64String}`;
+      const audio = new Audio(audioUrl);
+      currentAudioRef.current = audio;
+
+      audio.onplay = () => {
+        setIsAiSpeaking(true);
+        isAiSpeakingRef.current = true;
+      };
+
+      audio.onended = () => {
+        if (!isSessionActive.current) return;
+        setIsAiSpeaking(false);
+        isAiSpeakingRef.current = false;
+        setAiResponse('');
+        setIsListening(true);
+      };
+
+      audio.onerror = (e) => {
+        console.error("[Voice] Audio playback error:", e);
+        if (!isSessionActive.current) return;
+        setIsAiSpeaking(false);
+        isAiSpeakingRef.current = false;
+        setAiResponse('');
+        setIsListening(true);
+      };
+
+      audio.play().catch(e => {
+        console.error("[Voice] Autoplay blocked or error:", e);
+        if (!isSessionActive.current) return;
+        setIsAiSpeaking(false);
+        isAiSpeakingRef.current = false;
+        setAiResponse('');
+        setIsListening(true);
+      });
+    } catch (e) {
+      console.error("Audio playback failure", e);
+      setIsAiSpeaking(false);
+      isAiSpeakingRef.current = false;
+      setAiResponse('');
+      // 若播放彻底失败，至少让会话继续
+      if (isSessionActive.current) setIsListening(true);
+    }
+  };
+
+  const speakResponseFallback = (text: string) => {
     try {
       // Strip markdown for cleaner TTS
       const cleanText = text
         .replace(/[#*`~>]/g, '')
         .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
         .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, '')
+        .replace(/-/g, ' ')
         .replace(/\n+/g, '。')
+        .replace(/([。，！？、])\1+/g, '$1')
         .trim();
 
       const utterance = new SpeechSynthesisUtterance(cleanText);
@@ -262,7 +360,8 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
 
       const voices = window.speechSynthesis.getVoices();
       let selectedVoice: SpeechSynthesisVoice | null = null;
-      const voicePref = profile?.voicePreference || 'default';
+      // 规范化：如果设置为 default 或为空，则统一视为 Kore，确保缓存一致性
+      const voicePref = (!profile?.voicePreference || profile.voicePreference === 'default') ? 'Kore' : profile.voicePreference;
 
       if (voicePref !== 'default' && voicePref !== '') {
         selectedVoice = voices.find(v => v.name === voicePref) || null;
@@ -302,7 +401,7 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
         setAiResponse('');
         setIsListening(true);
       };
-      console.log("[Voice] Speaking with voice:", selectedVoice?.name || 'default');
+      console.log("[Voice] Speaking with voice (fallback):", selectedVoice?.name || 'default');
       window.speechSynthesis.speak(utterance);
     } catch (e) {
       console.error("Speech error", e);
@@ -341,12 +440,16 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
         audioContext.current.close().catch(e => console.error("AudioContext close error", e));
         audioContext.current = null;
       }
+      if (currentAudioRef.current) {
+          currentAudioRef.current.pause();
+          currentAudioRef.current = null;
+      }
       window.speechSynthesis.cancel();
     } catch (e) { console.error("Stop session error", e); }
     setIsListening(false);
     setIsProcessing(false);
     setIsAiSpeaking(false);
-    if (animationFrame.current) cancelAnimationFrame(animationFrame.current);
+    if (volumeInterval.current) cancelAnimationFrame(volumeInterval.current);
   };
 
   return (
@@ -376,11 +479,11 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
           </div>
         </div>
 
-        <div className="mt-8 text-center space-y-3 max-w-sm px-6">
-          <h2 className="text-xl font-black text-white leading-tight">向教练倾诉您的心情</h2>
-          <div className="min-h-[60px] flex items-center justify-center text-center">
-            <p className="text-slate-400/60 text-sm font-bold italic leading-relaxed">
-              "{error ? error : (isProcessing ? (aiResponse || '教练正在根据您的反馈深入思考...') : (transcript || interimTranscript || '直接说话即可，教练正在专注倾听...'))}"
+        <div className="mt-8 text-center space-y-3 w-full max-w-sm px-6">
+          <h2 className="text-xl font-black text-white leading-tight">向{(props.mode || 'chat') === 'logging' ? '助手' : '教练'}倾诉您的心情</h2>
+          <div className="h-40 flex items-center justify-center text-center overflow-y-auto custom-scrollbar px-2 bg-white/5 rounded-2xl border border-white/5">
+            <p className="text-slate-300 text-sm font-bold italic leading-relaxed break-words py-2">
+              "{error ? error : (isProcessing ? (aiResponse || `${(props.mode || 'chat') === 'logging' ? '助手' : '教练'}正在深入思考...`) : (transcript || interimTranscript || '直接说话即可，正在专注倾听...'))}"
             </p>
           </div>
         </div>
@@ -413,7 +516,7 @@ const LiveVoiceAssistant: React.FC<LiveVoiceAssistantProps> = (props) => {
             </div>
           </div>
 
-          <div className="mt-4 text-[10px] text-slate-500 font-bold tracking-tight text-center">
+          <div className="mt-4 text-[10px] text-slate-500 font-bold tracking-tight text-center break-words">
             {error ? '服务异常，请核对环境配置' : (isMuted ? '已暂停采音，请点击左侧图标恢复' : '语音服务已就绪，教练正在分析您的语音...')}
           </div>
         </div>

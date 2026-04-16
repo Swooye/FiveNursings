@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Show } from "@refinedev/antd";
 import { useShow } from "@refinedev/core";
-import { Typography, Tag, Descriptions, Card, Divider, Table, Space } from "antd";
+import { Typography, Tag, Descriptions, Card, Divider, Table, Space, DatePicker } from "antd";
+import dayjs from "dayjs";
 import { SafetyCertificateOutlined, CalendarOutlined, HistoryOutlined } from "@ant-design/icons";
 import { UserPlanManager } from "../../components/UserPlanManager";
 
@@ -15,19 +16,20 @@ export const PlanShow = () => {
 
     const [history, setHistory] = useState([]);
     const [historyLoading, setHistoryLoading] = useState(false);
+    const [selectedDate, setSelectedDate] = useState(dayjs());
 
     useEffect(() => {
         if (record?.id) {
-            fetchHistory();
+            fetchHistory(selectedDate.format('YYYY-MM-DD'));
         }
-    }, [record?.id]);
+    }, [record?.id, selectedDate]);
 
-    const fetchHistory = async () => {
+    const fetchHistory = async (date) => {
         setHistoryLoading(true);
         try {
             const uid = record?.firebaseUid || record?.id;
-            // Fetch last 50 tasks for this user across all dates
-            const res = await fetch(`${API_URL}/daily_tasks?userId=${uid}&_sort=date&_order=DESC&_start=0&_end=50`);
+            // Fetch tasks for the specific date
+            const res = await fetch(`${API_URL}/daily_tasks?userId=${uid}&date=${date}&_sort=date&_order=DESC`);
             const data = await res.json();
             // 过滤掉模板记录，只显示真实的执行任务
             setHistory(Array.isArray(data) ? data.filter(t => !t.isTemplate) : []);
@@ -55,10 +57,14 @@ export const PlanShow = () => {
             title: "来源",
             dataIndex: "source",
             key: "source",
-            width: 90,
+            width: 100,
             render: (val) => {
-                const map = { ai: ["五养建议", "green"], doctor: ["医嘱", "blue"], custom: ["自定义", "default"] };
-                const [label, color] = map[val] || ["未知", "default"];
+                const map = { 
+                    ai: ["五养建议", "green"], 
+                    doctor: ["医嘱下发", "blue"], 
+                    custom: ["自主添加", "default"] 
+                };
+                const [label, color] = map[val] || ["五养建议", "green"];
                 return <Tag color={color}>{label}</Tag>;
             }
         },
@@ -90,7 +96,9 @@ export const PlanShow = () => {
                                 {record?.coreRecoveryIndex || 0} 分
                             </Tag>
                         </Descriptions.Item>
-                        <Descriptions.Item label="体质判定">{record?.constitution || "待辨证"}</Descriptions.Item>
+                        <Descriptions.Item label="体质判定">
+                            {record?.tcmAnalysisResult?.constitutionType || record?.constitution || "待辨证"}
+                        </Descriptions.Item>
                     </Descriptions>
                 </div>
 
@@ -103,7 +111,14 @@ export const PlanShow = () => {
 
                 {/* 历史记录 */}
                 <div style={{ marginTop: 24 }}>
-                    <Title level={4}><HistoryOutlined /> 历史执行记录</Title>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                        <Title level={4} style={{ margin: 0 }}><HistoryOutlined /> 历史执行记录</Title>
+                        <DatePicker 
+                            value={selectedDate} 
+                            onChange={(date) => setSelectedDate(date)} 
+                            allowClear={false}
+                        />
+                    </div>
                     <Table 
                         dataSource={history} 
                         columns={historyColumns} 

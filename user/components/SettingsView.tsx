@@ -30,20 +30,16 @@ const UNIT_LABELS: Record<string, string> = {
   'imperial': '英制'
 };
 
-const VOICE_DISPLAY_MAP: Record<string, { displayName: string; gender: '男' | '女' }> = {
-  'Meijia': { displayName: '美佳', gender: '女' },
-  'Ting-Ting': { displayName: '婷婷', gender: '女' },
-  'Li-Mu': { displayName: '立牧', gender: '男' },
-  'Yu-shu': { displayName: '语书', gender: '女' },
-  'Xiaoyun': { displayName: '晓云', gender: '女' },
-  'Yunxi': { displayName: '云溪', gender: '男' },
-  'Yunxia': { displayName: '云夏', gender: '女' },
-  'Yunyang': { displayName: '云扬', gender: '男' },
-  'Zhiqi': { displayName: '知琦', gender: '女' },
-  'Yunjian': { displayName: '云健', gender: '男' },
-  'Google 普通话': { displayName: 'Google 官方', gender: '女' },
-  'Google Mandarin': { displayName: 'Google 官方', gender: '女' },
-};
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "" : "http://localhost:3002");
+
+const GEMINI_VOICES = [
+  { key: 'Kore', label: '知心学姐 (Kore)', rightLabel: '女', desc: '温暖治愈的女性声音', gender: '女', lang: 'zh' },
+  { key: 'Aoede', label: '温柔女声 (Aoede)', rightLabel: '女', desc: '柔和舒缓的女性声音', gender: '女', lang: 'zh' },
+  { key: 'Leda', label: '专业女声 (Leda)', rightLabel: '女', desc: '清晰专业的女性声音', gender: '女', lang: 'en' },
+  { key: 'Puck', label: '年轻男声 (Puck)', rightLabel: '男', desc: '清爽明快的男性声音', gender: '男', lang: 'zh' },
+  { key: 'Charon', label: '沉稳男声 (Charon)', rightLabel: '男', desc: '成熟稳重的男性声音', gender: '男', lang: 'en' },
+  { key: 'Fenrir', label: '深沉男声 (Fenrir)', rightLabel: '男', desc: '低沉磁性的男性声音', gender: '男', lang: 'en' },
+];
 
 interface SettingsViewProps {
   onBack: () => void;
@@ -71,74 +67,64 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [currentSubPage, setCurrentSubPage] = useState<'main' | 'font-size' | 'theme' | 'language' | 'unit' | 'voice' | 'protocol_service' | 'protocol_privacy'>('main');
-  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+  const [voiceFilterGender, setVoiceFilterGender] = useState<'all' | '女' | '男'>('all');
+  const [voiceFilterLang, setVoiceFilterLang] = useState<'all' | 'zh' | 'en'>('all');
+  const currentAudioRef = React.useRef<HTMLAudioElement | null>(null);
 
-  useEffect(() => {
-    const getVoices = () => {
-      const voices = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith('zh'));
-      setAvailableVoices(voices);
-    };
-    getVoices();
-    window.speechSynthesis.onvoiceschanged = getVoices;
-    return () => { window.speechSynthesis.onvoiceschanged = null; };
-  }, []);
+  const playVoicePreview = async (text: string, voiceName: string) => {
+    if (currentAudioRef.current) {
+        currentAudioRef.current.pause();
+        currentAudioRef.current = null;
+    }
 
-  const speak = useCallback((text: string, voiceName?: string) => {
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = 'zh-CN';
-    
-    const trySpeak = () => {
-      const allVoices = window.speechSynthesis.getVoices();
-      if (allVoices.length === 0) {
-        window.speechSynthesis.onvoiceschanged = () => {
-          trySpeak();
-          window.speechSynthesis.onvoiceschanged = null;
-        };
-        return;
-      }
-      
-      let selectedVoice = null;
-      if (voiceName && voiceName !== 'default') {
-        selectedVoice = allVoices.find(v => v.name === voiceName);
-      }
-      
-      if (!selectedVoice) {
-        // Fallback or explicit request for Meijia
-        if (!voiceName || voiceName === 'default') {
-            selectedVoice = allVoices.find(v => v.name.toLowerCase().includes('meijia'));
+    try {
+        setIsPlayingPreview(true);
+        const res = await fetch(`${API_URL}/api/tts`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, voice: voiceName })
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (data.audio) {
+                const audioUrl = `data:audio/wav;base64,${data.audio}`;
+                const audio = new Audio(audioUrl);
+                currentAudioRef.current = audio;
+                audio.onended = () => setIsPlayingPreview(false);
+                audio.onerror = () => setIsPlayingPreview(false);
+                audio.play().catch(() => setIsPlayingPreview(false));
+            } else {
+                setIsPlayingPreview(false);
+            }
+        } else {
+            setIsPlayingPreview(false);
         }
-      }
+    } catch(e) {
+        console.error("TTS Preview failed:", e);
+        setIsPlayingPreview(false);
+    }
+  };
 
-      if (!selectedVoice) {
-        selectedVoice = allVoices.find(v => 
-          v.name.includes('Google') && 
-          (v.name.includes('普通话') || v.name.includes('Mandarin')) &&
-          (v.lang.includes('zh') || v.lang.includes('CN'))
-        );
-      }
-      
-      if (selectedVoice) utterance.voice = selectedVoice;
-      window.speechSynthesis.speak(utterance);
-    };
-
-    trySpeak();
-  }, []);
-
-  const handleVoiceSelection = (voiceName: string) => {
+  const handleVoiceSelection = async (voiceName: string) => {
     onUpdateProfile({ voicePreference: voiceName });
-    speak(`你好！我是${profile.name || '五养教练'}`, voiceName);
     if (hapticFeedback && navigator.vibrate) navigator.vibrate(10);
+    playVoicePreview(`你好！我是您的五养教练，很高兴陪伴您每天的康复。`, voiceName);
+  };
+
+  const handleLanguageSelection = (lang: string) => {
+    setLanguage(lang);
+    if (hapticFeedback && navigator.vibrate) navigator.vibrate(10);
+    
+    const voiceName = profile.voicePreference && profile.voicePreference !== 'default' ? profile.voicePreference : 'Kore';
+    const previewText = lang === 'en-US' ? "Hello! I am your Five Nursing coach." : "你好！我是您的五养教练。";
+    playVoicePreview(previewText, voiceName);
   };
   
   const getVoiceDisplayName = (voiceName: string) => {
-    if (voiceName === 'default' || !voiceName) return '默认 (美佳/Google 官方)';
-    for (const key in VOICE_DISPLAY_MAP) {
-      if (voiceName.toLowerCase().includes(key.toLowerCase())) {
-        return VOICE_DISPLAY_MAP[key as keyof typeof VOICE_DISPLAY_MAP].displayName;
-      }
-    }
-    return voiceName.split(' ')[0];
+    if (voiceName === 'default' || !voiceName) return '知心学姐 (Kore)';
+    const voice = GEMINI_VOICES.find(v => v.key === voiceName);
+    return voice ? voice.label : voiceName;
   };
 
   const SettingCard: React.FC<{ 
@@ -244,13 +230,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   if (currentSubPage === 'language') {
     return renderSelectionPage(
-      '语言',
+      '语言' + (isPlayingPreview ? ' (正在试听...)' : ''),
       [
         { key: 'zh-CN', label: '简体中文' },
         { key: 'en-US', label: 'English' }
       ],
       language,
-      (key) => setLanguage(key)
+      handleLanguageSelection
     );
   }
 
@@ -267,33 +253,85 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   }
 
   if (currentSubPage === 'voice') {
-    const hasMeijia = availableVoices.some(v => v.name.toLowerCase().includes('meijia'));
-    const voiceOptions = [
-      { 
-        key: 'default', 
-        label: '系统默认', 
-        desc: hasMeijia ? '已自动为您匹配专属音色：美佳' : '系统首选 Google 普通话（中国大陆）语音',
-        rightLabel: hasMeijia ? '女' : undefined
-      },
-      ...availableVoices.map(v => {
-        const displayNameInfo = Object.entries(VOICE_DISPLAY_MAP).find(([key, _]) => v.name.toLowerCase().includes(key.toLowerCase()));
-        const label = displayNameInfo ? displayNameInfo[1].displayName : v.name.split(' ')[0];
-        let gender: '男' | '女' | undefined = undefined;
-        if (displayNameInfo) gender = displayNameInfo[1].gender;
-        return {
-          key: v.name,
-          label: label,
-          desc: v.name.includes('Google') || v.name.includes('Siri') || v.name.includes('Microsoft') ? '高音质云端合成' : '本地合成',
-          rightLabel: gender
-        }
-      })
-    ];
+    const filteredVoices = GEMINI_VOICES.filter(v => {
+      const genderMatch = voiceFilterGender === 'all' || v.gender === voiceFilterGender;
+      const langMatch = voiceFilterLang === 'all' || v.lang === voiceFilterLang;
+      return genderMatch && langMatch;
+    });
 
-    return renderSelectionPage(
-      'AI 语音音色',
-      voiceOptions,
-      profile.voicePreference || 'default',
-      handleVoiceSelection
+    return (
+      <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-950 absolute inset-0 z-50">
+        <header className="p-6 pb-4 flex items-center border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 sticky top-0 z-10">
+          <button onClick={() => setCurrentSubPage('main')} className="mr-4 p-2 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-600 dark:text-slate-300 active:scale-95 transition-transform">
+            <ArrowLeft size={20} />
+          </button>
+          <h2 className="text-xl font-black text-slate-800 dark:text-white">AI 语音教练{isPlayingPreview && ' (正在试听...)'}</h2>
+        </header>
+        
+        <div className="bg-white dark:bg-slate-950 px-4 py-2 border-b border-slate-100 dark:border-slate-800 space-y-2">
+           <div className="flex items-center space-x-2">
+              <span className="text-[10px] font-black text-slate-400 w-8">性别</span>
+              <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
+                 {(['all', '女', '男'] as const).map(g => (
+                   <button 
+                     key={g} 
+                     onClick={() => setVoiceFilterGender(g)}
+                     className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${voiceFilterGender === g ? 'bg-white dark:bg-slate-800 text-emerald-600 shadow-sm' : 'text-slate-500'}`}
+                   >
+                     {g === 'all' ? '全部' : g + '声'}
+                   </button>
+                 ))}
+              </div>
+           </div>
+           <div className="flex items-center space-x-2">
+              <span className="text-[10px] font-black text-slate-400 w-8">语言</span>
+              <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
+                 {(['all', 'zh', 'en'] as const).map(l => (
+                   <button 
+                     key={l} 
+                     onClick={() => setVoiceFilterLang(l)}
+                     className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${voiceFilterLang === l ? 'bg-white dark:bg-slate-800 text-emerald-600 shadow-sm' : 'text-slate-500'}`}
+                   >
+                     {l === 'all' ? '全部' : l === 'zh' ? '中文' : 'English'}
+                   </button>
+                 ))}
+              </div>
+           </div>
+        </div>
+
+        <main className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+          <div className="bg-white dark:bg-slate-900 rounded-[32px] border border-slate-100 dark:border-slate-800 overflow-hidden shadow-sm">
+            {filteredVoices.map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => handleVoiceSelection(opt.key)}
+                className="w-full p-5 flex items-center justify-between border-b border-slate-100 dark:border-slate-800 last:border-0 active:bg-slate-50 dark:active:bg-slate-800/50 transition-colors"
+              >
+                <div className="text-left flex flex-col">
+                   <div className="flex items-center space-x-2">
+                      <span className={`font-bold ${(profile.voicePreference || 'Kore') === opt.key ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-slate-200'}`}>
+                        {opt.label}
+                      </span>
+                      {opt.rightLabel && (
+                          <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded text-[10px] font-black">{opt.rightLabel}</span>
+                      )}
+                      <span className="px-1.5 py-0.5 border border-slate-200 dark:border-slate-700 text-slate-400 rounded text-[9px] font-medium uppercase">
+                        {opt.lang === 'zh' ? 'ZH' : 'EN'}
+                      </span>
+                   </div>
+                   {opt.desc && <span className="text-xs text-slate-400 mt-1">{opt.desc}</span>}
+                </div>
+                <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${(profile.voicePreference || 'Kore') === opt.key ? 'border-emerald-500 bg-emerald-500' : 'border-slate-200 dark:border-slate-700'}`}>
+                  {(profile.voicePreference || 'Kore') === opt.key && <Check size={14} className="text-white" />}
+                </div>
+              </button>
+            ))}
+            {filteredVoices.length === 0 && (
+              <div className="p-8 text-center text-slate-400 text-sm italic">没有匹配的音色</div>
+            )}
+          </div>
+        </main>
+      </div>
     );
   }
 

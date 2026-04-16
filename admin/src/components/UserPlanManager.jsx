@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Table, Tag, Button, Space, Modal, Form, Input, Select, message, Popconfirm } from "antd";
-import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
+import { PlusOutlined, DeleteOutlined, EditOutlined } from "@ant-design/icons";
 
 const API_URL = import.meta.env.PROD ? "/api" : "http://localhost:3002/api";
 
@@ -8,6 +8,7 @@ export const UserPlanManager = ({ userId }) => {
     const [tasks, setTasks] = useState([]);
     const [loading, setLoading] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingTask, setEditingTask] = useState(null);
     const [form] = Form.useForm();
 
     const fetchTasks = async () => {
@@ -56,6 +57,24 @@ export const UserPlanManager = ({ userId }) => {
         }
     };
 
+    const handleEditTask = async (values) => {
+        try {
+            const response = await fetch(`${API_URL}/daily_tasks/${editingTask.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(values),
+            });
+            if (response.ok) {
+                message.success("任务修改成功");
+                setIsModalOpen(false);
+                setEditingTask(null);
+                fetchTasks();
+            }
+        } catch (e) {
+            message.error("修改失败");
+        }
+    };
+
     const handleDelete = async (id) => {
         try {
             const response = await fetch(`${API_URL}/daily_tasks/${id}`, {
@@ -92,11 +111,27 @@ export const UserPlanManager = ({ userId }) => {
                 return <Tag color="cyan">{label}{count}</Tag>;
             }
         },
+        {
+            title: "周期",
+            key: "period",
+            render: (_, record) => {
+                const start = record.startDate || "-";
+                const end = record.endDate || "长期有效";
+                return <span style={{ fontSize: '12px' }}>{start} ~ {end}</span>;
+            }
+        },
         { 
             title: "状态", 
-            dataIndex: "completed", 
-            key: "completed",
-            render: (done) => <Tag color={done ? "success" : "default"}>{done ? "已完成" : "进行中"}</Tag>
+            key: "status",
+            render: (_, record) => {
+                const today = new Date().toISOString().split('T')[0];
+                if (record.endDate && record.endDate < today) {
+                    return <Tag color="error">已到期</Tag>;
+                }
+                return <Tag color={record.completed ? "success" : "processing"}>
+                    {record.completed ? "已完成" : "进行中"}
+                </Tag>;
+            }
         },
         {
             title: "来源",
@@ -104,18 +139,32 @@ export const UserPlanManager = ({ userId }) => {
             key: "source",
             render: (source, record) => {
                 if (source === 'doctor' || record.isManual) {
-                    return <Tag color="blue">医护干预</Tag>;
+                    return <Tag color="blue">医嘱下发</Tag>;
                 }
-                return <Tag>系统AI</Tag>;
+                if (source === 'custom') {
+                    return <Tag color="default">自主添加</Tag>;
+                }
+                return <Tag color="green">五养建议</Tag>;
             }
         },
         {
             title: "操作",
             key: "action",
             render: (_, record) => (
-                <Popconfirm title="确定取消此任务？" onConfirm={() => handleDelete(record.id)}>
-                    <Button type="link" danger icon={<DeleteOutlined />} />
-                </Popconfirm>
+                <Space>
+                    <Button 
+                        type="link" 
+                        icon={<EditOutlined />} 
+                        onClick={() => {
+                            setEditingTask(record);
+                            form.setFieldsValue(record);
+                            setIsModalOpen(true);
+                        }} 
+                    />
+                    <Popconfirm title="确定取消此任务？" onConfirm={() => handleDelete(record.id)}>
+                        <Button type="link" danger icon={<DeleteOutlined />} />
+                    </Popconfirm>
+                </Space>
             ),
         }
     ];
@@ -123,7 +172,7 @@ export const UserPlanManager = ({ userId }) => {
     return (
         <div style={{ marginTop: 24 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <h3 style={{ margin: 0 }}>当日康复任务清单</h3>
+                <h3 style={{ margin: 0 }}>康复计划方案</h3>
                 <Button 
                     type="primary" 
                     icon={<PlusOutlined />} 
@@ -143,12 +192,20 @@ export const UserPlanManager = ({ userId }) => {
             />
 
             <Modal 
-                title="手动调节康复计划" 
+                title={editingTask ? "编辑康复计划" : "手动调节康复计划"} 
                 open={isModalOpen} 
-                onCancel={() => setIsModalOpen(false)}
+                onCancel={() => {
+                    setIsModalOpen(false);
+                    setEditingTask(null);
+                    form.resetFields();
+                }}
                 onOk={() => form.submit()}
             >
-                <Form form={form} layout="vertical" onFinish={handleAddTask}>
+                <Form 
+                    form={form} 
+                    layout="vertical" 
+                    onFinish={editingTask ? handleEditTask : handleAddTask}
+                >
                     <Form.Item name="category" label="任务类型" rules={[{ required: true }]}>
                         <Select placeholder="选择五养维度">
                             <Select.Option value="diet">饮食调养</Select.Option>
@@ -175,10 +232,19 @@ export const UserPlanManager = ({ userId }) => {
                             </Select>
                         </Form.Item>
                     </Space>
+                    <Space style={{ width: '100%' }}>
+                        <Form.Item name="startDate" label="开始日期" initialValue={new Date().toISOString().split('T')[0]} style={{ flex: 1 }}>
+                            <Input type="date" />
+                        </Form.Item>
+                        <Form.Item name="endDate" label="截止日期" style={{ flex: 1 }}>
+                            <Input type="date" placeholder="永不截止" />
+                        </Form.Item>
+                    </Space>
+
                     <Form.Item name="isPermanent" label="是否设为长期计划" initialValue={true}>
-                        <Select>
-                            <Select.Option value={true}>是（自动同步到每日清单）</Select.Option>
-                            <Select.Option value={false}>否（仅今日生效一次）</Select.Option>
+                        <Select disabled={!!editingTask}>
+                            <Select.Option value={true}>是（每天自动生成）</Select.Option>
+                            <Select.Option value={false}>否（仅今日单次）</Select.Option>
                         </Select>
                     </Form.Item>
                     <Form.Item name="description" label="补充说明">

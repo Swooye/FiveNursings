@@ -31,6 +31,9 @@ import { AdminEdit } from "./pages/admins/edit";
 import { RoleList } from "./pages/roles/list";
 import { RoleCreate } from "./pages/roles/create";
 import { RoleEdit } from "./pages/roles/edit";
+import { OrderList } from "./pages/orders/list";
+import { OrderShow } from "./pages/orders/show";
+import { OrderCreate } from "./pages/orders/create";
 
 import "@refinedev/antd/dist/reset.css";
 
@@ -107,6 +110,13 @@ const App = () => {
                 meta: { label: "商城商品" },
               },
               {
+                name: "orders",
+                list: "/orders",
+                show: "/orders/show/:id",
+                create: "/orders/create",
+                meta: { label: "订单管理" },
+              },
+              {
                 name: "protocols",
                 list: "/protocols",
                 edit: "/protocols/edit/:id",
@@ -156,6 +166,12 @@ const App = () => {
                   <Route index element={<MallItemList />} />
                   <Route path="create" element={<MallItemCreate />} />
                   <Route path="edit/:id" element={<MallItemEdit />} />
+                </Route>
+
+                <Route path="/orders">
+                  <Route index element={<OrderList />} />
+                  <Route path="show/:id" element={<OrderShow />} />
+                  <Route path="create" element={<OrderCreate />} />
                 </Route>
 
                 <Route path="/protocols">

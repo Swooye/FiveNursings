@@ -1,6 +1,7 @@
 const fetch = require('node-fetch');
 const ContextService = require('./ContextService');
 const KnowledgeService = require('./KnowledgeService');
+const GeminiService = require('./GeminiService');
 
 class AnalysisService {
     /**
@@ -10,7 +11,7 @@ class AnalysisService {
      * @param {string} systemInstruction 
      * @param {boolean} jsonResponse 
      */
-    static async callAI(prompt, history = [], systemInstruction = "", jsonResponse = false, fallbackModels = ["google/gemini-2.0-flash-001", "qwen/qwen-2.5-72b-instruct"]) {
+    static async callAI(prompt, history = [], systemInstruction = "", jsonResponse = false, fallbackModels = ["google/gemini-3-flash-preview", "qwen/qwen-2.5-72b-instruct"]) {
         const apiKey = process.env.OPENROUTER_API_KEY;
         if (!apiKey) throw new Error("API Key not configured");
 
@@ -78,7 +79,7 @@ ${(history || []).map(h => `${h.role === 'model' ? '助手' : '患者'}: ${h.tex
 
         try {
             // Using high-performance models for summary
-            const content = await this.callAI(context, [], "你是一位专业的康复助理。", true, ["google/gemini-2.0-flash-001", "qwen/qwen-2.5-72b-instruct"]);
+            const content = await this.callAI(context, [], "你是一位专业的康复助理。", true, ["google/gemini-3-flash-preview", "qwen/qwen-2.5-72b-instruct"]);
             const cleanContent = content.replace(/```json|```/g, '').trim();
             const parsed = JSON.parse(cleanContent);
             return Array.isArray(parsed) ? parsed[0] : parsed;
@@ -95,31 +96,69 @@ ${(history || []).map(h => `${h.role === 'model' ? '助手' : '患者'}: ${h.tex
      */
     static async generateHealthReport(userId, profile) {
         // 1. 获取全维上下文
-        const contextData = await ContextService.getFullContext(userId, profile);
+        const contextData = await ContextService.getFullContext(userId, profile) || {
+            adherence: "今日暂无任务记录",
+            currentSymptoms: "今日暂未上报明显症状",
+            aiInsights: []
+        };
         
         // 2. 检索理论依据
-        const keywords = [profile.cancerType, ...contextData.currentSymptoms];
-        const knowledge = await KnowledgeService.getRelevantKnowledge(keywords);
+        const keywords = [profile?.cancerType || '', contextData?.currentSymptoms || ''];
+        const knowledge = KnowledgeService.getRelevantTheory(keywords.join(' '));
 
-        const prompt = `请作为【林洪生五养专家大脑】，基于以下全维上下文为患者生成今日康复简报。
+        const prompt = `请作为【五养AI康复教练】，为患者 **${profile?.nickname || '用户'}** 生成一段温馨、专业且鼓励的今日康复简报。
 
-[核心档案] 昵称：${profile.nickname || '用户'}, 类型：${profile.cancerType}, 阶段：${profile.stage}
-[中医辨证] ${profile.tcmAnalysisResult?.constitutionType || '待评估'} - ${profile.tcmAnalysisResult?.syndromeDifferentiation || '无'}
-[今日执行率] ${contextData.todayAdherence}% (目标：80%以上)
-[当前症状] ${contextData.currentSymptoms.join(', ') || '无明显不适'}
-[AI 长期洞察] ${contextData.aiInsights.join('; ') || '暂无'}
+[患者核心信息]
+- 昵称：${profile?.nickname || '用户'}
+- 类型：${profile?.cancerType || '待定'}
+- 阶段：${profile?.stage || '待定'}
+- 当前季节/天气：${contextData?.weatherInfo || '适宜康复'}
 
-[理论参考：林洪生五养]
-${knowledge}
+[昨日五养评分回顾] (请基于此数据进行点评)
+- 功能养：${contextData?.scores?.function || 60}分
+- 饮食养：${contextData?.scores?.diet || 60}分
+- 运动养：${contextData?.scores?.exercise || 60}分
+- 心理养：${contextData?.scores?.mental || 60}分
+- 膏方养：${contextData?.scores?.sleep || 60}分
+
+[今日执行摘要]
+${contextData?.adherence || '今日暂无任务记录'}
+${contextData?.currentSymptoms || '今日未上报明显症状'}
 
 要求：
-1. 模块化展示：【今日动态】、【专家点评】、【核心待办】。
-2. 评价今日执行情况，给予肯定或温和纠正。
-3. 结合“五养”理论，针对反馈的症状（如有）给出精准的干预建议。
-4. 语气专业且温暖。 Markdown 格式。
-5. 包含免责声明。`;
+1. **结构必须严格包含**：
+   - **问候语**：亲切地称呼用户。
+   - **环境信息**：根据当前季节描述适宜康复的天气建议。
+   - **昨日五养回顾**：逐一列出上述五个维度的评分并给出一两句针对性点评。
+   - **核心行动建议**：今日最关键的一条建议。
+2. **风格约束**：
+   - 语气：专业、温暖、鼓励。
+   - 字数：200字左右。
+   - 格式：关键点使用双星号 ** 加粗（以便在界面上高亮显示）。
+3. **不要**包含 Markdown 标题层级（如 # 或 ##），直接输出内容。`;
 
-        return await this.callAI(prompt, [], "你是一位深谙林洪生五养理论的顶级中医肿瘤康复专家。", false);
+        const report = await this.callAI(prompt, [], "你是一位专业的五养AI康复教练，致力于为肿瘤患者提供温馨、科学的康复指导。", false);
+
+        // --- TTS Upgrade: Generate Gemini Audio with specific voice ---
+        let audioData = null;
+        try {
+            const voice = profile?.voicePreference || "Kore";
+            console.log(`[AnalysisService] Generating report audio. userId: ${userId}, voice: ${voice}, profileKeys: ${Object.keys(profile || {})}`);
+            
+            // We use a simplified version of the report for TTS to ensure better pronunciation
+            const ttsText = report
+                .replace(/\*\*/g, '') // Remove bold
+                .replace(/[#*`_~-]/g, ' ') // Remove other markdown symbols with spaces
+                .replace(/\s+/g, ' ') // Normalize spaces
+                .trim();
+            
+            audioData = await GeminiService.generateAudio(ttsText, voice);
+            console.log(`[AnalysisService] TTS Success for user ${userId} using voice ${voice}`);
+        } catch (ttsErr) {
+            console.error("[AnalysisService] TTS generation failed:", ttsErr);
+        }
+
+        return { report, audio: audioData };
     }
 
     /**

@@ -1,4 +1,4 @@
-const { User, DailyTask, VoiceLog } = require('../models');
+const { User, DailyTask, VoiceLog, ScoreHistory } = require('../models');
 
 class ScoringService {
     /**
@@ -141,8 +141,30 @@ class ScoringService {
         const ReminderService = require('./ReminderService');
         await ReminderService.checkAlerts(userId, user.scores, scores);
         
-        // 9. 计算变动率 (Daily Change Calculation)
-        const prevCri = user.coreRecoveryIndex; // 不再使用 || cri
+        // 9. 计算变动率 (Standardized Daily Change Calculation)
+        // 优选对比昨日最终得分，其次最近历史得分，最后使用用户文档当前值
+        let prevCri = user.coreRecoveryIndex;
+        try {
+            const yesterdayDate = new Date(new Date().getTime() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            // 查找昨日记录
+            let historyRecord = await ScoreHistory.findOne({ userId: user._id.toString(), date: yesterdayDate });
+            
+            // 如果昨日没记录，查找最近的一次历史记录（排除今天）
+            if (!historyRecord) {
+                historyRecord = await ScoreHistory.findOne({ 
+                    userId: user._id.toString(), 
+                    date: { $lt: today } 
+                }).sort({ date: -1 });
+            }
+
+            if (historyRecord) {
+                prevCri = historyRecord.coreRecoveryIndex;
+                console.log(`[ScoringService] Using historical CRI (${historyRecord.date}): ${prevCri} for comparison`);
+            }
+        } catch (e) {
+            console.error(`[ScoringService] Failed to fetch history for dailyChange:`, e.message);
+        }
+
         let dailyChange = "0.0%";
         if (prevCri > 0 && cri > 0) {
             const change = cri - prevCri;
@@ -163,6 +185,21 @@ class ScoringService {
         // 核心修复：显式标记 scores 已修改，并保存
         user.markModified('scores');
         await user.save();
+
+        // 11. 记录历史快照 (Score History Snapshot)
+        try {
+            await ScoreHistory.findOneAndUpdate(
+                { userId: user._id.toString(), date: today },
+                { 
+                    coreRecoveryIndex: cri, 
+                    scores: scores,
+                    updatedAt: new Date() 
+                },
+                { upsert: true, new: true }
+            );
+        } catch (e) {
+            console.error(`[ScoringService] Failed to save score history for ${userId}:`, e.message);
+        }
         
         console.log(`[ScoringService] Calculation complete. Score: ${cri} (${dailyChange}), Scores:`, scores);
         return { scores, cri, dailyChange, baselines };

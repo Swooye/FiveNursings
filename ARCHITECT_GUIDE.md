@@ -71,6 +71,18 @@
 - **原子化修改**：禁止在未运行本地模拟器 (Firebase Emulator) 的情况下直接向云端推送修改。
 - **回滚策略**：若连续三次修复未能解决一致性问题，立即回滚至上一个稳定的 Git Commit。
 
+### I. 混合部署与服务冲突防范 (Cloud Run & Functions Coexistence)
+- **核心原则**：生产环境的主后端服务（含 API 路由、数据库持久化、AI 专家大脑）统一使用 **Cloud Run** 容器化部署，其服务名称固定为 `api`。
+- **命名安全红线**：禁止在 Firebase Functions 中使用与 Cloud Run 服务同名的导出（Export）。
+    *   *错误示例*：在 `functions/src/index.ts` 中导出 `export const api = ...`。这在执行 `firebase deploy` 时会创建/覆盖名为 `api` 的服务，导致容器后端被静默替换。
+    *   *正确做法*：Functions 仅用于辅助逻辑（如 Triggers），其名称必须增加后缀或前缀（如 `api_legacy`, `on_user_created`）。
+- **同步构建规范**：重部署 Functions 前，必须手动在 `functions/` 目录下执行 `npm run build`，严禁直接部署未编译的 `.ts` 变更，防止线上代码与源码版本脱节。
+
+### J. 环境变量配置规范 (Environment Variable Standard)
+- **特殊字符处理**：在通过 `gcloud run services update` 或 `deploy` 配置 `MONGODB_URI` 等包含特殊字符的变量时，严禁在值内部使用字面量单引号（'）。
+    *   *风险*：某些 Shell 环境会将内部单引号视为字符串终止符，导致连接串被截断（如截断在 `@` 符号前），产生身份验证失败。
+- **覆盖规则**：生产环境的环境变量必须以 Google Cloud Console 中的 Secret Manager 或 Service 配置为准。本地 `.env` 仅供本地 `server/index.js` 使用。
+
 ### E. 环境配置 (Env Vars)
 - **单一真理来源**：项目采用根目录 `.env` 作为唯一配置源。
 - **同步机制**：`admin/.env` 和 `user/.env` 是指向根目录的 **符号链接 (Symbolic Link)**。
@@ -79,13 +91,12 @@
 ### F. 智能语音 (TTS) 处理
 - **异步音色加载**：不同浏览器的语音包加载是异步的。必须监听 `speechSynthesis.onvoiceschanged` 并在回调中执行音色匹配。
 - **生命周期清理**：在 React 组件销毁 (`useEffect` cleanup) 或页面刷新 (`beforeunload`) 时，务必调用 `speechSynthesis.cancel()`，防止语音在后台重叠播报。
-82: 
-83: ### G. 用户身份标识符规范 (User ID Resolution Standard)
-84: - **痛点**：系统中存在多种用户 ID 格式：Firebase `uid` (auth 产生的字符串) 和 MongoDB `_id` (十六进制 ObjectId)。
-85: - **规范**：所有涉及 `userId` 业务逻辑（症状、日记、任务、计分等）的后端接口，**必须** 使用 `resolveUserIds` 辅助函数进行宽容匹配。
-86:   - **GET 请求**：使用 `{ userId: { $in: await resolveUserIds(queryId) } }` 进行查询，确保无论前端传哪种 ID 都能读到数据。
-87:   - **POST/PATCH 请求**：在存储前调用 `resolveUserIds`，并**统一存入 `idList[0]`**（通常是 MongoDB `_id`），确保数据不会因 ID 格式不同而产生冗余。
-88: - **前端准则**：`App.tsx` 中的 `profile.id` 包含业务主键，但在所有 API 请求中，后端应具备上述宽容识别能力。
+### G. 用户身份标识符规范 (User ID Resolution Standard)
+- **痛点**：系统中存在多种用户 ID 格式：Firebase `uid` (auth 产生的字符串) 和 MongoDB `_id` (十六进制 ObjectId)。
+- **规范**：所有涉及 `userId` 业务逻辑（症状、日记、任务、计分等）的后端接口，**必须** 使用 `resolveUserIds` 辅助函数进行宽容匹配。
+  - **GET 请求**：使用 `{ userId: { $in: await resolveUserIds(queryId) } }` 进行查询，确保无论前端传哪种 ID 都能读到数据。
+  - **POST/PATCH 请求**：在存储前调用 `resolveUserIds`，并**统一存入 `idList[0]`**（通常是 MongoDB `_id`），确保数据不会因 ID 格式不同而产生冗余。
+- **前端准则**：`App.tsx` 中的 `profile.id` 包含业务主键，但在所有 API 请求中，后端应具备上述宽容识别能力。
 
 ### H. 数据库连接安全与隔离规范 (Database Isolation Standard)
 - **核心红线**：严禁在后端 `server/index.js` 或任何数据持久化层硬编码 `fivenursing_pro`。

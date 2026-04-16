@@ -8,12 +8,14 @@ interface DiaryChatProps {
     profile: PatientProfile;
     onBack: () => void;
     onComplete: (summary: string, impact: any) => void;
+    onStartVoice?: (sid?: string | null, history?: { role: 'user' | 'model'; text: string }[]) => void;
     sessionId?: string;
     mode?: 'chat' | 'history';
     isDark?: boolean;
+    refreshTrigger?: number;
 }
 
-const DiaryChat: React.FC<DiaryChatProps> = ({ profile, onBack, onComplete, sessionId, mode = 'chat', isDark }) => {
+const DiaryChat: React.FC<DiaryChatProps> = ({ profile, onBack, onComplete, onStartVoice, sessionId, mode = 'chat', isDark, refreshTrigger }) => {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
     const [inputMode, setInputMode] = useState<'text' | 'voice'>('text');
@@ -26,25 +28,36 @@ const DiaryChat: React.FC<DiaryChatProps> = ({ profile, onBack, onComplete, sess
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (mode === 'history' && sessionId) {
+        if (sessionId) {
             setLoading(true);
             const fetchHistoryAndSummary = async () => {
                 try {
+                    let hasHistory = false;
                     // 1. Fetch Chat History
                     const msgRes = await fetch(`${API_URL}/api/messages/${profile.id}?sessionId=${sessionId}`);
                     if (msgRes.ok) {
                         const data = await msgRes.json();
-                        if (data.length > 0) setMessages(data);
+                        if (data && data.length > 0) {
+                            setMessages(data);
+                            hasHistory = true;
+                        }
                     }
                     
                     // 2. Fetch Existing Summary
                     const logRes = await fetch(`${API_URL}/api/voice_logs?userId=${profile.id}&sessionId=${sessionId}`);
                     if (logRes.ok) {
                         const logs = await logRes.json();
-                        if (logs.length > 0) {
+                        if (logs && logs.length > 0) {
                             setCurrentSummary(logs[0].summary);
                             setCurrentImpact(logs[0].impact);
                         }
+                    }
+
+                    // 3. Greeting for New Chats
+                    if (!hasHistory && messages.length === 0) {
+                        const name = profile.nickname || profile.name || '朋友';
+                        const greeting = `您好，**${name}**。我是您的日记助手，专门为您记录康复的点滴。\n\n您今天过得怎么样？午餐吃了些什么呢？也可以直接点击下方"语音通话"与我连线哦。`;
+                        setMessages([{ role: 'model', text: greeting, timestamp: new Date().toISOString() }]);
                     }
                 } catch (e) {
                     console.error("Failed to load history", e);
@@ -54,12 +67,14 @@ const DiaryChat: React.FC<DiaryChatProps> = ({ profile, onBack, onComplete, sess
             };
             fetchHistoryAndSummary();
         } else if (messages.length === 0) {
-            // Initial Greeting for new chat
             const name = profile.nickname || profile.name || '朋友';
-            const greeting = `您好，**${name}**。我是您的日记助手，专门为您记录康复的点滴。\n\n您今天过得怎么样？午餐吃了些什么呢？也可以上传照片，我会帮您自动同步到计划中。`;
+            const greeting = `您好，**${name}**。我是您的日记助手，专门为您记录康复的点滴。\n\n您今天过得怎么样？`;
             setMessages([{ role: 'model', text: greeting, timestamp: new Date().toISOString() }]);
+            setLoading(false);
+        } else {
+            setLoading(false);
         }
-    }, [sessionId, mode, profile]);
+    }, [sessionId, profile.id, refreshTrigger]);
 
     useEffect(() => {
         if (scrollRef.current) {
@@ -178,7 +193,7 @@ const DiaryChat: React.FC<DiaryChatProps> = ({ profile, onBack, onComplete, sess
                             ? 'bg-emerald-600 text-white font-black rounded-tr-none'
                             : 'bg-white dark:bg-[#111827] text-slate-800 dark:text-slate-200 border border-slate-100 dark:border-white/5 rounded-tl-none'
                             }`}>
-                            <p className="text-sm leading-relaxed whitespace-pre-wrap break-keep inline-block select-text">
+                            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words inline-block select-text">
                                 {msg.text?.split(/(\*\*.*?\*\*)/g).map((part, index) => {
                                     if (part.startsWith('**') && part.endsWith('**')) {
                                         return <strong key={index} className={msg.role === 'user' ? 'text-white underline' : 'text-emerald-600 dark:text-emerald-400'}>{part.slice(2, -2)}</strong>;
@@ -252,10 +267,10 @@ const DiaryChat: React.FC<DiaryChatProps> = ({ profile, onBack, onComplete, sess
                                 {[
                                     { icon: ImageIcon, label: '相册', color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20' },
                                     { icon: Camera, label: '拍摄', color: 'text-purple-500 bg-purple-50 dark:bg-purple-900/20' },
-                                    { icon: PhoneCall, label: '语音通话', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20' },
+                                    { icon: PhoneCall, label: '语音通话', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20', onClick: () => onStartVoice && onStartVoice(sessionId, messages) },
                                     { icon: MapPin, label: '位置', color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20' },
                                 ].map((item, idx) => (
-                                    <button key={idx} className="flex flex-col items-center space-y-2 group">
+                                    <button key={idx} onClick={item.onClick} className="flex flex-col items-center space-y-2 group">
                                         <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-sm transition-all group-active:scale-90 ${item.color}`}>
                                             <item.icon size={22} />
                                         </div>

@@ -135,7 +135,7 @@ const HumanCoachChat: React.FC<HumanCoachChatProps> = ({ onBack, profile, onUpda
                     ? 'bg-blue-600 text-white rounded-tr-none font-bold' 
                     : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-100 dark:border-slate-800 rounded-tl-none font-medium'
                   }`}>
-                    <span className="break-keep">{msg.text}</span>
+                    <span className="break-words">{msg.text}</span>
                   </div>
                   <div className="flex items-center space-x-1.5 mt-2 px-1">
                     <span className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter">

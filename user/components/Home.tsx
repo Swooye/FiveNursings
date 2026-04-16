@@ -6,6 +6,7 @@ import MetricGridWidget from './Home/widgets/MetricGridWidget';
 import ReportBannerWidget from './Home/widgets/ReportBannerWidget';
 import QuestionnaireAlert from './Home/widgets/QuestionnaireAlert';
 import EnvironmentalWidget from './Home/widgets/EnvironmentalWidget';
+import AIInsightsWidget from './Home/widgets/AIInsightsWidget';
 
 interface HomeProps {
   profile: PatientProfile;
@@ -57,7 +58,7 @@ const Home: React.FC<HomeProps> = ({
   // --- 插件化布局系统 (Layout System) ---
   // 该配置现优先从 profile.dashboardConfig 获取，支持后端下发针对不同患者的定制化看板
   const layout = profile.dashboardConfig || 
-                 ['QUESTIONNAIRE_ALERT', 'REPORT_BANNER', 'RADAR_CHART', 'METRIC_GRID'];
+                 ['QUESTIONNAIRE_ALERT', 'REPORT_BANNER', 'RADAR_CHART', 'AI_INSIGHTS', 'METRIC_GRID'];
 
   const renderWidget = (type: string) => {
     switch (type) {
@@ -67,6 +68,8 @@ const Home: React.FC<HomeProps> = ({
         return <ReportBannerWidget key={type} onStartReport={onStartReport} />;
       case 'RADAR_CHART':
         return <RadarWidget key={type} profile={profile} onSync={handleSync} isSyncing={isSyncing} isDark={isDark} />;
+      case 'AI_INSIGHTS':
+        return <AIInsightsWidget key={type} profile={profile} />;
       case 'ENVIRONMENTAL_WIDGET':
         return <EnvironmentalWidget key={type} profile={profile} />;
       case 'METRIC_GRID':

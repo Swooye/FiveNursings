@@ -114,7 +114,7 @@ const MarkdownContent: React.FC<{ content: string, onPlanAction?: (action: any) 
 
 interface AIChatProps {
   profile: PatientProfile;
-  onStartVoice: (sid?: string | null) => void;
+  onStartVoice: (sid?: string | null, history?: { role: 'user' | 'model'; text: string }[]) => void;
   onBack: () => void;
   onStartAssessment: () => void;
   onReadMessages: () => void;
@@ -751,25 +751,25 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
   }, [showHistory]);
 
   return (
-    <div className={`flex flex-col h-screen relative overflow-hidden transition-colors duration-500 ${isDark ? 'bg-[#050912]' : 'bg-[#f8fafc]'}`}>
+    <div className={`flex flex-col absolute inset-0 z-[100] overflow-hidden transition-colors duration-500 ${isDark ? 'bg-[#050912]' : 'bg-[#f8fafc]'}`}>
       {/* Header */}
-      <header className={`absolute top-0 left-0 right-0 z-50 p-6 pt-12 flex justify-between items-center backdrop-blur-md border-b transition-colors duration-500 ${isDark ? 'bg-[#050912]/80 border-white/5' : 'bg-white/80 border-slate-100'}`}>
-        <button onClick={onBack} className="w-11 h-11 bg-white dark:bg-slate-900 rounded-2xl flex items-center justify-center border border-slate-200 dark:border-slate-700 shadow-sm active:scale-90 transition-transform">
-          <ArrowLeft size={22} className="text-slate-600 dark:text-slate-300" />
+      <header className="px-6 pt-2 pb-4 bg-slate-50/80 dark:bg-[#050912]/80 backdrop-blur-md sticky top-0 z-40 border-b border-transparent dark:border-white/5 flex justify-between items-center">
+        <button onClick={onBack} className="w-11 h-11 bg-white dark:bg-[#111827] rounded-2xl flex items-center justify-center border border-slate-100 dark:border-white/5 shadow-sm active:scale-90 transition-transform">
+          <ArrowLeft size={20} className="text-slate-400" />
         </button>
         <div className="text-center font-outfit">
           <div className="flex items-center justify-center space-x-1.5 mb-0.5">
             <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
-            <h3 className="font-black text-sm text-slate-800 dark:text-white tracking-widest uppercase">AI五养专家</h3>
+            <h3 className="font-black text-lg text-slate-800 dark:text-white tracking-tight">AI五养专家</h3>
           </div>
         </div>
-        <button onClick={() => setShowHistory(true)} className="w-11 h-11 bg-white dark:bg-[#111827] rounded-2xl flex items-center justify-center border border-slate-200 dark:border-white/5 shadow-sm active:scale-90 transition-transform">
-          <History size={22} className="text-slate-600 dark:text-slate-300" />
+        <button onClick={() => setShowHistory(true)} className="w-11 h-11 bg-white dark:bg-[#111827] rounded-2xl flex items-center justify-center border border-slate-100 dark:border-white/5 shadow-sm active:scale-90 transition-transform">
+          <History size={20} className="text-slate-400" />
         </button>
       </header>
 
       {/* Messages */}
-      <main ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 space-y-8 pb-40 pt-40 custom-scrollbar">
+      <main ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 space-y-8 pb-40 pt-6 custom-scrollbar">
         {isInitialLoading ? (
           <div className="flex justify-center p-20"><Loader2 className="animate-spin text-emerald-500" size={32} /></div>
         ) : (
@@ -817,7 +817,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
                             <div className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce [animation-delay:0.2s]"></div>
                           </div>
                         )
-                      ) : <p className="text-sm leading-relaxed whitespace-pre-wrap break-keep">{msg.text}</p>}
+                      ) : <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.text}</p>}
                     </div>
                   </div>
                 </div>
@@ -952,7 +952,7 @@ const AIChat: React.FC<AIChatProps> = ({ profile, onStartVoice, onBack, onStartA
                 {[
                   { icon: ImageIcon, label: '相册', color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20', onClick: () => { } },
                   { icon: Camera, label: '拍摄', color: 'text-purple-500 bg-purple-50 dark:bg-purple-900/20', onClick: () => { } },
-                  { icon: PhoneCall, label: '语音通话', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20', onClick: () => onStartVoice(currentSessionId) },
+                  { icon: PhoneCall, label: '语音通话', color: 'text-emerald-500 bg-emerald-50 dark:bg-emerald-900/20', onClick: () => onStartVoice(currentSessionId, messages) },
                   { icon: MapPin, label: '位置', color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20', onClick: handleLocationClick },
                 ].map((item, idx) => (
                   <button key={idx} onClick={item.onClick} className="flex flex-col items-center space-y-2 group">

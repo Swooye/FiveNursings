@@ -1,9 +1,9 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
@@ -11,7 +11,7 @@ const multer = require('multer');
 // 导入自定义模块
 const {
     User, Admin, MallItem, Protocol,
-    ChatMessage, Role, Plan, VoiceLog, DailyTask, DailySymptom, TaskTemplate
+    ChatMessage, Role, Plan, VoiceLog, DailyTask, DailySymptom, TaskTemplate, ScoreHistory, Order
 } = require('./models');
 const { getLiveWeather, getSolarTerm } = require('./utils');
 const ScoringService = require('./services/ScoringService');
@@ -20,6 +20,7 @@ const ReminderService = require('./services/ReminderService');
 const TaskPolicyService = require('./services/TaskPolicyService');
 const ContextService = require('./services/ContextService');
 const MemoryService = require('./services/MemoryService');
+const GeminiService = require('./services/GeminiService');
 
 const getLocalDateString = () => {
     const d = new Date();
@@ -219,12 +220,51 @@ app.patch('/api/users/:id', async (req, res) => {
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/user/:id/calculate-index', async (req, res) => {
+// [COMPAT] 同时支持 /api/user 和 /api/users 
+app.post(['/api/user/:id/calculate-index', '/api/users/:id/calculate-index'], async (req, res) => {
     try {
         const result = await ScoringService.calculateIndex(req.params.id);
         res.json({ success: true, ...result });
     } catch (e) { res.status(500).json({ error: e.message }); }
 });
+
+    app.get('/api/users/:id/score-history', async (req, res) => {
+        try {
+            const userId = req.params.id;
+            const idList = await resolveUserIds(userId);
+            let history = await ScoreHistory.find({ userId: { $in: idList } }).sort({ date: 1 });
+
+            // [NEW] 如果没有历史数据，生成一些模拟数据展示（正式环境数据积累后可移除）
+            if (history.length === 0) {
+                const mockDays = 14;
+                const mockHistory = [];
+                const now = new Date();
+                for (let i = mockDays; i >= 0; i--) {
+                    const date = new Date();
+                    date.setDate(now.getDate() - i);
+                    mockHistory.push({
+                        userId: idList[0],
+                        date: date,
+                        coreRecoveryIndex: 65 + Math.floor(Math.random() * 20),
+                        scores: {
+                            diet: 60 + Math.floor(Math.random() * 30),
+                            exercise: 50 + Math.floor(Math.random() * 40),
+                            sleep: 70 + Math.floor(Math.random() * 20),
+                            mental: 65 + Math.floor(Math.random() * 25),
+                            function: 55 + Math.floor(Math.random() * 35)
+                        }
+                    });
+                }
+                // 暂时只返回模拟数据，不存入数据库，除非需要持久化演示
+                history = mockHistory;
+            }
+
+            res.json(history.map(format));
+        } catch (e) { 
+            console.error("Score History API Error:", e);
+            res.status(500).json({ error: e.message }); 
+        }
+    });
 
 // --- 自动路由生成器 ---
 const createRoutes = (path, Model) => {
@@ -401,6 +441,146 @@ createRoutes('voice_log', VoiceLog);
 createRoutes('daily_symptoms', DailySymptom);
 createRoutes('daily_symptom', DailySymptom);
 createRoutes('task_templates', TaskTemplate);
+createRoutes('task_template', TaskTemplate);
+createRoutes('daily_tasks', DailyTask);
+createRoutes('daily_task', DailyTask);
+
+// --- 订单管理专用路由 ---
+
+// 生成订单号辅助函数
+const generateOrderNo = () => {
+    const now = new Date();
+    const prefix = 'KY';
+    const datePart = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}`;
+    const timePart = `${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}${String(now.getSeconds()).padStart(2,'0')}`;
+    const rand = String(Math.floor(Math.random() * 9000) + 1000);
+    return `${prefix}${datePart}${timePart}${rand}`;
+};
+
+// GET /api/orders - 列表（含分页、过滤）
+app.get('/api/orders', async (req, res) => {
+    try {
+        const { _start, _end, _sort, _order, status, userId, expressNo, orderNo } = req.query;
+        const filter = {};
+        if (status) filter.status = status;
+        if (userId) filter.userId = { $in: await resolveUserIds(userId) };
+        if (expressNo) filter.expressNo = { $regex: expressNo, $options: 'i' };
+        if (orderNo) filter.orderNo = { $regex: orderNo, $options: 'i' };
+
+        const count = await Order.countDocuments(filter);
+        const sortField = _sort ? (_sort === 'id' ? '_id' : _sort) : 'createdAt';
+        let query = Order.find(filter).sort({ [sortField]: _order === 'ASC' ? 1 : -1 });
+
+        if (_start !== undefined && _end !== undefined) {
+            query = query.skip(parseInt(_start)).limit(parseInt(_end) - parseInt(_start));
+        }
+        const data = await query.exec();
+        res.setHeader('Access-Control-Expose-Headers', 'X-Total-Count');
+        res.setHeader('X-Total-Count', count);
+        res.json(data.map(format));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/orders/stats/summary - 订单统计摘要（必须在 /:id 之前注册，否则被动态路由拦截）
+app.get('/api/orders/stats/summary', async (req, res) => {
+    try {
+        const [total, pending, processing, shipped, delivered, cancelled] = await Promise.all([
+            Order.countDocuments({}),
+            Order.countDocuments({ status: 'pending' }),
+            Order.countDocuments({ status: 'processing' }),
+            Order.countDocuments({ status: 'shipped' }),
+            Order.countDocuments({ status: 'delivered' }),
+            Order.countDocuments({ status: 'cancelled' })
+        ]);
+        res.json({ total, pending, processing, shipped, delivered, cancelled });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// GET /api/orders/:id（动态路由必须在所有静态子路径之后）
+app.get('/api/orders/:id', async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id);
+        if (!order) return res.status(404).json({ error: 'Order not found' });
+        res.json(format(order));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/orders - 创建订单（管理员手动录入）
+app.post('/api/orders', async (req, res) => {
+    try {
+        const orderData = {
+            ...req.body,
+            orderNo: req.body.orderNo || generateOrderNo(),
+            createdAt: new Date()
+        };
+        const order = await Order.create(orderData);
+        res.json(format(order));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PATCH /api/orders/:id - 通用更新（状态、备注、收货地址等）
+app.patch('/api/orders/:id', async (req, res) => {
+    try {
+        const updated = await Order.findByIdAndUpdate(
+            req.params.id,
+            { ...req.body, updatedAt: new Date() },
+            { new: true }
+        );
+        if (!updated) return res.status(404).json({ error: 'Order not found' });
+        res.json(format(updated));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/orders/:id/shipping - 专用：录入/更新快递单号
+app.put('/api/orders/:id/shipping', async (req, res) => {
+    try {
+        const { expressCompany, expressNo } = req.body;
+        if (!expressNo) return res.status(400).json({ error: '快递单号不能为空' });
+        const order = await Order.findByIdAndUpdate(
+            req.params.id,
+            {
+                expressCompany: expressCompany || '',
+                expressNo,
+                expressUpdatedAt: new Date(),
+                status: 'shipped',
+                shippedAt: new Date(),
+                updatedAt: new Date()
+            },
+            { new: true }
+        );
+        if (!order) return res.status(404).json({ error: 'Order not found' });
+        res.json({ success: true, order: format(order) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// PUT /api/orders/:id/status - 专用：变更订单状态
+app.put('/api/orders/:id/status', async (req, res) => {
+    try {
+        const { status, cancelReason } = req.body;
+        const validStatuses = ['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'];
+        if (!validStatuses.includes(status)) return res.status(400).json({ error: '无效的订单状态' });
+
+        const updateData = { status, updatedAt: new Date() };
+        if (status === 'cancelled' && cancelReason) updateData.cancelReason = cancelReason;
+        if (status === 'paid') updateData.paidAt = new Date();
+        if (status === 'delivered') updateData.deliveredAt = new Date();
+
+        const order = await Order.findByIdAndUpdate(req.params.id, updateData, { new: true });
+        if (!order) return res.status(404).json({ error: 'Order not found' });
+        res.json({ success: true, order: format(order) });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// DELETE /api/orders/:id
+app.delete('/api/orders/:id', async (req, res) => {
+    try {
+        await Order.findByIdAndDelete(req.params.id);
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+
+
 
 // daily_tasks: 支持复数/单数别名（GET 支持 userId 跨格式匹配）
 app.get(['/api/daily_tasks', '/api/daily_task'], async (req, res) => {
@@ -515,7 +695,7 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 app.post('/api/get-ai-chat-reply', async (req, res) => {
     try {
-        const { message, text, profile, userId, history = [] } = req.body;
+        const { message, text, profile, userId, history = [], mode = 'chat', isVoice = false } = req.body;
         const userMessage = (message || text || "").trim();
         const apiKey = process.env.OPENROUTER_API_KEY;
 
@@ -526,7 +706,25 @@ app.post('/api/get-ai-chat-reply', async (req, res) => {
         const bioProfile = await ContextService.getFullContext(effectiveUserId);
         const contextFragment = ContextService.buildContextPrompt(bioProfile, userMessage);
 
-        const SYSTEM_INSTRUCTION = `你是一位专业的肿瘤康复AI教练。
+        const SYSTEM_INSTRUCTION = mode === 'logging' 
+            ? `你是一位温暖、有同理心的康复日记助手。你的任务是帮助用户通过语音记录日记。
+主要行为：
+1. **倾听并确认**：短小、口语化地表达你在听（如“我听着呢”、“理解您的感受”）。
+2. **引导补充**：如果用户说得简单，温和地引导他们多说一点当天的情绪或康复细节。
+3. **禁止分析**：不要解释指标、分数或提供医疗建议。
+4. **口语化**：直接说出你的回答，不要带标题、格式或标签。`
+            : isVoice 
+                ? `你是一位专业的肿瘤康复AI教练。基于林洪生“五养”体系（饮食养、运动养、膏方养、心理养、功能养）指导并鼓励患者。
+
+${contextFragment}
+
+回答要求（语音通话专用）：
+1. **口语化**：必须非常接地气，像真人在打电话聊天，句子要短。
+2. **通俗化**：虽然内容要符合“五养”专业性，但严禁使用专业术语或冗长的医学解释，一定要用大白话。
+3. **极简输出**：严禁输出任何 Markdown 格式（如星号、列表）、严禁带 [解释]、[今日行动建议] 等标题标签。只输出纯文本流。
+4. **强引导性**：每次回答最后，用一句话自然地提出一个简单开放的问题，引导用户继续聊下去。
+5. **严禁冗长**：每次回答控制在 3-4 个短句内。`
+                : `你是一位专业的肿瘤康复AI教练。
 核心理论体系：林洪生“五养”体系（饮食养、运动养、膏方养、心理养、功能养）。
 
 ${contextFragment}
@@ -553,16 +751,23 @@ ${contextFragment}
         });
 
         if (userMessage) {
-            if (lastRole === 'user') {
-                messages[messages.length - 1].content += "\n" + userMessage;
+            if (userMessage === '[SYSTEM_START_VOICE]') {
+                const greetingContext = mode === 'logging' 
+                    ? `[这是一条系统指令，因为用户刚接通了语音日记功能。请立刻用简短亲切的一句话向用户打个招呼，问候一下今天的康复感受，引导他们开始诉说日记。]`
+                    : `[这是一条系统指令，因为用户刚接通了语音通话。请基于你们之前的聊天上下文，用简短自然、像电话聊天一样的口吻打个招呼，表示你在听。]`;
+                messages.push({ role: "system", content: greetingContext });
             } else {
-                messages.push({ role: "user", content: userMessage });
+                if (lastRole === 'user') {
+                    messages[messages.length - 1].content += "\n" + userMessage;
+                } else {
+                    messages.push({ role: "user", content: userMessage });
+                }
             }
         } else {
             return res.status(400).json({ error: "Message content cannot be empty" });
         }
 
-        const models = ["google/gemini-2.0-flash-001", "qwen/qwen-2.5-72b-instruct"];
+        const models = ["google/gemini-3-flash-preview", "qwen/qwen-2.5-72b-instruct"];
         let reply = "";
         let attemptError = null;
 
@@ -616,7 +821,24 @@ ${contextFragment}
                 .catch(err => console.error("[Memory] Failed to extract insights:", err));
         }
 
-        res.json({ reply });
+        let audio = null;
+        if (reply && isVoice) {
+            try {
+                // Remove markdown before sending to TTS
+                const cleanTextForVoice = reply
+                    .replace(/[#*`~>]/g, '')
+                    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+                    .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, '')
+                    .replace(/-/g, ' ')
+                    .replace(/\t/g, ' ')
+                    .trim();
+                audio = await GeminiService.generateAudio(cleanTextForVoice, profile?.voicePreference || 'Kore');
+            } catch (ttsErr) {
+                console.error("[AI] TTS Generation failed:", ttsErr);
+            }
+        }
+
+        res.json({ reply, audio });
     } catch (e) {
         console.error("[AI Server Error]", e);
         res.json({ reply: "抱歉，五养专家正在休息中，请稍后再试。" });
@@ -626,9 +848,25 @@ ${contextFragment}
 app.post('/api/generate-health-report', async (req, res) => {
     try {
         const userId = req.body.userId || req.body.profile?.id;
-        const report = await AnalysisService.generateHealthReport(userId, req.body.profile);
-        res.json({ report });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+        const result = await AnalysisService.generateHealthReport(userId, req.body.profile);
+        res.json(result);
+    } catch (e) {
+        console.error('[HealthReport API Error]', e.stack || e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Used for Voice Settings Preview
+app.post('/api/tts', async (req, res) => {
+    try {
+        const { text, voice } = req.body;
+        if (!text) return res.status(400).json({ error: "Missing text" });
+        const audio = await GeminiService.generateAudio(text, voice || 'Kore');
+        res.json({ audio });
+    } catch (e) {
+        console.error('[TTS API Error]', e);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 app.post('/api/diary/summarize', async (req, res) => {

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
     firebaseUid: { type: String, index: true, unique: true },
@@ -75,6 +76,7 @@ const dailyTaskSchema = new mongoose.Schema({
 const DailyTask = mongoose.models.DailyTask || mongoose.model('DailyTask', dailyTaskSchema, 'daily_tasks');
 
 const TaskTemplate = require('./TaskTemplate');
+const ScoreHistory = require('./ScoreHistory');
 
 const diaryEntrySchema = new mongoose.Schema({
     userId: { type: String, index: true },
@@ -92,6 +94,52 @@ const dailySymptomSchema = new mongoose.Schema({
 }, { strict: false });
 const DailySymptom = mongoose.models.DailySymptom || mongoose.model('DailySymptom', dailySymptomSchema, 'daily_symptoms');
 
+const orderSchema = new mongoose.Schema({
+    orderNo: { type: String, unique: true, index: true },
+    userId: { type: String, index: true },
+    userName: String,
+    userPhone: String,
+    items: [{
+        itemId: String,
+        name: String,
+        imageUrl: String,
+        price: Number,
+        quantity: Number,
+        points: Number
+    }],
+    totalAmount: Number,
+    totalPoints: Number,
+    paymentMethod: { type: String, enum: ['points', 'cash', 'mixed'], default: 'points' },
+    status: {
+        type: String,
+        enum: ['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'],
+        default: 'pending',
+        index: true
+    },
+    shippingAddress: {
+        name: String,
+        phone: String,
+        province: String,
+        city: String,
+        district: String,
+        address: String,
+        zipCode: String
+    },
+    expressCompany: String,
+    expressNo: String,
+    expressUpdatedAt: Date,
+    remark: String,
+    cancelReason: String,
+    paidAt: Date,
+    shippedAt: Date,
+    deliveredAt: Date
+}, { strict: false, collection: 'orders', timestamps: true });
+
+orderSchema.index({ userId: 1, createdAt: -1 });
+orderSchema.index({ status: 1, createdAt: -1 });
+
+const Order = mongoose.models.Order || mongoose.model('Order', orderSchema, 'orders');
+
 module.exports = {
     User,
     Admin,
@@ -104,5 +152,8 @@ module.exports = {
     DailyTask,
     DiaryEntry,
     TaskTemplate,
-    DailySymptom
+    DailySymptom,
+    ScoreHistory,
+    Order
 };
+
