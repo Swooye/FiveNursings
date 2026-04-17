@@ -20,4 +20,4 @@ sleep 3
 echo "Starting admin dashboard (Port 5174)..."
 (cd admin && npm run dev -- --port 5174 > ../admin.log 2>&1 &)
 
-echo "Development environment stopped."
+echo "Development environment started."

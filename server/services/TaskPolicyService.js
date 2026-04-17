@@ -229,6 +229,11 @@ class TaskPolicyService {
             ]
         });
 
+        console.log(`[TaskPolicy] Found ${templates.length} candidate templates for user ${userId} on ${date}`);
+        if (templates.length > 0) {
+            console.log(`[TaskPolicy] Sample template: ${templates[0].title}, startDate: ${templates[0].startDate}`);
+        }
+
         const instances = [];
         const [year, month, day] = date.split('-').map(Number);
         const targetDate = new Date(year, month - 1, day);

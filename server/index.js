@@ -56,11 +56,20 @@ const upload = multer({ storage });
 
 // --- 基础配置 ---
 const DB_NAME = process.env.MONGODB_DB_NAME || (process.env.NODE_ENV === 'production' ? 'fivenursing_pro' : 'fivenursing_dev');
-const BASE_URI = (process.env.MONGODB_URI?.includes('?')
-    ? process.env.MONGODB_URI.replace(/\?/, `${DB_NAME}?`)
-    : (process.env.MONGODB_URI + `${DB_NAME}?`)) + 'retryWrites=true&w=majority';
+const rawUri = process.env.MONGODB_URI || '';
+let BASE_URI = rawUri;
 
+// [ROBUSTNESS] 仅在 URI 不包含数据库路径或查询参数时尝试拼接
+if (rawUri && !rawUri.includes('?') && !rawUri.includes(`/${DB_NAME}`)) {
+    const separator = rawUri.endsWith('/') ? '' : '/';
+    BASE_URI = `${rawUri}${separator}${DB_NAME}?retryWrites=true&w=majority`;
+}
+
+console.log(`[DB] Using URI from env: ${BASE_URI.replace(/:([^@]+)@/, ":****@")}`);
 console.log(`[DB] Environment: ${process.env.NODE_ENV || 'development'} | Target Database: ${DB_NAME}`);
+
+
+
 
 app.use(cors({
     origin: '*',
@@ -428,6 +437,91 @@ app.post('/api/task_templates', async (req, res) => {
 });
 
 // 注册标准 CRUD 路由
+// === daily_tasks 自定义路由（含同步逻辑，必须在 createRoutes 之前注册） ===
+app.get(['/api/daily_tasks', '/api/daily_task'], async (req, res) => {
+    try {
+        const { userId, date, dates, _start, _end, _sort, _order } = req.query;
+        const primaryId = await resolvePrimaryId(userId);
+        const idList = await resolveUserIds(userId);
+
+        let filter = {};
+        if (userId) {
+            filter.userId = { $in: idList };
+        }
+        if (date) filter.date = date;
+        if (dates && Array.isArray(dates)) filter.date = { $in: dates };
+
+        const sortField = _sort ? (_sort === 'id' ? '_id' : _sort) : 'date';
+        const sortOrder = _order === 'ASC' ? 1 : -1;
+
+        // [SYNC] 自动从模板补齐当日任务
+        const localDate = getLocalDateString();
+        const targetDate = date || localDate;
+        const isFutureOrToday = targetDate >= localDate;
+
+        if (primaryId && isFutureOrToday && _start === undefined) {
+            const existingCount = await DailyTask.countDocuments({ userId: primaryId, date: targetDate });
+            console.log(`[DailyTask] Sync check: user=${primaryId}, date=${targetDate}, existing=${existingCount}`);
+            if (existingCount < 2) {
+                console.log(`[DailyTask] Triggering template sync for ${primaryId} on ${targetDate}`);
+                await TaskPolicyService.generateTasksFromTemplates(primaryId, targetDate);
+            }
+        }
+
+        // 最终执行查询
+        const count = await DailyTask.countDocuments(filter);
+        let query = DailyTask.find(filter).sort({ [sortField]: sortOrder });
+
+        if (_start !== undefined && _end !== undefined) {
+            query = query.skip(parseInt(_start)).limit(parseInt(_end) - parseInt(_start));
+        }
+
+        const data = await query.exec();
+        res.setHeader('Access-Control-Expose-Headers', 'X-Total-Count');
+        res.setHeader('X-Total-Count', count);
+        res.json(data.map(format));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get(['/api/daily_tasks/:id', '/api/daily_task/:id'], async (req, res) => {
+    try { const data = await DailyTask.findById(req.params.id); res.json(format(data)); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post(['/api/daily_tasks', '/api/daily_task'], async (req, res) => {
+    try {
+        let data;
+        if (req.body.source === 'doctor' || req.body.isManual) {
+            data = await TaskPolicyService.addManualTask({ ...req.body, createdAt: new Date() });
+        } else {
+            data = await DailyTask.create({ ...req.body, createdAt: new Date() });
+        }
+        res.json(format(data));
+    }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch(['/api/daily_tasks/:id', '/api/daily_task/:id'], async (req, res) => {
+    try {
+        const updated = await DailyTask.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true });
+        if (updated && req.body.isInfeasible) {
+            // [ALIGNMENT] 如果标记为不可执行，则同步模版状态
+            await TaskTemplate.findOneAndUpdate(
+                { userId: updated.userId, category: updated.category, title: updated.title },
+                { $set: { isInfeasible: true } }
+            );
+        }
+        res.json(format(updated));
+    }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete(['/api/daily_tasks/:id', '/api/daily_task/:id'], async (req, res) => {
+    try { await DailyTask.findByIdAndDelete(req.params.id); res.json({ success: true }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// === 通用 CRUD 路由（daily_tasks 已单独定义，不在此列） ===
 createRoutes('users', User);
 createRoutes('admins', Admin);
 createRoutes('mall_items', MallItem);
@@ -442,8 +536,6 @@ createRoutes('daily_symptoms', DailySymptom);
 createRoutes('daily_symptom', DailySymptom);
 createRoutes('task_templates', TaskTemplate);
 createRoutes('task_template', TaskTemplate);
-createRoutes('daily_tasks', DailyTask);
-createRoutes('daily_task', DailyTask);
 
 // --- 订单管理专用路由 ---
 
@@ -582,86 +674,6 @@ app.delete('/api/orders/:id', async (req, res) => {
 
 
 
-// daily_tasks: 支持复数/单数别名（GET 支持 userId 跨格式匹配）
-app.get(['/api/daily_tasks', '/api/daily_task'], async (req, res) => {
-    try {
-        const { userId, date, dates, _start, _end, _sort, _order } = req.query;
-        const primaryId = await resolvePrimaryId(userId);
-        const idList = await resolveUserIds(userId);
-
-        let filter = {};
-        if (userId) {
-            filter.userId = { $in: idList };
-        }
-        if (date) filter.date = date;
-        if (dates && Array.isArray(dates)) filter.date = { $in: dates };
-
-        const sortField = _sort ? (_sort === 'id' ? '_id' : _sort) : 'date';
-        const sortOrder = _order === 'ASC' ? 1 : -1;
-
-        // [THROTTLED ALIGNMENT] Only trigger sync if necessary (no tasks found or cache expired)
-        const targetDate = date || getLocalDateString();
-        const isFutureOrToday = targetDate >= getLocalDateString();
-
-        if (primaryId && isFutureOrToday && _start === undefined) {
-            const existingCount = await DailyTask.countDocuments({ userId: primaryId, date: targetDate });
-            if (existingCount < 2) { // 简单并发保护：若已有多个任务，暂不重复触发同步
-                await TaskPolicyService.generateTasksFromTemplates(primaryId, targetDate);
-            }
-        }
-
-        // 最终执行查询
-        const count = await DailyTask.countDocuments(filter);
-        let query = DailyTask.find(filter).sort({ [sortField]: sortOrder });
-
-        if (_start !== undefined && _end !== undefined) {
-            query = query.skip(parseInt(_start)).limit(parseInt(_end) - parseInt(_start));
-        }
-
-        const data = await query.exec();
-        res.setHeader('Access-Control-Expose-Headers', 'X-Total-Count');
-        res.setHeader('X-Total-Count', count);
-        res.json(data.map(format));
-    } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-// daily_tasks 其他 CRUD（GET /:id, POST, PATCH, DELETE） - 支持别名
-app.get(['/api/daily_tasks/:id', '/api/daily_task/:id'], async (req, res) => {
-    try { const data = await DailyTask.findById(req.params.id); res.json(format(data)); }
-    catch (e) { res.status(500).json({ error: e.message }); }
-});
-app.post(['/api/daily_tasks', '/api/daily_task'], async (req, res) => {
-    try {
-        let data;
-        if (req.body.source === 'doctor' || req.body.isManual) {
-            data = await TaskPolicyService.addManualTask({ ...req.body, createdAt: new Date() });
-        } else {
-            data = await DailyTask.create({ ...req.body, createdAt: new Date() });
-        }
-        res.json(format(data));
-    }
-    catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.patch(['/api/daily_tasks/:id', '/api/daily_task/:id'], async (req, res) => {
-    try {
-        const updated = await DailyTask.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true });
-        if (updated && req.body.isInfeasible) {
-            // [ALIGNMENT] 如果标记为不可执行，则同步模版状态
-            await TaskTemplate.findOneAndUpdate(
-                { userId: updated.userId, category: updated.category, title: updated.title },
-                { $set: { isInfeasible: true } }
-            );
-        }
-        res.json(format(updated));
-    }
-    catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.delete(['/api/daily_tasks/:id', '/api/daily_task/:id'], async (req, res) => {
-    try { await DailyTask.findByIdAndDelete(req.params.id); res.json({ success: true }); }
-    catch (e) { res.status(500).json({ error: e.message }); }
-});
 
 // 定位与天气 (Utils)
 app.post('/api/users/:userId/location', async (req, res) => {
