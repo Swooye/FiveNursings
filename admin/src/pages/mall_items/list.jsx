@@ -1,14 +1,21 @@
-import React from "react";
 import { List, useTable, EditButton, ShowButton, DeleteButton, TextField } from "@refinedev/antd";
-import { Table, Space, Image, Switch } from "antd";
+import { Table, Space, Image, Switch, Form, Input, Button } from "antd";
+import { SearchOutlined } from "@ant-design/icons";
 import { useUpdate } from "@refinedev/core";
 import { getAssetUrl } from "../../utils/image";
 
 export const MallItemList = () => {
-    const { tableProps } = useTable({
-        syncWithLocation: true,
-    });
+    const { tableProps, setFilters } = useTable({ syncWithLocation: true });
     const { mutate } = useUpdate();
+    const [form] = Form.useForm();
+
+    const handleSearch = () => {
+        const { name, category } = form.getFieldsValue();
+        const filters = [];
+        if (name?.trim()) filters.push({ field: "name", operator: "contains", value: name.trim() });
+        if (category?.trim()) filters.push({ field: "category", operator: "contains", value: category.trim() });
+        setFilters(filters, "replace");
+    };
 
     const handleStatusChange = (id, checked) => {
         mutate({
@@ -21,6 +28,17 @@ export const MallItemList = () => {
 
     return (
         <List>
+            <Form form={form} layout="inline" style={{ marginBottom: "16px" }}>
+                <Form.Item name="name">
+                    <Input placeholder="搜索商品名称" prefix={<SearchOutlined />} allowClear />
+                </Form.Item>
+                <Form.Item name="category">
+                    <Input placeholder="搜索分类" prefix={<SearchOutlined />} allowClear />
+                </Form.Item>
+                <Form.Item>
+                    <Button type="primary" onClick={handleSearch}>搜索</Button>
+                </Form.Item>
+            </Form>
             <Table {...tableProps} rowKey="id">
                 <Table.Column 
                     dataIndex="imageUrl" 

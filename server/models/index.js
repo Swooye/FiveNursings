@@ -140,6 +140,23 @@ orderSchema.index({ status: 1, createdAt: -1 });
 
 const Order = mongoose.models.Order || mongoose.model('Order', orderSchema, 'orders');
 
+const providerSchema = new mongoose.Schema({
+    name: { type: String, required: true },       // 机构名称
+    // 位置信息
+    province: String,                             // 省
+    city: String,                                 // 市
+    district: String,                             // 区
+    address: String,                              // 详细地址
+    // 联系信息
+    contactName: String,                          // 联系人
+    contactPhone: String,                         // 联系电话
+    contactEmail: String,                         // 联系邮箱
+    
+    services: [String],                           // 服务项
+    expertName: String                            // 签约专家姓名
+}, { strict: false, collection: 'providers', timestamps: true });
+const Provider = mongoose.models.Provider || mongoose.model('Provider', providerSchema);
+
 module.exports = {
     User,
     Admin,
@@ -154,6 +171,7 @@ module.exports = {
     TaskTemplate,
     DailySymptom,
     ScoreHistory,
-    Order
+    Order,
+    Provider
 };
 

@@ -17,12 +17,20 @@ const generateOrderNo = () => {
 // GET /api/orders - 列表（含分页、过滤）
 router.get('/orders', async (req, res) => {
     try {
-        const { _start, _end, _sort, _order, status, userId, expressNo, orderNo } = req.query;
+        const { _start, _end, _sort, _order, ...rawQuery } = req.query;
         const filter = {};
-        if (status) filter.status = status;
-        if (userId) filter.userId = { $in: await resolveUserIds(userId) };
-        if (expressNo) filter.expressNo = { $regex: expressNo, $options: 'i' };
-        if (orderNo) filter.orderNo = { $regex: orderNo, $options: 'i' };
+
+        for (const [key, value] of Object.entries(rawQuery)) {
+            if (!value || value === '') continue;
+            if (key.endsWith('_like')) {
+                const field = key.slice(0, -5);
+                filter[field] = { $regex: value, $options: 'i' };
+            } else if (key === 'userId') {
+                filter.userId = { $in: await resolveUserIds(value) };
+            } else {
+                filter[key] = value;
+            }
+        }
 
         const count = await Order.countDocuments(filter);
         const sortField = _sort ? (_sort === 'id' ? '_id' : _sort) : 'createdAt';

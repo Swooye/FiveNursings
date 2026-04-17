@@ -39,6 +39,7 @@ app.use('/api', require('./routes/chat'));
 app.use('/api', require('./routes/messages'));
 app.use('/api', require('./routes/common'));
 app.use('/api', require('./routes/service'));
+app.use('/api', require('./routes/providers'));
 
 // 6. Global Setup
 console.log("\n>>> [MODULAR ARCHITECTURE] FiveNursings Backend Active <<<");

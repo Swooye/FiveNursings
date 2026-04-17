@@ -2,6 +2,26 @@ const { format } = require('./index');
 const { normalizeUserIdFilter } = require('./idResolver');
 
 /**
+ * 将 Refine simple-rest 的过滤参数转换为 MongoDB 查询条件
+ * Refine 发送: field_like=value (contains), field=value (eq)
+ */
+function parseFiltersToMongoQuery(rawFilters) {
+    const mongoFilter = {};
+    for (const [key, value] of Object.entries(rawFilters)) {
+        if (!value || value === '') continue;
+        if (key.endsWith('_like')) {
+            // contains → regex 模糊查询
+            const field = key.slice(0, -5);
+            mongoFilter[field] = { $regex: value, $options: 'i' };
+        } else {
+            // 精确匹配
+            mongoFilter[key] = value;
+        }
+    }
+    return mongoFilter;
+}
+
+/**
  * 自动路由生成器 (Generic CRUD)
  * @param {import('express').Application|import('express').Router} appOrRouter 
  * @param {string} path 
@@ -11,7 +31,10 @@ const createRoutes = (appOrRouter, path, Model) => {
     appOrRouter.get(`/${path}`, async (req, res) => {
         try {
             const { _start, _end, _sort, _order, ...rawFilters } = req.query;
-            const filters = await normalizeUserIdFilter(rawFilters);
+            
+            // 解析 Refine 的过滤参数格式（支持 _like 模糊查询）
+            const parsedFilters = parseFiltersToMongoQuery(rawFilters);
+            const filters = await normalizeUserIdFilter(parsedFilters);
 
             const count = await Model.countDocuments(filters);
             let query = Model.find(filters);

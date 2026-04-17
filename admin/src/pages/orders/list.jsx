@@ -25,11 +25,21 @@ export const OrderList = () => {
     const { tableProps, setFilters } = useTable({ syncWithLocation: true });
     const { mutate } = useUpdate();
 
+    const [searchForm] = Form.useForm();
     const [shippingModal, setShippingModal] = useState({ open: false, record: null });
     const [statusModal, setStatusModal] = useState({ open: false, record: null });
     const [shippingForm] = Form.useForm();
     const [statusForm] = Form.useForm();
     const [submitting, setSubmitting] = useState(false);
+
+    const handleSearch = () => {
+        const { orderNo, userPhone, status } = searchForm.getFieldsValue();
+        const filters = [];
+        if (orderNo?.trim()) filters.push({ field: "orderNo", operator: "contains", value: orderNo.trim() });
+        if (userPhone?.trim()) filters.push({ field: "userPhone", operator: "contains", value: userPhone.trim() });
+        if (status) filters.push({ field: "status", operator: "eq", value: status });
+        setFilters(filters, "replace");
+    };
 
     // --- 录入快递单号 ---
     const openShipping = (record) => {
@@ -54,7 +64,7 @@ export const OrderList = () => {
             message.success('快递信息已保存，订单状态已更新为【已发货】');
             setShippingModal({ open: false, record: null });
             // 刷新列表
-            setFilters([], "replace");
+            tableProps.onChange({ current: 1 });
         } catch (e) {
             message.error(e.message);
         } finally {
@@ -81,7 +91,7 @@ export const OrderList = () => {
             if (!res.ok) throw new Error(data.error || "操作失败");
             message.success("订单状态已更新");
             setStatusModal({ open: false, record: null });
-            setFilters([], "replace");
+            tableProps.onChange({ current: 1 });
         } catch (e) {
             message.error(e.message);
         } finally {
@@ -91,30 +101,26 @@ export const OrderList = () => {
 
     return (
         <>
-            <List
-                headerButtons={
-                    <Space>
-                        <Input
-                            prefix={<SearchOutlined />}
-                            placeholder="搜索订单号"
-                            allowClear
-                            style={{ width: 200 }}
-                            onPressEnter={(e) =>
-                                setFilters([{ field: "orderNo", operator: "contains", value: e.target.value }], "replace")
-                            }
-                        />
+            <List>
+                <Form form={searchForm} layout="inline" style={{ marginBottom: "16px" }}>
+                    <Form.Item name="orderNo">
+                        <Input placeholder="搜索订单号" prefix={<SearchOutlined />} allowClear />
+                    </Form.Item>
+                    <Form.Item name="userPhone">
+                        <Input placeholder="客户手机号" prefix={<SearchOutlined />} allowClear />
+                    </Form.Item>
+                    <Form.Item name="status">
                         <Select
                             placeholder="筛选状态"
                             allowClear
                             style={{ width: 140 }}
-                            onChange={(v) =>
-                                setFilters(v ? [{ field: "status", operator: "eq", value: v }] : [], "replace")
-                            }
                             options={Object.entries(STATUS_MAP).map(([k, v]) => ({ value: k, label: v.label }))}
                         />
-                    </Space>
-                }
-            >
+                    </Form.Item>
+                    <Form.Item>
+                        <Button type="primary" onClick={handleSearch}>搜索</Button>
+                    </Form.Item>
+                </Form>
                 <Table {...tableProps} rowKey="id" scroll={{ x: 1100 }}>
                     <Table.Column
                         dataIndex="orderNo"
