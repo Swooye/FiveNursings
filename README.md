@@ -2,9 +2,9 @@
 
 ## 📚 项目导航 (Docs Index)
 
-- 🏗️ [架构图谱 (ARCHITECT_GUIDE.md)](file:///Users/wayne/FiveNursings/ARCHITECT_GUIDE.md): 系统全貌、技术栈及环境隔离指引。
-- 📖 [产品手册 (analysis_results.md)](file:///Users/wayne/FiveNursings/analysis_results.md): 产品需求文档 (PRD) 与核心功能说明。
-- 🛠️ [开发规范 (DEVELOPMENT_GUIDE.md)](file:///Users/wayne/FiveNursings/RESOURCES/DEVELOPMENT_GUIDE.md): 命名标准 (DB/API)、状态管理准则及避坑指南。
+- 🏗️ [架构图谱 (ARCHITECT_GUIDE.md)](ARCHITECT_GUIDE.md): 系统全貌、技术栈及环境隔离指引。
+- 📖 [产品需求文档 (PRD.md)](PRD.md): 产品业务逻辑、核心功能规范及路线图。
+- 🛠️ [开发规范 (DEVELOPMENT_GUIDE.md)](RESOURCES/DEVELOPMENT_GUIDE.md): 命名标准 (DB/API)、状态管理准则及避坑指南。
 
 ---
 
@@ -35,4 +35,4 @@ npm run admin
 - **前端**：Firebase Hosting
 - **后端**：Google Cloud Run
 
-部署命令请参阅 [DEVELOPMENT_GUIDE](file:///Users/wayne/FiveNursings/RESOURCES/DEVELOPMENT_GUIDE.md)。
+部署命令请参阅 [开发规范 (DEVELOPMENT_GUIDE.md)](RESOURCES/DEVELOPMENT_GUIDE.md)。
