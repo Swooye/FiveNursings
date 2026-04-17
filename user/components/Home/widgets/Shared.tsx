@@ -98,7 +98,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({ title, score, baseline, 
                 isCritical ? 'text-rose-600 dark:text-rose-400' : 
                 isHealthy ? 'text-slate-800 dark:text-white' : 
                 'text-amber-600 dark:text-amber-400'
-              }`}>{score}</span>
+              }`}>{Math.round(score)}</span>
               <ChevronRight size={24} className={`text-slate-200 dark:text-slate-700 group-hover:text-${accentColor}-500 group-hover:translate-x-1 transition-all`} />
             </div>
           </div>

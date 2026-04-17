@@ -79,7 +79,7 @@ class ScoringService {
         } else {
             dietReward = 20; // 无任务时默认为中等依从
         }
-        scores.diet = Math.min(100, baselines.diet + dietReward);
+        scores.diet = Math.round(Math.min(100, baselines.diet + dietReward));
 
         // 2. 运动养 (Exercise): 基准 40
         const steps = user.wearable?.steps || 3000;
@@ -91,7 +91,7 @@ class ScoringService {
         } else {
             exerciseDelta = -Math.min(40, ((3000 - steps) / 3000) * 40); // 惩罚: <3k
         }
-        scores.exercise = Math.min(100, Math.max(0, baselines.exercise + exerciseDelta));
+        scores.exercise = Math.round(Math.min(100, Math.max(0, baselines.exercise + exerciseDelta)));
 
         // 3. 膏方养 (TCM): 基准 70 (Mapped from sleep/tcm)
         const tcmCategory = tasks.some(t => t.category === 'tcm') ? 'tcm' : 'sleep';
@@ -103,11 +103,11 @@ class ScoringService {
         else if (sleepHours < 5) tcmDelta = -20;
         
         tcmDelta += (tcmTasks.length * 10); 
-        scores.sleep = Math.min(100, Math.max(0, baselines.sleep + tcmDelta));
+        scores.sleep = Math.round(Math.min(100, Math.max(0, baselines.sleep + tcmDelta)));
 
         // 4. 心理养 (Mental): 基准 80
         // 目前基于上一次记录或默认，未来可接入 AI 语义分析后的 Reward/Penalty
-        scores.mental = scores.mental > 0 ? scores.mental : baselines.mental;
+        scores.mental = Math.round(scores.mental > 0 ? scores.mental : baselines.mental);
 
         // 5. 功能养 (Function): 基准 80
         // 奖励：通过功能性训练任务提高 (如呼吸操)
@@ -118,7 +118,7 @@ class ScoringService {
         const symptomCount = (user.todaySymptoms || []).length;
         const symptomPenalty = symptomCount * 15;
         
-        scores.function = Math.min(100, Math.max(0, baselines.function + functionReward - symptomPenalty));
+        scores.function = Math.round(Math.min(100, Math.max(0, baselines.function + functionReward - symptomPenalty)));
 
         // 6. 环境养 (Environmental): 已经由 Promise.all 获取
         let envScore = 85; 

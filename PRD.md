@@ -1,92 +1,114 @@
-# Project Analysis: FiveNursings (康养家)
+# 产品需求文档 (PRD): 康养家 (FiveNursings)
 
-## 1. Project Overview
-FiveNursings is a comprehensive oncology (cancer) health management platform comprising three main technical layers:
-*   **User Terminal**: High-fidelity mobile-first web app for patients and families.
-*   **Admin Terminal**: Management portal for doctors, nurses, and admins.
-*   **Unified Backend**: Dual-environment API (Express/Firebase) connecting to MongoDB.
-
-## 2. Technical Architecture
-
-### Frontend Components
-| Component | Stack | Purpose | Key Features |
+| 项目名称 | 康养家 (FiveNursings) | 文档版本 | V3.0 (Professional) |
 | :--- | :--- | :--- | :--- |
-| **User** | React, Vite, Tailwind CSS, Lucide | Patient facing | Health tracking, recovery journal, AI assistance, health marketplace. |
-| **Admin** | React, Refine, Ant Design | Staff facing | Patient record management, protocol editing, order processing. |
+| **产品负责人** | Wayne | **状态** | 已通过 (重构后同步) |
+| **最后更新** | 2026-04-17 | **密级** | 内部机密 |
 
-### Backend Strategy
-The system uses a shared logic codebase with two entry points:
-1.  **Local Development ([server/index.js](file:///Users/wayne/Documents/FiveNursings_Forge/server/index.js))**: Runs on port 3002. Provides easy local iteration with MongoDB.
-2.  **Production ([functions/src/index.ts](file:///Users/wayne/Documents/FiveNursings_Forge/functions/src/index.ts))**: Deployed as Firebase Cloud Functions. Connects to production database and handles scaling.
+---
 
-### Database (MongoDB Atlas)
-*   **fivenursing_dev**: Used for local development and testing.
-*   **fivenursing_pro**: Production database.
-*   **test**: Staging/Source database used by migration scripts.
+## 1. 修订记录 (Revision History)
 
-## 3. Key Data Flows
+| 版本 | 日期 | 修订人 | 修订说明 |
+| :--- | :--- | :--- | :--- |
+| V1.0 | 2026-03-20 | Wayne | 初始版本，确立 MVP 框架 |
+| V2.0 | 2026-04-17 | Antigravity | 后端模块化架构升级与功能细化 |
+| V3.0 | 2026-04-17 | Antigravity | 参考大厂规范重构，确立业务与技术闭环 |
 
-### Authentication & User Sync
-1.  User signs in via **Firebase Authentication** in the frontend.
-2.  Frontend calls `/api/users/sync` with the Firebase `uid`.
-3.  Backend checks MongoDB for a matching `firebaseUid` or `phoneNumber`.
-4.  If not found, a new profile is created in MongoDB; otherwise, it returns the existing profile.
+---
 
-### Environment Switching
-*   **Frontend**: Detects `import.meta.env.DEV` to decide whether to hit `/api` (Vite Proxy) or the absolute Firebase Function URL.
-*   **Backend**: Cloud Functions detect the Firebase Project ID to automatically switch between `fivenursing_dev` and `fivenursing_pro`.
+## 2. 项目背景与战略目标 (Project Context & Strategy)
 
-## 4. Maintenance Infrastructure
-The root directory contains several [.cjs](file:///Users/wayne/Documents/FiveNursings_Forge/migrate_data.cjs) scripts for critical database operations:
-*   **Data Migration**: [migrate_data.cjs](file:///Users/wayne/Documents/FiveNursings_Forge/migrate_data.cjs) and [sync_protocols.cjs](file:///Users/wayne/Documents/FiveNursings_Forge/sync_protocols.cjs) move collections between environments.
-*   **Auditing**: [audit_pro_v2.cjs](file:///Users/wayne/Documents/FiveNursings_Forge/audit_pro_v2.cjs) allows staff to verify production data counts and structures safely.
-*   **Fixes**: [fix_mall_images.cjs](file:///Users/wayne/Documents/FiveNursings_Forge/fix_mall_images.cjs) (implied) handles ad-hoc data cleanup.
+### 2.1 市场痛点 (Problem Statement)
+*   **康复孤岛**：肿瘤患者在离院后进入长达数月的康复期，缺乏专业指导，依从性难以维持。
+*   **信息过载与错位**：网络健康知识碎片化严重，缺乏基于个体数据的实时干预。
 
-## 5. Execution Status (Current State)
-> [!NOTE]
-> The project is **fully operational** in the new local environment.
-> Updated: 2026-03-26
+### 2.2 产品定位 (Product Positioning)
+**康养家** 是连接医疗机构与居家环境的桥梁。它不仅是一个打卡工具，而是一个由 **专家大脑 (AI)** 驱动、基于 **五养理论** 为底层逻辑的数字化健康干预平台。
 
-### Verified Components
-*   **Backend**: Running on port 3002, connected to MongoDB Atlas.
-*   **User Frontend**: Accessible at `http://localhost:3000`.
-*   **Admin Frontend**: Accessible at `http://localhost:5174`.
-*   **Dependencies**: All `node_modules` are correctly installed in root and subdirectories.
+### 2.3 核心成功指标 (Success Metrics - Google Style)
+*   **核心北极星指标**：每周人均有效打卡次数 (W-Check-ins)。
+*   **关键 KPI**：
+    - AI 对话解决率 (AI-Resolution Rate) > 85%。
+    - 五养评分 (Recovery Index) 与主观症状改善的相关性系数。
+    - 活跃用户商城转化率。
 
-### Steps to Run
-1.  **Start all services**:
-    ```bash
-    bash start-dev.sh
-    ```
-    This script automatically kills previous instances, starts the backend, user frontend, and admin dashboard.
+---
 
-### Steps to Run
-1.  **Dependency Installation**:
-    ```bash
-    # Root & Server
-    npm install
-    # User Frontend
-    cd user && npm install
-    # Admin Frontend
-    cd admin && npm install
-    # Cloud Functions
-    cd functions && npm install
-    ```
-2.  **Start Local Backend**:
-    ```bash
-    cd server && npm start # Runs on http://localhost:3002
-    ```
-3.  **Start Frontends**:
-    *   **User**: `npm run user` (from root)
-    *   **Admin**: `npm run admin` (from root)
+## 3. 用户模型与核心场景 (Personas & Scenarios)
 
-## 6. Environment Configuration (.env)
-*   **Consolidation**: The project uses a single source of truth at the root [.env](file:///Users/wayne/FiveNursings/.env).
-*   **Symlinks**: `admin/.env` and `user/.env` are symbolic links pointing to the root `.env`.
-*   **Templates**: [.env.example](file:///Users/wayne/FiveNursings/.env.example) is provided for setting up new environments.
-*   **Rule**: Never commit `.env` to Git; it is ignored by [.gitignore](file:///Users/wayne/FiveNursings/.gitignore).
+### 3.1 用户肖像 (User Personas)
+- **患者 (甲)**：康复初期，焦虑感强，需精准任务提醒与快速 AI 答疑。
+- **家属 (乙)**：主要陪护者，负责商城物资采购及监控患者健康趋势。
+- **健康教练 (丙)**：负责后台协议维护，通过系统预警介入异常状况。
 
-## 7. Architectural Observations
-*   **"God Component" Pattern**: The [user/App.tsx](file:///Users/wayne/Documents/FiveNursings_Forge/user/App.tsx) is a large (25k+) file managing nearly all application states and "routing". while compact, it would benefit from refactoring.
-*   **Refine Framework**: The Admin panel is highly efficient due to its use of the `refinedev` ecosystem.
-*   **Firebase Integration**: Leverages Firebase Auth and Functions while maintaining data in MongoDB Atlas.
+### 3.2 典型用户链路 (User Journey - Tencent Style)
+1.  **唤醒与打卡**：清晨推送气象提醒 -> 执行五养任务 -> 实时打卡。
+2.  **记录与分析**：上传语音记录心得 -> AI 自动提取情绪与核心指标。
+3.  **预警与介入**：症状异常 -> 触发红色预警 -> 专家介入或 AI 深度诊断。
+
+---
+
+## 4. 核心功能规范 (Functional Specifications - Alibaba Style)
+
+### 4.1 五养干预分发模块 (Recovery Module)
+*   **业务逻辑**：干预协议 (Protocol) × 用户画像 (Profile) = 每日计划 (Plan)。
+*   **异常处理**：若连续 3 天未打卡，系统自动降级任务难度并触发 AI 关怀询问。
+*   **评分算法**：加权汇总食、药、心、动、修五个维度的实时数据，生成五养雷达图。
+
+### 4.2 专家大脑 (AI Assistant Module)
+*   **上下文管理**：对话必须关联用户近 7 天的症状轨迹。
+*   **多模态处理流**：
+    - **语音**：录音 -> STT -> 意图识别 -> LLM 处理 -> TTS 播报。
+    - **图像**：化验单 OCR -> 核心指标解析 -> 异常标注。
+*   **优先级控制**：严重症状关键词触发时，AI 响应必须前置“紧急求医”免责声明。
+
+### 4.3 康复档案监控 (Monitoring Module)
+*   **数据采集标准**：所有主观症状通过 5 阶量表 (NRS-5) 标准化存储。
+*   **数据隔离**：实现 `resolveUserIds` 机制，确保多端 ID 映射下数据的一致性。
+
+### 4.4 闭环商城 (E-commerce Module)
+*   **交易链条**：商品搜索 -> 规格选择 -> 购物车 -> 支付挂钩 -> 物流反馈。
+*   **积分联动**：高打卡依从性用户可获得“五养积分”，用于商城抵扣。
+
+---
+
+## 5. 技术与非功能性需求 (Non-functional Requirements)
+
+### 5.1 可靠性与性能 (Reliability)
+- **高可用**：Google Cloud Run 容器化弹性伸缩，确保突发访问不宕机。
+- **延迟响应**：后端核心 API 响应时间必须小于 300ms。
+
+### 5.2 安全与合规 (Security)
+- **认证**：统一使用 Firebase Auth 鉴权加密。
+- **隐私**：底层 MongoDB 存储敏感信息需满足加盐脱敏处理。
+- **ID 架构**：内部强制执行 V2.0 模块化 ID 解析标准，禁止硬编码 ID。
+
+---
+
+## 6. 路线图与优先级 (Roadmap)
+
+### 阶段 P0 (当前核心)：稳定运营期
+- 全面落实模块化后端架构。
+- 完善五养打卡与 AI 基础咨询链路。
+
+### 阶段 P1 (短期目标)：智能增强期
+- **AI 自适应干预**：方案根据用户依从性智能进阶。
+- **专业简报**：生成供医生门诊使用的 PDF 健康综述。
+- **消息引擎**：多端订阅通知，解决用户忘记打卡的问题。
+
+### 阶段 P2 (中期目标)：生态拓展期
+- **硬件互联**：集成 Apple Health 及第三方血压/血糖仪。
+- **康复社区**：匿名经验分享与互助群组。
+
+---
+
+## 7. 风险评估与合规声明
+
+### 7.1 风险项
+*   **模型幻觉**：AI 可能提供非科学的医疗建议。
+*   **数据隐私**：医疗敏感数据的泄露风险。
+
+### 7.2 医疗合规声明
+> [!IMPORTANT]
+> **本系统生成的所有建议仅供参考。** 患者在使用 AI 提供的养生、饮食或运动建议前，必须咨询主治医生。严禁将本系统作为紧急医疗决策的唯一依据。
