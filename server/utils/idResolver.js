@@ -1,36 +1,68 @@
 const mongoose = require('mongoose');
 
-/**
- * 核心用户 ID 解析器 (v1.5)
- * 支持 Firebase UID, MongoDB ObjectID, 姓名, 昵称的模糊识别
- * @param {string} userId 
- * @param {import('mongoose').Model} UserModel
- * @returns {Promise<string[]>} 解析后的 ID 列表 (去重)
- */
-async function resolveUserIds(userId, UserModel) {
-    if (!userId) return [];
-    
-    // 如果 UserModel 传入的是字符串或未定义，回退逻辑（防错）
-    if (!UserModel) return [userId];
+// --- Simple In-Memory ID Mapping Cache (To prevent poll-induced DB overload) ---
+const idMappingCache = new Map();
 
+/**
+ * 核心用户 ID 解析器
+ * 支持 Firebase UID, MongoDB ObjectID, 姓名, 昵称的模糊识别
+ */
+async function resolveUserIds(userId) {
+    if (!userId) return [];
+    if (idMappingCache.has(userId)) return idMappingCache.get(userId);
+
+    const { User } = require('../models');
     const idList = [userId];
     
-    // 模糊匹配查询
-    const user = await UserModel.findOne({ 
-        $or: [
-            { firebaseUid: userId }, 
-            { _id: mongoose.isValidObjectId(userId) ? userId : null },
-            { name: userId },
-            { nickname: userId }
-        ] 
-    }).select('_id firebaseUid').lean();
-    
-    if (user) {
-        if (user.firebaseUid) idList.push(user.firebaseUid);
-        if (user._id) idList.push(user._id.toString());
+    try {
+        const user = await User.findOne({ 
+            $or: [
+                { firebaseUid: userId }, 
+                { _id: mongoose.isValidObjectId(userId) ? userId : null },
+                { name: userId },
+                { nickname: userId }
+            ] 
+        }).select('_id firebaseUid').lean();
+        
+        if (user) {
+            if (user.firebaseUid) idList.push(user.firebaseUid);
+            if (user._id) idList.push(user._id.toString());
+        }
+        
+        const uniqueIds = [...new Set(idList)];
+        if (uniqueIds.length > 1) idMappingCache.set(userId, uniqueIds);
+        return uniqueIds;
+    } catch (e) {
+        console.error("[ID Resolver] Failed to resolve:", e);
+        return [userId];
     }
-    
-    return [...new Set(idList)];
 }
 
-module.exports = { resolveUserIds };
+/**
+ * 获取归一化后的主 ID (MongoDB _id)
+ */
+async function resolvePrimaryId(userId) {
+    const { User } = require('../models');
+    const user = await User.findOne({
+        $or: [{ firebaseUid: userId }, { _id: mongoose.isValidObjectId(userId) ? userId : null }]
+    }).select('_id').lean();
+    return user ? user._id.toString() : userId;
+}
+
+/**
+ * 标准化 Generic Routes 的过滤参数
+ */
+async function normalizeUserIdFilter(query) {
+    const filters = { ...query };
+    if (filters.userId) {
+        const idList = await resolveUserIds(filters.userId);
+        filters.userId = { $in: idList };
+    }
+    return filters;
+}
+
+module.exports = {
+    resolveUserIds,
+    resolvePrimaryId,
+    normalizeUserIdFilter
+};

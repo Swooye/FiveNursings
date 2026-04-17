@@ -46,7 +46,30 @@ function getSolarTerm() {
     }
 }
 
+/**
+ * 格式化文档，确保包含字符串形式的 id
+ */
+const format = (doc) => {
+    if (!doc) return null;
+    const obj = doc.toObject ? doc.toObject({ getters: true }) : doc;
+    const idStr = obj._id ? obj._id.toString() : (obj.id ? obj.id.toString() : null);
+    return { ...obj, id: idStr, _id: idStr };
+};
+
+/**
+ * 获取本地日期字符串 (YYYY-MM-DD)
+ */
+const getLocalDateString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
 module.exports = {
     getLiveWeather,
-    getSolarTerm
+    getSolarTerm,
+    format,
+    getLocalDateString
 };

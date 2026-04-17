@@ -6,5 +6,7 @@ build
 .idx
 .DS_Store
 *.log
+server/*.log
+server/nohup.out
 server/uploads/*
 !server/uploads/.gitkeep
