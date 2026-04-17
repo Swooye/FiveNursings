@@ -20,13 +20,17 @@
     - 订单与物流管理：处理商城订单。
     - 专家方案定制。
 
-## 2. 技术架构 (Hybrid Architecture)
-本系统采用**混合架构**，以平衡静态资源托管的便捷性与后端计算的高性能需求。
+## 2. 技术架构 (Hybrid & Modular)
+本系统采用**混合架构**，后端经过 V2.0 重构，实现了**模块化治理**。
 
 - **前端 (User/Admin)**：React + TypeScript + Tailwind CSS (部署于 **Firebase Hosting**)。
 - **后端 (API/AI Server)**：
-  - **容器化部署 (生产环境)**：Node.js + Express + Docker (部署于 **Google Cloud Run**)。
-  - **开发环境**：本地 `server/index.js` (端口 3002)。
+  - **模块化 Express (V2.0)**：
+    - `index.js`: 极简入口，仅负责中间件编排与路由挂载。
+    - `/routes`: 领域模型路由（Auth, Users, DailyTasks 等）。
+    - `/db.js`: 独立数据库连接管理。
+    - `/utils`: 包含通用的 `routeGenerator` (自动 CRUD) 和 `idResolver` (ID 对齐)。
+  - **容器化部署**：Node.js + Express + Docker (部署于 **Google Cloud Run**)。
 - **数据库**：MongoDB (Atlas 云数据库)。
   - **开发库**：`fivenursing_dev`
   - **生产库**：`fivenursing_pro`

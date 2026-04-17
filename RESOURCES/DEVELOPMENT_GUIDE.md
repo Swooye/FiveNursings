@@ -29,33 +29,26 @@
 > [!IMPORTANT]
 > 项目采用 **“混合架构” (Hybrid Architecture)**：前端由 Firebase Hosting 托管，后端 API 由 Cloud Run 独立容器运行。
 
-### 1. 分层架构
-- **前端 (Frontend)**: 基于 Firebase Hosting，负责静态资源交付与客户端逻辑。
-- **后端 (Backend API)**: 基于 Google Cloud Run (独立 Express 容器)，负责全部核心业务逻辑、数据库交互与 AI 服务接入。
-- **路由转发**: `firebase.json` 中的 `rewrites` 规则将所有 `/api/**` 的请求原封不动地转发至 Cloud Run 服务 `api` (`us-central1`)。
+## 二、 核心架构与开发流程 (Modular Architecture)
 
-### 2. 后端路由定义规范 (Routing Prefix)
-- **携带前缀**：由于 Firebase Hosting 的 rewrites 规则**不会截断前缀**，当请求被转发到 Cloud Run 时，URL 依然包含 `/api`。
-- **正确做法**：后端的 Express 代码必须显式监听 `/api`。例如 `app.post('/api/diary/summarize', ...)` 或使用 `app.use('/api', router)`。
+### 1. 目录结构与分工
+- **`/server/index.js`**: **指挥官**。配置中间件，按优先级顺序挂载各领域路由模块。
+- **`/server/routes/`**: **执行官**。存放各领域接口定义（如 `auth.js`, `dailyTasks.js`）。
+- **`/server/utils/`**: **工具库**。包含 `idResolver.js` (ID 对齐) 和 `routeGenerator.js` (通用 CRUD)。
+- **`/server/db.js`**: **连接器**。统一管理 MongoDB 连接，通过 `NODE_ENV` 自动切换库名。
 
-### 3. 部署指令 (Deployment Commands)
-- **后端部署 (Cloud Run)**:
-  `gcloud run deploy api --image gcr.io/[PROJECT_ID]/api --region us-central1`
-- **前端与静态部署 (Firebase Hosting)**:
-  `firebase deploy --only hosting`
-- **辅助函数部署 (Firebase Functions)**:
-  `cd functions && npm run build && cd .. && firebase deploy --only functions`
+### 2. 新增 API 模块流程 (Standard Flow)
+1. **定义模型**: 在 `models/index.js` 中定义或导出对应 Mongoose 模型。
+2. **创建路由**: 在 `routes/` 下新建文件（如 `routes/feature.js`）。
+   - 引用 `express.Router()`。
+   - 使用 `resolveUserIds` 对齐用户身份。
+   - 复杂逻辑封装在 `services/` 中。
+3. **挂载模块**: 在 `index.js` 中 `app.use('/api', require('./routes/feature'))`。
+   - **注意**: 必须在通用 CRUD 路由注册前挂载，以防死路由。
 
-### 4. 稳定性与安全禁止项 (Safety Redlines)
+### 3. 数据与身份处理 (ID Consistency)
+- **强制辅助**: 所有涉及 `userId` 的读写接口，必须使用 `server/utils/idResolver.js` 进行转换。
+- **标准响应**: 必须调用 `format(doc)` 进行格式化，确保 `id` 字段的统一暴露。
 
-> [!CAUTION]
-> 严防服务名称覆盖导致的全站 404！
-
-- **禁止同名服务**：**严禁**在 `functions/src/index.ts` 中导出名为 `api` 的云函数。这会导致在执行 `firebase deploy` 时，将主后端的 Cloud Run `api` 服务抹除覆盖。若需部署遗留函数，必须使用 `api_legacy` 等无冲突名称。
-- **禁止配置复写**：严禁自动重写或覆盖 `firebase.json`, `Dockerfile`, `firestore.rules`。
-- **禁止字面量引号配置**：通过 `gcloud` 命令设置带有特殊字符的环境变量（如 `MONGODB_URI`）时，值内部禁止出现单引号字面量（'），防止连接串被 Shell 截断。
-
----
-
-> [!TIP]
-> 严格遵守以上规范，特别是 ID 解析规范与 Cloud Run 服务命名红线，将极大减少神秘 Bug 及全站瘫痪事故。
+## 三、 部署规则 (Cloud Run)
+...

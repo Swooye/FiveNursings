@@ -8,9 +8,11 @@
 - **Backend (API)**: `gcloud run deploy api --source . --project fivenursings-73917017-a0dfd`
 - **Frontend**: `firebase deploy --only hosting`
 
-## Safety Guidelines
-- **DO NOT** migrate backend logic from Cloud Run back to Firebase Functions.
-- Ensure `gcloud` points to **Project B (fivenursings-73917017-a0dfd)**.
-- For all API paths, ensure they match the Hosting rewrites (`/api/**`).
-- **User ID Standard**: ALWAYS use `resolveUserIds` on the backend for logic involving `userId` (symptoms, logs, tasks). NEVER assume a single ID format (Firebase UID vs MongoDB ID).
-- **Database Isolation**: NEVER hardcode `fivenursing_pro`. Use `process.env.NODE_ENV` or `MONGODB_DB_NAME` to determine the database name dynamically. Default to `fivenursing_dev` in development.
+## Backend Modularity (V2.0)
+- **THIN ENTRY POINT**: KEEP `server/index.js` under 80 lines. Do NOT add business logic there.
+- **ROUTE ISOLATION**: ALWAYS create a new file in `/server/routes/` for new features.
+- **PRECEDENCE**: ALWAYS mount custom routes BEFORE calling `routeGenerator` or generic routes in `index.js`.
+- **DRY CRUD**: Use `server/utils/routeGenerator.js` for boilerplate CRUD endpoints.
+- **USER ID STANDARD**: ALWAYS use `resolveUserIds` or `resolvePrimaryId` from `server/utils/idResolver.js` for all user-related queries.
+- **FORMATTING**: ALWAYS use `format()` from `server/utils/index.js` to normalize MongoDB documents before sending to frontend.
+- **DB ACCESS**: Use `server/db.js` for connection logic. Export models from `server/models/index.js`.
